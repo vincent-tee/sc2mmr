@@ -36,6 +36,11 @@ class ImpactService:
         # Convert unit composition dict to JSON string
         unit_comp_json = json.dumps(metrics.unit_composition) if metrics.unit_composition else None
 
+        # Convert damage timeline to JSON string
+        damage_timeline_json = None
+        if metrics.damage_timeline:
+            damage_timeline_json = metrics.damage_timeline.to_json()
+
         match_metrics = PlayerMatchMetrics(
             match_player_id=match_player_id,
             minerals_collected=metrics.minerals_collected,
@@ -60,7 +65,14 @@ class ImpactService:
             economic_score=metrics.economic_score,
             combat_score=metrics.combat_score,
             efficiency_score=metrics.efficiency_score,
-            overall_impact=metrics.overall_impact
+            overall_impact=metrics.overall_impact,
+            first_damage_timing=metrics.first_damage_timing,
+            early_game_damage=metrics.early_game_damage,
+            mid_game_damage=metrics.mid_game_damage,
+            late_game_damage=metrics.late_game_damage,
+            player_archetype=metrics.player_archetype.value if hasattr(metrics, 'player_archetype') and metrics.player_archetype else None,
+            aggression_score=metrics.aggression_score,
+            damage_timeline=damage_timeline_json
         )
 
         db.add(match_metrics)

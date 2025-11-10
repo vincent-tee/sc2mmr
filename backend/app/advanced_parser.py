@@ -15,6 +15,7 @@ import sc2reader
 from sc2reader.events import TrackerEvent
 
 from .replay_parser import parse_replay, ReplayData, ReplayParseError
+from .damage_timeline import DamageTimelineExtractor, DamageTimeline
 
 
 @dataclass
@@ -63,6 +64,9 @@ class PlayerMetrics:
     combat_score: float = 0.0
     efficiency_score: float = 0.0
     overall_impact: float = 0.0
+
+    # Damage timeline (second-by-second)
+    damage_timeline: Optional[DamageTimeline] = None
 
     def __post_init__(self):
         if self.unit_composition is None:
@@ -190,6 +194,16 @@ def parse_replay_advanced(file_path: str) -> AdvancedReplayData:
         # Process tracker events for detailed metrics
         if hasattr(replay, 'tracker_events'):
             _process_tracker_events(replay.tracker_events, player_metrics_dict, replay.game_length.seconds)
+
+        # Extract damage timelines for each player
+        for player_id, metrics in player_metrics_dict.items():
+            damage_timeline = DamageTimelineExtractor.extract_from_replay(replay, player_id)
+            metrics.damage_timeline = damage_timeline
+
+            # Update timing metrics from timeline
+            first_damage = damage_timeline.get_first_damage_second()
+            if first_damage is not None:
+                metrics.first_damage_timing = first_damage
 
         # Calculate impact scores
         for metrics in player_metrics_dict.values():

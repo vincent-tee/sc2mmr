@@ -218,6 +218,11 @@ class PlayerMatchMetrics(Base):
     player_archetype = Column(String, nullable=True)  # Rusher, TimingAttacker, LateGame, etc.
     aggression_score = Column(Float, default=50.0)  # 0-100
 
+    # Second-by-second damage timeline (sparse storage)
+    damage_timeline = Column(String, nullable=True)  # JSON: {187: 250, 325: 1200, ...}
+    # Only stores seconds where damage occurred - typically 20-100 events per game
+    # Key = game second, Value = damage dealt that second
+
 
 class PlayerSynergy(Base):
     """
