@@ -7,10 +7,12 @@ TrueSkill is a Bayesian skill rating system that:
 - sigma: uncertainty (default 8.333, decreases with games played)
 - Handles team-based games naturally
 - Increases uncertainty over time without games (skill decay)
+- Recency weighting: Recent matches count more than older matches
 """
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timedelta
 import trueskill
+import math
 from sqlalchemy.orm import Session
 
 from .models import Player, Match, MatchPlayer
@@ -26,6 +28,12 @@ trueskill.setup(
     tau=0.0833,           # Dynamics factor (skill change per day)
     draw_probability=0.0  # No draws in SC2
 )
+
+# Recency weighting configuration
+# Matches decay exponentially - a match from RECENCY_HALF_LIFE days ago
+# has 50% the weight of a match today
+RECENCY_HALF_LIFE_DAYS = 30  # 30-day half-life by default
+RECENCY_ENABLED = True        # Enable recency weighting
 
 
 class RatingSystem:
@@ -79,6 +87,93 @@ class RatingSystem:
 
         # Cap sigma at initial value (8.333)
         player.sigma = min(player.sigma + sigma_increase, 8.333)
+
+    @staticmethod
+    def calculate_recency_weight(days_ago: float, reference_date: Optional[datetime] = None) -> float:
+        """
+        Calculate exponential recency weight for a match.
+
+        Weight decays exponentially with half-life of RECENCY_HALF_LIFE_DAYS.
+        - Match today: weight = 1.0
+        - Match RECENCY_HALF_LIFE_DAYS ago: weight = 0.5
+        - Match 2*RECENCY_HALF_LIFE_DAYS ago: weight = 0.25
+
+        Args:
+            days_ago: Number of days since the match
+            reference_date: Reference date for calculating days_ago (defaults to now)
+
+        Returns:
+            Weight multiplier (0.0 to 1.0)
+        """
+        if not RECENCY_ENABLED:
+            return 1.0
+
+        if days_ago < 0:
+            days_ago = 0
+
+        # Exponential decay: weight = 0.5^(days_ago / half_life)
+        decay_factor = math.log(0.5) / RECENCY_HALF_LIFE_DAYS
+        weight = math.exp(decay_factor * days_ago)
+
+        return weight
+
+    @staticmethod
+    def update_recency_weighted_rating(
+        db: Session,
+        player: Player,
+        reference_date: Optional[datetime] = None
+    ) -> None:
+        """
+        Calculate and update a player's recency-weighted MMR.
+
+        This rating weighs recent matches more heavily than older matches,
+        providing a better estimate of current skill level.
+
+        Args:
+            db: Database session
+            player: Player to update
+            reference_date: Date to calculate recency from (defaults to now)
+        """
+        if reference_date is None:
+            reference_date = datetime.utcnow()
+
+        # Get all matches for this player, ordered by date
+        match_players = db.query(MatchPlayer).filter(
+            MatchPlayer.player_id == player.id
+        ).join(Match).order_by(Match.played_at).all()
+
+        if not match_players:
+            # No matches, use standard MMR
+            player.recency_weighted_mmr = player.mmr
+            return
+
+        # Calculate weighted performance
+        total_weight = 0.0
+        weighted_mmr_sum = 0.0
+
+        for mp in match_players:
+            match = db.query(Match).filter(Match.id == mp.match_id).first()
+            if not match:
+                continue
+
+            # Calculate days ago
+            days_ago = (reference_date - match.played_at).total_seconds() / 86400
+
+            # Calculate weight
+            weight = RatingSystem.calculate_recency_weight(days_ago)
+
+            # Use post-match MMR for this calculation
+            match_mmr = mp.mu_after - (3 * mp.sigma_after)
+
+            weighted_mmr_sum += match_mmr * weight
+            total_weight += weight
+
+        if total_weight > 0:
+            player.recency_weighted_mmr = weighted_mmr_sum / total_weight
+        else:
+            player.recency_weighted_mmr = player.mmr
+
+        db.commit()
 
     @staticmethod
     def update_ratings_from_match(
@@ -227,6 +322,11 @@ class RatingSystem:
             player.last_played = replay_data.played_at
 
         db.commit()
+
+        # Update recency-weighted ratings for all players in this match
+        if RECENCY_ENABLED:
+            for player, _ in team_1_db + team_2_db:
+                RatingSystem.update_recency_weighted_rating(db, player, replay_data.played_at)
 
     @staticmethod
     def calibrate_new_player(

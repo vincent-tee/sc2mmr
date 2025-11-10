@@ -23,6 +23,7 @@ class PlayerResponse(BaseModel):
     mu: float
     sigma: float
     mmr: float
+    recency_weighted_mmr: Optional[float]
     total_games: int
     wins: int
     losses: int
@@ -42,6 +43,7 @@ class PlayerDetailResponse(BaseModel):
     mu: float
     sigma: float
     mmr: float
+    recency_weighted_mmr: Optional[float]
     total_games: int
     wins: int
     losses: int
@@ -105,6 +107,7 @@ def get_players(
             mu=p.mu,
             sigma=p.sigma,
             mmr=p.mmr,
+            recency_weighted_mmr=p.recency_weighted_mmr,
             total_games=p.total_games,
             wins=p.wins,
             losses=p.losses,
@@ -152,6 +155,7 @@ def get_player_rankings(
                 mu=p.mu,
                 sigma=p.sigma,
                 mmr=p.mmr,
+                recency_weighted_mmr=p.recency_weighted_mmr,
                 total_games=p.total_games,
                 wins=p.wins,
                 losses=p.losses,
@@ -228,6 +232,7 @@ def get_player_details(
         mu=player.mu,
         sigma=player.sigma,
         mmr=player.mmr,
+        recency_weighted_mmr=player.recency_weighted_mmr,
         total_games=player.total_games,
         wins=player.wins,
         losses=player.losses,

@@ -26,6 +26,9 @@ class Player(Base):
     mu = Column(Float, default=25.0, nullable=False)
     sigma = Column(Float, default=8.333, nullable=False)
 
+    # Recency-weighted MMR (weights recent matches more heavily)
+    recency_weighted_mmr = Column(Float, nullable=True)
+
     # Statistics
     total_games = Column(Integer, default=0, nullable=False)
     wins = Column(Integer, default=0, nullable=False)

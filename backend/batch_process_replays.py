@@ -249,8 +249,9 @@ def process_replay_batch(
                             Player.name == player_data.name
                         ).first()
                         if player:
+                            recent_mmr_str = f", Recent MMR={player.recency_weighted_mmr:.2f}" if player.recency_weighted_mmr is not None else ""
                             print(f"      {player.name}: MMR = {player.mmr:.2f} "
-                                  f"(mu={player.mu:.2f}, sigma={player.sigma:.2f})")
+                                  f"(mu={player.mu:.2f}, sigma={player.sigma:.2f}){recent_mmr_str}")
 
                 total_processed += 1
 
@@ -283,13 +284,16 @@ def process_replay_batch(
 
         if players_sorted:
             print(f"\n📊 FINAL PLAYER RANKINGS (min 3 games)")
-            print("-" * 80)
-            print(f"{'Rank':<6} {'Player':<20} {'MMR':<10} {'Record':<12} {'Win Rate':<10}")
-            print("-" * 80)
+            print("-" * 90)
+            print(f"{'Rank':<6} {'Player':<20} {'MMR':<10} {'Recent MMR':<12} {'Record':<12} {'Win Rate':<10}")
+            print("-" * 90)
             for idx, player in enumerate(players_sorted, 1):
                 record = f"{player.wins}-{player.losses}"
+                recent_mmr = f"{player.recency_weighted_mmr:.2f}" if player.recency_weighted_mmr is not None else "N/A"
                 print(f"{idx:<6} {player.name:<20} {player.mmr:>8.2f}  "
-                      f"{record:<12} {player.win_rate:>7.1f}%")
+                      f"{recent_mmr:>10}  {record:<12} {player.win_rate:>7.1f}%")
+
+            print("\nNote: 'Recent MMR' weights recent matches more heavily (30-day half-life).")
 
 
 def main():

@@ -15,8 +15,10 @@ A web application to track StarCraft 2 replays for a casual gaming group, mainta
 - Supports 3v3, 4v4, and 5v5 game modes
 - TrueSkill rating system handles team-based games naturally
 - Skill decay modeling for irregular play patterns
-- Duplicate replay detection
+- **Duplicate replay detection** (SHA256 hashing prevents double-counting)
+- **Recency weighting** (recent matches weighted more heavily for current skill estimate)
 - Race statistics tracking (Terran, Protoss, Zerg)
+- Multiple rating models (TrueSkill, Impact, Hybrid, Ensemble)
 
 ## Quick Start
 
