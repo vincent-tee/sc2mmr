@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .database import init_db
-from .api import replays, players, teams
+from .api import replays, players, teams, impact
 
 
 @asynccontextmanager
@@ -63,6 +63,7 @@ app.add_middleware(
 app.include_router(replays.router)
 app.include_router(players.router)
 app.include_router(teams.router)
+app.include_router(impact.router)
 
 
 @app.get("/")
@@ -72,13 +73,30 @@ def root():
     """
     return {
         "name": "SC2 MMR Tracker",
-        "version": "1.0.0",
-        "description": "Track SC2 replays and balance teams for fair matches",
+        "version": "2.0.0",
+        "description": "Track SC2 replays with advanced metrics, player impact, and team balancing",
         "endpoints": {
             "docs": "/docs",
             "replays": "/replays",
             "players": "/players",
-            "teams": "/teams"
+            "teams": "/teams",
+            "impact": "/impact"
+        },
+        "features": {
+            "basic": [
+                "Replay upload and processing",
+                "TrueSkill MMR ratings",
+                "Player statistics",
+                "Team balancing"
+            ],
+            "advanced": [
+                "Economic & combat metrics",
+                "Damage dealt/taken tracking",
+                "Army composition analysis",
+                "Player impact scores",
+                "Synergy detection",
+                "Role-based rankings"
+            ]
         }
     }
 

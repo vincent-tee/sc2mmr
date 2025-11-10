@@ -12,6 +12,8 @@ from ..database import get_db
 from ..models import Match, MatchPlayer, Player
 from ..replay_parser import parse_replay, validate_replay_data, ReplayParseError
 from ..rating_system import RatingSystem
+from ..advanced_parser import parse_replay_advanced
+from ..impact_service import ImpactService
 from pydantic import BaseModel
 
 
@@ -245,3 +247,118 @@ def get_match_details(
         ),
         players=players_data
     )
+
+
+@router.post("/upload-advanced", response_model=ReplayUploadResponse)
+async def upload_replay_advanced(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload and process a SC2 replay file with advanced metrics.
+
+    This endpoint extracts detailed performance data including:
+    - Economic metrics (resources, workers, spending)
+    - Combat metrics (damage, kills, army value)
+    - Impact scores (economic, combat, efficiency)
+    - Player synergies
+
+    Args:
+        file: .SC2Replay file
+        db: Database session
+
+    Returns:
+        ReplayUploadResponse with match details
+
+    Raises:
+        HTTPException: If replay parsing fails or is duplicate
+    """
+    # Validate file extension
+    if not file.filename.endswith('.SC2Replay'):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only .SC2Replay files are accepted."
+        )
+
+    # Save uploaded file to temporary location
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.SC2Replay') as tmp_file:
+        content = await file.read()
+        tmp_file.write(content)
+        tmp_file_path = tmp_file.name
+
+    try:
+        # Parse the replay with advanced metrics
+        advanced_data = parse_replay_advanced(tmp_file_path)
+        replay_data = advanced_data.basic_data
+
+        # Validate replay data
+        is_valid, error_msg = validate_replay_data(replay_data)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_msg)
+
+        # Check for duplicate
+        existing_match = db.query(Match).filter(
+            Match.replay_hash == replay_data.replay_hash
+        ).first()
+
+        if existing_match:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Replay already uploaded. Match ID: {existing_match.id}"
+            )
+
+        # Create match record
+        match = Match(
+            played_at=replay_data.played_at,
+            game_mode=replay_data.game_mode,
+            map_name=replay_data.map_name,
+            duration_seconds=replay_data.duration_seconds,
+            replay_file_path=None,
+            replay_hash=replay_data.replay_hash
+        )
+        db.add(match)
+        db.flush()  # Get match.id
+
+        # Update ratings and create match_players
+        RatingSystem.update_ratings_from_match(db, replay_data, match)
+
+        # Save advanced metrics for each player
+        for player_metrics in advanced_data.player_metrics:
+            # Find the corresponding MatchPlayer
+            player = db.query(Player).filter(Player.name == player_metrics.player_name).first()
+            if player:
+                match_player = db.query(MatchPlayer).filter(
+                    MatchPlayer.match_id == match.id,
+                    MatchPlayer.player_id == player.id
+                ).first()
+
+                if match_player:
+                    # Save detailed metrics
+                    ImpactService.save_match_metrics(db, match_player.id, player_metrics)
+
+                    # Update player averages
+                    ImpactService.update_player_averages(db, player.id)
+
+        # Update synergies
+        ImpactService.update_synergies(db, match.id)
+
+        return ReplayUploadResponse(
+            match_id=match.id,
+            map_name=match.map_name,
+            game_mode=match.game_mode.value,
+            played_at=match.played_at,
+            duration_seconds=match.duration_seconds,
+            num_players=len(replay_data.players),
+            message="Replay processed successfully with advanced metrics"
+        )
+
+    except ReplayParseError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    finally:
+        # Clean up temporary file
+        if os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)

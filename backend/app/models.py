@@ -42,6 +42,17 @@ class Player(Base):
     last_played = Column(DateTime, nullable=True)
     is_core_player = Column(Integer, default=1, nullable=False)  # 1 for core, 0 for outsider
 
+    # Average impact scores (calculated from all matches)
+    avg_economic_score = Column(Float, default=0.0)
+    avg_combat_score = Column(Float, default=0.0)
+    avg_efficiency_score = Column(Float, default=0.0)
+    avg_overall_impact = Column(Float, default=0.0)
+
+    # Timing profile (averaged across all games)
+    avg_first_damage_timing = Column(Integer, nullable=True)
+    primary_archetype = Column(String, nullable=True)  # Most common archetype
+    avg_aggression_score = Column(Float, default=50.0)
+
     # Relationships
     match_participations = relationship("MatchPlayer", back_populates="player")
 
@@ -148,3 +159,96 @@ class MatchPlayer(Base):
         mmr_before = self.mu_before - (3 * self.sigma_before)
         mmr_after = self.mu_after - (3 * self.sigma_after)
         return mmr_after - mmr_before
+
+
+class PlayerMatchMetrics(Base):
+    """
+    Detailed performance metrics for a player in a specific match.
+    Extends MatchPlayer with advanced statistics.
+    """
+    __tablename__ = "player_match_metrics"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Foreign key to MatchPlayer
+    match_player_id = Column(Integer, ForeignKey("match_players.id"), nullable=False, unique=True, index=True)
+
+    # Economic metrics
+    minerals_collected = Column(Integer, default=0)
+    vespene_collected = Column(Integer, default=0)
+    total_resources_collected = Column(Integer, default=0)
+    resources_spent = Column(Integer, default=0)
+    spending_efficiency = Column(Float, default=0.0)
+    workers_created = Column(Integer, default=0)
+
+    # Army metrics
+    units_trained = Column(Integer, default=0)
+    units_lost = Column(Integer, default=0)
+    units_killed = Column(Integer, default=0)
+    army_value_built = Column(Integer, default=0)
+    army_value_killed = Column(Integer, default=0)
+    army_value_lost = Column(Integer, default=0)
+
+    # Combat metrics
+    damage_dealt = Column(Integer, default=0)
+    damage_taken = Column(Integer, default=0)
+    damage_ratio = Column(Float, default=0.0)
+
+    # Timing metrics (game seconds)
+    first_expansion_timing = Column(Integer, nullable=True)
+    bases_created = Column(Integer, default=0)
+
+    # Mechanics
+    apm = Column(Float, default=0.0)
+
+    # Unit composition (stored as JSON string)
+    unit_composition = Column(String, nullable=True)  # JSON: {"Marine": 50, "Marauder": 20}
+
+    # Impact scores
+    economic_score = Column(Float, default=0.0)
+    combat_score = Column(Float, default=0.0)
+    efficiency_score = Column(Float, default=0.0)
+    overall_impact = Column(Float, default=0.0)
+
+    # Timing analysis
+    first_damage_timing = Column(Integer, nullable=True)  # Game seconds
+    early_game_damage = Column(Integer, default=0)  # 0-5min
+    mid_game_damage = Column(Integer, default=0)    # 5-10min
+    late_game_damage = Column(Integer, default=0)   # 10+min
+    player_archetype = Column(String, nullable=True)  # Rusher, TimingAttacker, LateGame, etc.
+    aggression_score = Column(Float, default=50.0)  # 0-100
+
+
+class PlayerSynergy(Base):
+    """
+    Tracks synergy between pairs of players.
+    """
+    __tablename__ = "player_synergies"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Player pair (always store with player1_id < player2_id for consistency)
+    player1_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+    player2_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+
+    # Synergy metrics
+    games_together = Column(Integer, default=0)
+    wins_together = Column(Integer, default=0)
+    losses_together = Column(Integer, default=0)
+
+    # Synergy score (0-100)
+    synergy_score = Column(Float, default=50.0)
+
+    # Average performance together
+    avg_combined_impact = Column(Float, default=0.0)
+    avg_win_rate = Column(Float, default=0.0)
+
+    # Last updated
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    @property
+    def win_rate_together(self) -> float:
+        """Calculate win rate when playing together."""
+        if self.games_together == 0:
+            return 0.0
+        return (self.wins_together / self.games_together) * 100
