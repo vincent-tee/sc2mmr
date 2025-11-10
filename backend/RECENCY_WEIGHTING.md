@@ -51,17 +51,18 @@ The system maintains two MMR values for each player:
 
 #### Exponential Decay Formula
 
-Recency weight uses exponential decay with a **30-day half-life**:
+Recency weight uses exponential decay with a **60-day half-life**:
 
 ```
-weight = 0.5^(days_ago / 30)
+weight = 0.5^(days_ago / 60)
 ```
 
 **Examples**:
 - Match today: weight = 1.0 (100%)
-- Match 30 days ago: weight = 0.5 (50%)
-- Match 60 days ago: weight = 0.25 (25%)
-- Match 90 days ago: weight = 0.125 (12.5%)
+- Match 60 days ago: weight = 0.5 (50%)
+- Match 120 days ago: weight = 0.25 (25%)
+- Match 180 days ago: weight = 0.125 (12.5%)
+- Match 30 days ago: weight = ~0.71 (71%)
 
 #### Calculation
 
@@ -82,14 +83,14 @@ You can adjust the recency weighting behavior in `backend/app/rating_system.py`:
 
 ```python
 # Recency weighting configuration
-RECENCY_HALF_LIFE_DAYS = 30  # Change this to adjust decay rate
+RECENCY_HALF_LIFE_DAYS = 60  # Change this to adjust decay rate
 RECENCY_ENABLED = True        # Set to False to disable recency weighting
 ```
 
 **Common half-life settings**:
 - `14 days`: Aggressive - heavily favors very recent performance
-- `30 days` (default): Balanced - good mix of recent and historical performance
-- `60 days`: Conservative - slower adaptation to skill changes
+- `30 days`: Balanced - good mix of recent and historical performance
+- `60 days` (default): Conservative - gradual decay, more stable ratings
 - `90+ days`: Very conservative - closer to traditional MMR
 
 ### When to Use Each Rating
@@ -156,7 +157,7 @@ python migrate_add_recency_weight.py
 
 This script will:
 1. Add the `recency_weighted_mmr` column to the players table
-2. Calculate recency-weighted ratings for all existing players
+2. Calculate recency-weighted ratings for all existing players (using current 60-day half-life)
 3. Display the results
 
 ### Automatic Updates
@@ -165,6 +166,7 @@ Recency-weighted MMR is automatically updated:
 - After every match is processed (via API or batch processor)
 - Using the match date as the reference point (for batch processing)
 - For all players who participated in the match
+- Decay is calculated from each match's date, not from "now"
 
 ### Technical Details
 
@@ -244,11 +246,12 @@ A: No. TrueSkill (standard MMR) continues to work exactly as before. Recency wei
 **Q: What if a player hasn't played in 6 months?**
 A: Their recency-weighted MMR will be heavily biased toward their most recent matches before the break. When they return, new matches will quickly update their recency-weighted rating. Standard MMR provides continuity.
 
-**Q: Should I use 30-day half-life for everyone?**
+**Q: Should I use 60-day half-life for everyone?**
 A: It depends on your group:
-- **Casual groups** (play weekly/monthly): 30-60 day half-life
-- **Active groups** (play multiple times per week): 14-30 day half-life
-- **Tournament/league settings**: 7-14 day half-life for current form
+- **Casual groups** (play weekly/monthly): 60-90 day half-life - more stable, gradual adaptation
+- **Active groups** (play multiple times per week): 30-60 day half-life - balanced responsiveness
+- **Tournament/league settings**: 14-30 day half-life for current form
+- **Very active/competitive**: 7-14 day half-life - rapid adaptation to skill changes
 
 ---
 

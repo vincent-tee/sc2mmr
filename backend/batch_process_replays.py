@@ -293,7 +293,7 @@ def process_replay_batch(
                 print(f"{idx:<6} {player.name:<20} {player.mmr:>8.2f}  "
                       f"{recent_mmr:>10}  {record:<12} {player.win_rate:>7.1f}%")
 
-            print("\nNote: 'Recent MMR' weights recent matches more heavily (30-day half-life).")
+            print("\nNote: 'Recent MMR' weights recent matches more heavily (60-day half-life).")
 
 
 def main():

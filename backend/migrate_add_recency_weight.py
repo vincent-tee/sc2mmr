@@ -61,9 +61,10 @@ def migrate():
     print("\n" + "=" * 60)
     print("Migration complete!")
     print("\nRecency weighting is now enabled with:")
-    print("  - Half-life: 30 days")
+    print("  - Half-life: 60 days (gradual decay)")
     print("  - Recent matches weighted more heavily than older matches")
     print("  - New column 'recency_weighted_mmr' tracks current skill estimate")
+    print("\nTo adjust half-life: Edit RECENCY_HALF_LIFE_DAYS in app/rating_system.py")
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ trueskill.setup(
 # Recency weighting configuration
 # Matches decay exponentially - a match from RECENCY_HALF_LIFE days ago
 # has 50% the weight of a match today
-RECENCY_HALF_LIFE_DAYS = 30  # 30-day half-life by default
+RECENCY_HALF_LIFE_DAYS = 60  # 60-day half-life (more gradual decay)
 RECENCY_ENABLED = True        # Enable recency weighting
 
 
