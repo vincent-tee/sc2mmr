@@ -55,12 +55,9 @@ const UploadReplays = () => {
   const dropzoneBorder = useColorModeValue('gray.300', 'gray.600');
 
   // Process a single file
-  const processFile = async (fileId) => {
-    const file = files.find((f) => f.id === fileId);
-    if (!file) return;
-
+  const processFile = async (file) => {
     // Update status to uploading
-    updateFileStatus(fileId, UPLOAD_STATUS.UPLOADING, null, 0);
+    updateFileStatus(file.id, UPLOAD_STATUS.UPLOADING, null, 0);
 
     try {
       // Upload the file
@@ -68,18 +65,18 @@ const UploadReplays = () => {
         const percentCompleted = Math.round(
           (progressEvent.loaded * 100) / progressEvent.total
         );
-        updateFileStatus(fileId, UPLOAD_STATUS.UPLOADING, null, percentCompleted);
+        updateFileStatus(file.id, UPLOAD_STATUS.UPLOADING, null, percentCompleted);
       });
 
       // Update to processing
-      updateFileStatus(fileId, UPLOAD_STATUS.PROCESSING, null, 100);
+      updateFileStatus(file.id, UPLOAD_STATUS.PROCESSING, null, 100);
 
       // Simulate brief processing delay
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Mark as complete
       updateFileStatus(
-        fileId,
+        file.id,
         UPLOAD_STATUS.COMPLETE,
         response.data.message,
         100,
@@ -88,14 +85,14 @@ const UploadReplays = () => {
     } catch (error) {
       if (error.isDuplicate) {
         updateFileStatus(
-          fileId,
+          file.id,
           UPLOAD_STATUS.DUPLICATE,
           error.userMessage || 'Replay already uploaded',
           100
         );
       } else {
         updateFileStatus(
-          fileId,
+          file.id,
           UPLOAD_STATUS.ERROR,
           parseErrorMessage(error),
           0
@@ -127,7 +124,7 @@ const UploadReplays = () => {
 
     // Process batches sequentially, files within batch in parallel
     for (const batch of batches) {
-      await Promise.all(batch.map((file) => processFile(file.id)));
+      await Promise.all(batch.map((file) => processFile(file)));
     }
   };
 
@@ -157,16 +154,23 @@ const UploadReplays = () => {
       // Start processing
       await processFiles(newFiles);
 
-      // Show summary toast
-      const completed = newFiles.filter((f) => f.status === UPLOAD_STATUS.COMPLETE).length;
-      const duplicates = newFiles.filter((f) => f.status === UPLOAD_STATUS.DUPLICATE).length;
-      const errors = newFiles.filter((f) => f.status === UPLOAD_STATUS.ERROR).length;
+      // Show summary toast - query current state to get accurate counts
+      setFiles((currentFiles) => {
+        const newFileIds = new Set(newFiles.map(f => f.id));
+        const processedFiles = currentFiles.filter(f => newFileIds.has(f.id));
 
-      toast.success(
-        `Upload complete! ${completed} processed, ${duplicates} duplicates, ${errors} errors`
-      );
+        const completed = processedFiles.filter((f) => f.status === UPLOAD_STATUS.COMPLETE).length;
+        const duplicates = processedFiles.filter((f) => f.status === UPLOAD_STATUS.DUPLICATE).length;
+        const errors = processedFiles.filter((f) => f.status === UPLOAD_STATUS.ERROR).length;
+
+        toast.success(
+          `Upload complete! ${completed} processed, ${duplicates} duplicates, ${errors} errors`
+        );
+
+        return currentFiles;
+      });
     },
-    [files]
+    [toast]
   );
 
   // Dropzone configuration
@@ -181,7 +185,13 @@ const UploadReplays = () => {
   // Retry failed file
   const retryFile = (fileId) => {
     updateFileStatus(fileId, UPLOAD_STATUS.QUEUED, null, 0);
-    processFile(fileId);
+    setFiles((currentFiles) => {
+      const file = currentFiles.find((f) => f.id === fileId);
+      if (file) {
+        processFile(file);
+      }
+      return currentFiles;
+    });
   };
 
   // Remove file from list
