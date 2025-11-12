@@ -44,6 +44,16 @@ A **StarCraft 2 replay analysis and team balancing system** for a casual gaming 
 ### Python Version
 - **Python 3.9+** required
 
+### Frontend Stack
+- **React 18** - Modern UI framework with hooks
+- **Vite** - Fast build tool and dev server
+- **Chakra UI v2** - Component library with dark gaming theme
+- **React Query (TanStack Query)** - API state management and caching
+- **React Router v6** - Client-side routing
+- **React Dropzone** - Drag-and-drop file upload
+- **Axios** - HTTP client for API calls
+- **Framer Motion** - Animation library (via Chakra UI)
+
 ---
 
 ## Project Structure
@@ -74,14 +84,36 @@ sc2mmr/
 │   │   └── sc2mmr.db                  # SQLite database (auto-created)
 │   ├── batch_process_replays.py       # Chronological replay processor
 │   ├── migrate_add_recency_weight.py  # Migration script for recency column
-│   ├── requirements.txt               # Python dependencies
-│   ├── run.sh                         # Convenience startup script
-│   ├── README.md                      # Basic setup instructions
-│   ├── SETUP.md                       # Detailed setup guide
-│   ├── ADVANCED_FEATURES.md           # Deep dive into metrics
-│   ├── IMPLEMENTATION_SUMMARY.md      # Complete feature list
-│   └── RECENCY_WEIGHTING.md           # Recency weighting documentation
-└── README.md                          # Project overview
+│   └── requirements.txt               # Python dependencies
+├── frontend/
+│   ├── src/
+│   │   ├── pages/                     # Main application pages
+│   │   │   ├── Home.jsx              # Dashboard/landing page
+│   │   │   ├── TeamGenerator.jsx    # Team balancing UI (PRIMARY)
+│   │   │   ├── UploadReplays.jsx    # Replay upload interface
+│   │   │   ├── Players.jsx          # Player management
+│   │   │   └── MatchHistory.jsx     # Match history browser
+│   │   ├── components/               # Reusable UI components
+│   │   │   ├── Navigation.jsx
+│   │   │   ├── PlayerCard.jsx
+│   │   │   ├── LoadingState.jsx
+│   │   │   └── EmptyState.jsx
+│   │   ├── api/                      # API client layer
+│   │   │   ├── client.js            # Axios instance
+│   │   │   └── endpoints.js         # API endpoint definitions
+│   │   ├── hooks/                   # Custom React hooks
+│   │   ├── utils/                   # Helper functions
+│   │   ├── theme/                   # Chakra UI theme
+│   │   ├── App.jsx                  # Main app with routing
+│   │   └── main.jsx                 # Entry point
+│   ├── public/                      # Static assets
+│   ├── package.json                 # Node dependencies
+│   └── vite.config.js              # Vite configuration
+├── README.md                        # Project overview (main documentation)
+├── PROJECT_OVERVIEW.md              # Detailed technical documentation (this file)
+├── SETUP.md                         # Detailed setup guide
+├── IMPLEMENTATION_SUMMARY.md        # Complete feature list
+└── ADVANCED_FEATURES.md             # Deep dive into metrics
 ```
 
 ---
@@ -1062,6 +1094,16 @@ Incorrect predictions: 16
 - [x] Skill decay for inactive players
 - [x] Outsider calibration
 
+**Frontend (React + Vite):**
+- [x] Modern React 18 web interface
+- [x] Team Generator UI (PRIMARY FEATURE)
+- [x] Drag-and-drop replay upload
+- [x] Player dashboard with search/sort
+- [x] Match history browser
+- [x] Dark gaming theme (Chakra UI)
+- [x] Responsive design
+- [x] Real-time API integration
+
 **Tools & Scripts:**
 - [x] Batch replay processor
 - [x] Migration script for recency weighting
@@ -1076,12 +1118,280 @@ Incorrect predictions: 16
 - [x] Model comparison
 
 ### 📝 Documentation Created
-- [x] README.md - Project overview
+- [x] README.md - Project overview (updated with frontend)
 - [x] SETUP.md - Setup instructions
 - [x] ADVANCED_FEATURES.md - Deep dive
 - [x] IMPLEMENTATION_SUMMARY.md - Feature list
-- [x] RECENCY_WEIGHTING.md - Recency system docs
-- [x] PROJECT_OVERVIEW.md - This document
+- [x] PROJECT_OVERVIEW.md - This document (comprehensive technical doc)
+- [x] frontend/README.md - Frontend-specific documentation
+
+---
+
+## Frontend Application
+
+### Overview
+The frontend is a modern React single-page application (SPA) that provides an intuitive interface for all backend features. Built with Vite for fast development and optimized production builds.
+
+### Key Features
+
+#### 1. Team Generator (PRIMARY FEATURE)
+**Location**: `/balance` route (`src/pages/TeamGenerator.jsx`)
+
+**Functionality**:
+- Grid-based player selection with visual feedback
+- Multi-select players for current session
+- Generate balanced team suggestions
+- Display match quality scores and win probabilities
+- Export team compositions
+
+**User Flow**:
+1. View all available players in a grid
+2. Click to select/deselect players
+3. Click "Generate Teams"
+4. Review multiple balanced suggestions
+5. Choose teams with highest match quality
+
+**UI Components**:
+- Player selection grid with checkboxes
+- Team suggestion cards showing both teams
+- Match quality indicators
+- Win probability percentages
+- Fairness ratings (Excellent, Very Good, Good, etc.)
+
+#### 2. Replay Upload Interface
+**Location**: `/upload` route (`src/pages/UploadReplays.jsx`)
+
+**Functionality**:
+- Drag-and-drop zone for `.SC2Replay` files
+- Click to browse file selector
+- Bulk upload support (folders and multiple files)
+- Real-time progress tracking per file
+- Duplicate detection with friendly messages
+- Batch processing (5 concurrent uploads max)
+- Retry failed uploads
+- Success/error notifications
+
+**User Flow**:
+1. Navigate to Upload Replays page
+2. Drag folder or files onto drop zone
+3. Watch real-time upload progress
+4. See success/duplicate/error status per file
+5. Review summary when complete
+
+**UI Components**:
+- Drag-and-drop zone (React Dropzone)
+- Progress bars per file
+- Status badges (uploading, success, duplicate, error)
+- Summary statistics
+- Toast notifications
+
+#### 3. Players Dashboard
+**Location**: `/players` route (`src/pages/Players.jsx`)
+
+**Functionality**:
+- Grid view of all players
+- Player cards with key stats
+- Search by name
+- Sort by MMR, games played, win rate
+- Click to view detailed player profile
+- Filter by core players only
+
+**Player Card Components**:
+- Player name and ID
+- Current MMR (recency-weighted)
+- Win/loss record
+- Win rate percentage
+- Favorite race
+- Total games played
+- Last played date
+
+**Detailed Player View** (future enhancement):
+- Match history
+- Performance trends
+- Impact scores breakdown
+- Synergies with other players
+- Archetype classification
+
+#### 4. Match History Browser
+**Location**: `/history` route (`src/pages/MatchHistory.jsx`)
+
+**Functionality**:
+- List of all recorded matches
+- Sort by date, map, game mode
+- Filter by date range
+- Click to view detailed match results
+- See all players, teams, and outcomes
+
+**Match Card Components**:
+- Map name and game mode
+- Date and duration
+- Team 1 vs Team 2 player lists
+- Winner indicator
+- Match ID for reference
+
+#### 5. Home Dashboard
+**Location**: `/` route (`src/pages/Home.jsx`)
+
+**Functionality**:
+- Welcome page with quick stats
+- Total players, matches, recent activity
+- Quick action buttons for main features
+- Navigation to all sections
+
+### Theme and Design
+
+**Color Scheme** (Gaming-inspired dark theme):
+- **Background**: Dark gray (`gray.900`)
+- **Cards**: Medium dark gray (`gray.800`)
+- **Primary**: Blue/Cyan (`#1890FF`) - for actions, highlights
+- **Accent**: Orange/Gold (`#FA8C16`) - for important elements
+- **Success**: Green - for wins, success states
+- **Warning**: Yellow - for warnings
+- **Error**: Red - for losses, errors
+
+**Typography**:
+- Font: System fonts (San Francisco, Segoe UI, etc.)
+- Headings: Bold, larger sizes
+- Body: Regular weight, readable sizes
+- Code/Stats: Monospace font
+
+**Component Styling**:
+- Rounded corners (4-8px border radius)
+- Subtle shadows for depth
+- Hover effects on interactive elements
+- Smooth transitions
+- Responsive grid layouts
+
+### API Integration
+
+**Client Architecture** (`src/api/`):
+
+**`client.js`** - Axios instance with:
+- Base URL configuration (`http://localhost:8000`)
+- Request/response interceptors
+- Error handling
+- Timeout configuration
+
+**`endpoints.js`** - All API endpoint calls:
+```javascript
+// Examples
+export const getPlayers = () => client.get('/players/')
+export const balanceTeams = (data) => client.post('/teams/balance', data)
+export const uploadReplay = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return client.post('/replays/upload', formData)
+}
+```
+
+**React Query Integration**:
+- Automatic caching of API responses
+- Background refetching
+- Optimistic updates
+- Loading and error states
+- Cache invalidation on mutations
+
+### Routing Structure
+
+```javascript
+// src/App.jsx
+<Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="/balance" element={<TeamGenerator />} />
+  <Route path="/upload" element={<UploadReplays />} />
+  <Route path="/players" element={<Players />} />
+  <Route path="/history" element={<MatchHistory />} />
+</Routes>
+```
+
+### Custom Hooks
+
+**`useToast.js`**:
+- Wrapper around Chakra UI toast
+- Consistent success/error/warning notifications
+- Automatic positioning and duration
+
+### Deployment
+
+**Development**:
+```bash
+npm run dev  # Runs on http://localhost:3000
+```
+
+**Production Build**:
+```bash
+npm run build    # Creates optimized build in dist/
+npm run preview  # Preview production build locally
+```
+
+**Environment Variables**:
+- `VITE_API_BASE_URL`: Backend API base URL (default: `http://localhost:8000`)
+
+### Vite Configuration
+
+**Proxy Setup** (`vite.config.js`):
+```javascript
+server: {
+  proxy: {
+    '/api': {
+      target: 'http://localhost:8000',
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/api/, '')
+    }
+  }
+}
+```
+
+This allows frontend to make requests to `/api/*` which are proxied to backend, avoiding CORS issues during development.
+
+### Performance Optimizations
+
+- Code splitting by route
+- Lazy loading of components
+- React Query caching reduces redundant API calls
+- Optimized production build with Vite
+- Image optimization
+- Minimal bundle size
+
+### Future Frontend Enhancements
+
+**1. Advanced Visualizations**
+- Performance trend graphs (line charts)
+- MMR evolution over time
+- Impact score breakdowns (radar charts)
+- Win rate heatmaps by matchup
+- Damage timeline charts
+
+**2. Enhanced Player Profiles**
+- Detailed match history with filters
+- Head-to-head records
+- Performance by map
+- Performance by race
+- Archetype visualization
+
+**3. Team Building Features**
+- Save favorite team compositions
+- Team naming and tracking
+- Historical team performance
+- Synergy-aware balancing (consider player synergies in suggestions)
+
+**4. Real-time Features**
+- Live match tracking (if integrated with SC2 API)
+- Real-time leaderboard updates
+- Notification system for new replays
+- Live team suggestions during session
+
+**5. Export/Import**
+- Export player stats as CSV/PDF
+- Import historical data
+- Backup/restore database
+- Share team compositions
+
+**6. User Preferences**
+- Save filter preferences
+- Customizable theme colors
+- Dashboard layout customization
+- Notification preferences
 
 ---
 
@@ -1089,11 +1399,11 @@ Incorrect predictions: 16
 
 ### Short Term (Easy Additions)
 
-**1. Frontend UI**
-- Web dashboard for viewing stats
-- Team balancing interface
-- Player profile pages
-- Match history viewer
+**1. Frontend UI Enhancements** ✅ (Base implemented, can add more)
+- Advanced visualizations (charts, graphs)
+- Enhanced player profile pages
+- Team composition history
+- Export functionality
 
 **2. Additional Metrics**
 - APM (actions per minute) tracking
