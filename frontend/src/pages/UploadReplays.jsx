@@ -68,17 +68,16 @@ const UploadReplays = () => {
         updateFileStatus(file.id, UPLOAD_STATUS.UPLOADING, null, percentCompleted);
       });
 
-      // Update to processing
-      updateFileStatus(file.id, UPLOAD_STATUS.PROCESSING, null, 100);
+      // Mark as complete with processing stats
+      const stats = response.data.processing_stats;
+      const processingMessage = stats
+        ? `Processed in ${stats.total_time_ms}ms (parse: ${stats.parse_time_ms}ms, ratings: ${stats.rating_update_time_ms}ms)`
+        : response.data.message;
 
-      // Simulate brief processing delay
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Mark as complete
       updateFileStatus(
         file.id,
         UPLOAD_STATUS.COMPLETE,
-        response.data.message,
+        processingMessage,
         100,
         response.data
       );

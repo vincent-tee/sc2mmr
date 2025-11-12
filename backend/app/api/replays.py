@@ -7,6 +7,7 @@ from typing import List
 from datetime import datetime
 import os
 import tempfile
+import time
 
 from ..database import get_db
 from ..models import Match, MatchPlayer, Player
@@ -21,6 +22,15 @@ router = APIRouter(prefix="/replays", tags=["replays"])
 
 
 # Request/Response models
+class ProcessingStats(BaseModel):
+    """Statistics about the processing stages."""
+    parse_time_ms: float
+    validation_time_ms: float
+    duplicate_check_time_ms: float
+    rating_update_time_ms: float
+    total_time_ms: float
+
+
 class ReplayUploadResponse(BaseModel):
     """Response for successful replay upload."""
     match_id: int
@@ -30,6 +40,7 @@ class ReplayUploadResponse(BaseModel):
     duration_seconds: int
     num_players: int
     message: str
+    processing_stats: ProcessingStats
 
     class Config:
         from_attributes = True
@@ -103,15 +114,22 @@ async def upload_replay(
         tmp_file_path = tmp_file.name
 
     try:
+        start_time = time.time()
+
         # Parse the replay
+        parse_start = time.time()
         replay_data = parse_replay(tmp_file_path)
+        parse_time_ms = (time.time() - parse_start) * 1000
 
         # Validate replay data
+        validation_start = time.time()
         is_valid, error_msg = validate_replay_data(replay_data)
         if not is_valid:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPException(status_code=400, detail=f"Validation failed: {error_msg}")
+        validation_time_ms = (time.time() - validation_start) * 1000
 
         # Check for duplicate
+        duplicate_start = time.time()
         existing_match = db.query(Match).filter(
             Match.replay_hash == replay_data.replay_hash
         ).first()
@@ -121,6 +139,7 @@ async def upload_replay(
                 status_code=409,
                 detail=f"Replay already uploaded. Match ID: {existing_match.id}"
             )
+        duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
 
         # Create match record
         match = Match(
@@ -135,7 +154,11 @@ async def upload_replay(
         db.flush()  # Get match.id
 
         # Update ratings and create match_players
+        rating_start = time.time()
         RatingSystem.update_ratings_from_match(db, replay_data, match)
+        rating_time_ms = (time.time() - rating_start) * 1000
+
+        total_time_ms = (time.time() - start_time) * 1000
 
         return ReplayUploadResponse(
             match_id=match.id,
@@ -144,11 +167,18 @@ async def upload_replay(
             played_at=match.played_at,
             duration_seconds=match.duration_seconds,
             num_players=len(replay_data.players),
-            message="Replay processed successfully"
+            message="Replay processed successfully",
+            processing_stats=ProcessingStats(
+                parse_time_ms=round(parse_time_ms, 2),
+                validation_time_ms=round(validation_time_ms, 2),
+                duplicate_check_time_ms=round(duplicate_check_time_ms, 2),
+                rating_update_time_ms=round(rating_time_ms, 2),
+                total_time_ms=round(total_time_ms, 2)
+            )
         )
 
     except ReplayParseError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
@@ -287,16 +317,23 @@ async def upload_replay_advanced(
         tmp_file_path = tmp_file.name
 
     try:
+        start_time = time.time()
+
         # Parse the replay with advanced metrics
+        parse_start = time.time()
         advanced_data = parse_replay_advanced(tmp_file_path)
         replay_data = advanced_data.basic_data
+        parse_time_ms = (time.time() - parse_start) * 1000
 
         # Validate replay data
+        validation_start = time.time()
         is_valid, error_msg = validate_replay_data(replay_data)
         if not is_valid:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPException(status_code=400, detail=f"Validation failed: {error_msg}")
+        validation_time_ms = (time.time() - validation_start) * 1000
 
         # Check for duplicate
+        duplicate_start = time.time()
         existing_match = db.query(Match).filter(
             Match.replay_hash == replay_data.replay_hash
         ).first()
@@ -306,6 +343,7 @@ async def upload_replay_advanced(
                 status_code=409,
                 detail=f"Replay already uploaded. Match ID: {existing_match.id}"
             )
+        duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
 
         # Create match record
         match = Match(
@@ -320,6 +358,7 @@ async def upload_replay_advanced(
         db.flush()  # Get match.id
 
         # Update ratings and create match_players
+        rating_start = time.time()
         RatingSystem.update_ratings_from_match(db, replay_data, match)
 
         # Save advanced metrics for each player
@@ -341,6 +380,9 @@ async def upload_replay_advanced(
 
         # Update synergies
         ImpactService.update_synergies(db, match.id)
+        rating_time_ms = (time.time() - rating_start) * 1000
+
+        total_time_ms = (time.time() - start_time) * 1000
 
         return ReplayUploadResponse(
             match_id=match.id,
@@ -349,11 +391,18 @@ async def upload_replay_advanced(
             played_at=match.played_at,
             duration_seconds=match.duration_seconds,
             num_players=len(replay_data.players),
-            message="Replay processed successfully with advanced metrics"
+            message="Replay processed successfully with advanced metrics",
+            processing_stats=ProcessingStats(
+                parse_time_ms=round(parse_time_ms, 2),
+                validation_time_ms=round(validation_time_ms, 2),
+                duplicate_check_time_ms=round(duplicate_check_time_ms, 2),
+                rating_update_time_ms=round(rating_time_ms, 2),
+                total_time_ms=round(total_time_ms, 2)
+            )
         )
 
     except ReplayParseError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
