@@ -90,6 +90,7 @@ class Player(Base):
 
 class GameMode(str, enum.Enum):
     """Enum for different game modes."""
+    TWO_V_TWO = "2v2"
     THREE_V_THREE = "3v3"
     FOUR_V_FOUR = "4v4"
     FIVE_V_FIVE = "5v5"
