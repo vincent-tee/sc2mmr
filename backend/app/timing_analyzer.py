@@ -7,7 +7,7 @@ Tracks WHEN damage/events happen to identify:
 - Late-game players (economy -> late army)
 - Aggressive vs defensive playstyles
 """
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 import sc2reader
@@ -119,7 +119,7 @@ class TimingAnalyzer:
     """Analyzes timing patterns from replay tracker events."""
 
     @staticmethod
-    def analyze_timing(replay: sc2reader.Replay, player_id: int) -> TimingProfile:
+    def analyze_timing(replay: Any, player_id: int) -> TimingProfile:  # replay is sc2reader.Replay object
         """
         Analyze timing patterns for a player.
 
