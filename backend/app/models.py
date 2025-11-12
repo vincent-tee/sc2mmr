@@ -61,18 +61,25 @@ class Player(Base):
 
     @property
     def win_rate(self) -> float:
-        """Calculate win rate percentage."""
+        """Calculate win rate as decimal (0.0 to 1.0)."""
         if self.total_games == 0:
             return 0.0
-        return (self.wins / self.total_games) * 100
+        return self.wins / self.total_games
 
     @property
     def mmr(self) -> float:
         """
-        Conservative skill estimate for balancing.
-        mu - 3*sigma gives ~99.7% confidence lower bound.
+        Scaled MMR for display and balancing.
+
+        Uses a scaled formula to convert TrueSkill values to a more intuitive range:
+        MMR = 1000 + 40*mu - 120*sigma
+
+        This gives approximately:
+        - New players: ~1000 MMR
+        - Experienced players: 800-2200 MMR range
+        - Higher MMR = better skill, lower sigma = more certainty
         """
-        return self.mu - (3 * self.sigma)
+        return 1000 + (40 * self.mu) - (120 * self.sigma)
 
     @property
     def favorite_race(self) -> str:
@@ -159,9 +166,9 @@ class MatchPlayer(Base):
 
     @property
     def mmr_change(self) -> float:
-        """Calculate the MMR change from this match."""
-        mmr_before = self.mu_before - (3 * self.sigma_before)
-        mmr_after = self.mu_after - (3 * self.sigma_after)
+        """Calculate the MMR change from this match using scaled formula."""
+        mmr_before = 1000 + (40 * self.mu_before) - (120 * self.sigma_before)
+        mmr_after = 1000 + (40 * self.mu_after) - (120 * self.sigma_after)
         return mmr_after - mmr_before
 
 

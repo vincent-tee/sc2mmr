@@ -210,8 +210,8 @@ def get_player_details(
     for mp in match_players:
         match = db.query(Match).filter(Match.id == mp.match_id).first()
         if match:
-            mmr_before = mp.mu_before - (3 * mp.sigma_before)
-            mmr_after = mp.mu_after - (3 * mp.sigma_after)
+            mmr_before = 1000 + (40 * mp.mu_before) - (120 * mp.sigma_before)
+            mmr_after = 1000 + (40 * mp.mu_after) - (120 * mp.sigma_after)
 
             recent_matches.append({
                 'match_id': match.id,
@@ -221,9 +221,9 @@ def get_player_details(
                 'race': mp.race.value,
                 'won': bool(mp.won),
                 'team_number': mp.team_number,
-                'mmr_before': round(mmr_before, 2),
-                'mmr_after': round(mmr_after, 2),
-                'mmr_change': round(mmr_after - mmr_before, 2)
+                'mmr_before': round(mmr_before, 1),
+                'mmr_after': round(mmr_after, 1),
+                'mmr_change': round(mmr_after - mmr_before, 1)
             })
 
     return PlayerDetailResponse(
