@@ -7,7 +7,7 @@ Extracts and analyzes exact damage timings from replays to identify:
 - Attack patterns (early rush, mid-game timing, late-game)
 - Player coordination (do teammates attack together?)
 """
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 from collections import defaultdict
 import json
@@ -327,7 +327,7 @@ class DamageTimelineExtractor:
 
     @staticmethod
     def extract_from_replay(
-        replay: sc2reader.Replay,
+        replay: Any,  # sc2reader.Replay object
         player_id: int
     ) -> DamageTimeline:
         """
