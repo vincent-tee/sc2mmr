@@ -58,17 +58,20 @@ class RatingSystem:
     @staticmethod
     def get_conservative_rating(mu: float, sigma: float) -> float:
         """
-        Get conservative skill estimate (mu - 3*sigma).
-        This is the MMR we display and use for balancing.
+        Get scaled MMR rating for display and balancing.
+
+        Formula: MMR = 1000 + 40*mu - 120*sigma
+        - New players: ~1000 MMR
+        - Experienced players: 800-2200 MMR range
 
         Args:
             mu: Skill estimate
             sigma: Uncertainty
 
         Returns:
-            Conservative MMR value
+            Scaled MMR value
         """
-        return mu - (3 * sigma)
+        return 1000 + (40 * mu) - (120 * sigma)
 
     @staticmethod
     def apply_skill_decay(player: Player, days_since_last_game: int) -> None:
@@ -162,8 +165,8 @@ class RatingSystem:
             # Calculate weight
             weight = RatingSystem.calculate_recency_weight(days_ago)
 
-            # Use post-match MMR for this calculation
-            match_mmr = mp.mu_after - (3 * mp.sigma_after)
+            # Use post-match MMR for this calculation (using scaled formula)
+            match_mmr = 1000 + (40 * mp.mu_after) - (120 * mp.sigma_after)
 
             weighted_mmr_sum += match_mmr * weight
             total_weight += weight

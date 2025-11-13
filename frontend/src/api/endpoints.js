@@ -127,6 +127,30 @@ export const replaysApi = {
   // Get match details
   getMatchById: (matchId) => {
     return apiClient.get(`/replays/matches/${matchId}`);
+  },
+
+  // Get AI-generated match commentary
+  getMatchCommentary: (matchId) => {
+    return apiClient.get(`/replays/matches/${matchId}/commentary`);
+  },
+
+  // Get failed uploads
+  getFailedUploads: (limit = 50, offset = 0, errorType = null, reviewed = null) => {
+    return apiClient.get('/replays/failed-uploads', {
+      params: {
+        limit,
+        offset,
+        error_type: errorType,
+        reviewed
+      }
+    });
+  },
+
+  // Mark failed upload as reviewed
+  markUploadReviewed: (uploadId, reviewNotes = null) => {
+    return apiClient.patch(`/replays/failed-uploads/${uploadId}/reviewed`, {
+      review_notes: reviewNotes
+    });
   }
 };
 

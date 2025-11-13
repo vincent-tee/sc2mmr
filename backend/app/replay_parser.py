@@ -99,11 +99,74 @@ def determine_game_mode(num_players: int) -> Optional[GameMode]:
         GameMode enum or None if invalid
     """
     mode_mapping = {
+        4: GameMode.TWO_V_TWO,
         6: GameMode.THREE_V_THREE,
         8: GameMode.FOUR_V_FOUR,
         10: GameMode.FIVE_V_FIVE,
     }
     return mode_mapping.get(num_players)
+
+
+def determine_winner_from_stats(replay, human_players: List) -> Optional[int]:
+    """
+    Attempt to determine the winning team from game stats when result is ambiguous.
+    This handles cases where players quit early.
+
+    Args:
+        replay: sc2reader replay object
+        human_players: List of human players from the replay
+
+    Returns:
+        Winning team number (1 or 2), or None if unable to determine
+    """
+    try:
+        # Group players by team
+        team_1_players = [p for p in human_players if p.team_id == 1]
+        team_2_players = [p for p in human_players if p.team_id == 2]
+
+        # Method 1: Check who stayed in the game longest
+        # Players who quit have earlier finish times
+        team_1_still_playing = sum(1 for p in team_1_players if not hasattr(p, 'recorder_finished') or p.recorder_finished is None)
+        team_2_still_playing = sum(1 for p in team_2_players if not hasattr(p, 'recorder_finished') or p.recorder_finished is None)
+
+        if team_1_still_playing > team_2_still_playing:
+            return 1
+        elif team_2_still_playing > team_1_still_playing:
+            return 2
+
+        # Method 2: Compare army value / supply at end of game
+        # Higher supply usually indicates who was winning
+        if hasattr(replay, 'tracker_events'):
+            team_1_supply = sum(getattr(p, 'supply', 0) for p in team_1_players)
+            team_2_supply = sum(getattr(p, 'supply', 0) for p in team_2_players)
+
+            if team_1_supply > team_2_supply * 1.5:  # Significant advantage
+                return 1
+            elif team_2_supply > team_1_supply * 1.5:
+                return 2
+
+        # Method 3: Check resources collected (more resources = likely winning)
+        team_1_resources = 0
+        team_2_resources = 0
+
+        for p in team_1_players:
+            if hasattr(p, 'stats') and p.stats:
+                team_1_resources += getattr(p.stats, 'resources_collected', 0)
+
+        for p in team_2_players:
+            if hasattr(p, 'stats') and p.stats:
+                team_2_resources += getattr(p.stats, 'resources_collected', 0)
+
+        if team_1_resources > team_2_resources * 1.3:
+            return 1
+        elif team_2_resources > team_1_resources * 1.3:
+            return 2
+
+    except Exception:
+        # If stats analysis fails, return None
+        pass
+
+    return None
 
 
 def parse_replay(file_path: str) -> ReplayData:
@@ -120,8 +183,8 @@ def parse_replay(file_path: str) -> ReplayData:
         ReplayParseError: If replay cannot be parsed or is invalid
     """
     try:
-        # Load the replay
-        replay = sc2reader.load_replay(file_path, load_level=2)
+        # Load the replay with detailed stats
+        replay = sc2reader.load_replay(file_path, load_level=4)
 
         # Calculate replay hash for duplicate detection
         replay_hash = calculate_replay_hash(file_path)
@@ -142,10 +205,10 @@ def parse_replay(file_path: str) -> ReplayData:
         if game_mode is None:
             raise ReplayParseError(
                 f"Invalid number of players: {num_players}. "
-                "Expected 6 (3v3), 8 (4v4), or 10 (5v5)"
+                "Expected 4 (2v2), 6 (3v3), 8 (4v4), or 10 (5v5)"
             )
 
-        # Extract player data
+        # Extract player data (first pass - basic info)
         for player in human_players:
             # Get player name (handle various name formats)
             name = player.name
@@ -183,6 +246,29 @@ def parse_replay(file_path: str) -> ReplayData:
                 f"Expected equal teams for {game_mode.value}"
             )
 
+        # Check if winner is clear from results
+        team_1_won = any(p.won for p in players if p.team == 1)
+        team_2_won = any(p.won for p in players if p.team == 2)
+
+        # If result is ambiguous (early quit scenario), determine winner from stats
+        if team_1_won == team_2_won:
+            winning_team = determine_winner_from_stats(replay, human_players)
+
+            if winning_team is None:
+                # Unable to determine winner even with stats
+                raise ReplayParseError(
+                    "Unable to determine game winner. This may be an incomplete or corrupted replay."
+                )
+
+            # Update player won status based on determined winner
+            for i, player in enumerate(players):
+                players[i] = PlayerData(
+                    name=player.name,
+                    race=player.race,
+                    team=player.team,
+                    won=(player.team == winning_team)
+                )
+
         # Create and return ReplayData
         return ReplayData(
             played_at=played_at,
@@ -214,7 +300,7 @@ def validate_replay_data(replay_data: ReplayData) -> Tuple[bool, Optional[str]]:
         return False, "No players found in replay"
 
     # Check game mode is valid
-    if replay_data.game_mode not in [GameMode.THREE_V_THREE, GameMode.FOUR_V_FOUR, GameMode.FIVE_V_FIVE]:
+    if replay_data.game_mode not in [GameMode.TWO_V_TWO, GameMode.THREE_V_THREE, GameMode.FOUR_V_FOUR, GameMode.FIVE_V_FIVE]:
         return False, f"Invalid game mode: {replay_data.game_mode}"
 
     # Check each team has same number of players

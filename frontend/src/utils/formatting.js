@@ -179,16 +179,22 @@ export const parseErrorMessage = (error) => {
 
     // Translate common backend errors to friendly messages
     if (detail.includes('Parse error')) {
-      return 'This replay appears to be corrupted';
+      return 'Failed to parse replay file - it may be corrupted or an unsupported version';
     }
-    if (detail.includes('Invalid game mode')) {
-      return "This game mode isn't supported (only 3v3, 4v4, 5v5)";
+    if (detail.includes('Validation failed')) {
+      return detail.replace('Validation failed: ', '');
+    }
+    if (detail.includes('Invalid game mode') || detail.includes('Invalid number of players')) {
+      return "This game mode isn't supported (only 2v2, 3v3, 4v4, 5v5)";
     }
     if (detail.includes('Game too short') || detail.includes('duration')) {
       return 'This game was too short to analyze (under 3 minutes)';
     }
     if (detail.includes('Missing players')) {
       return "Couldn't identify all players in this match";
+    }
+    if (detail.includes('Unable to determine game winner')) {
+      return 'Cannot determine winner - replay may be incomplete or ended abnormally';
     }
 
     return detail;

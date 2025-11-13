@@ -7,20 +7,68 @@ from typing import List
 from datetime import datetime
 import os
 import tempfile
+import time
 
 from ..database import get_db
-from ..models import Match, MatchPlayer, Player
+from ..models import Match, MatchPlayer, Player, FailedUpload, UploadErrorType
 from ..replay_parser import parse_replay, validate_replay_data, ReplayParseError
 from ..rating_system import RatingSystem
 from ..advanced_parser import parse_replay_advanced
 from ..impact_service import ImpactService
+from ..performance_rating import PerformanceRatingAdjuster
+from ..match_commentary import MatchCommentaryGenerator
 from pydantic import BaseModel
+import traceback
 
 
 router = APIRouter(prefix="/replays", tags=["replays"])
 
 
+# Helper functions
+def _log_failed_upload(
+    db: Session,
+    filename: str,
+    file_size: int,
+    error_type: UploadErrorType,
+    error_message: str,
+    error_detail: str,
+    replay_hash: str = None,
+    map_name: str = None,
+    game_mode: str = None,
+    duration_seconds: int = None,
+    num_players: int = None
+):
+    """Log a failed replay upload to the database."""
+    try:
+        failed_upload = FailedUpload(
+            filename=filename,
+            file_size_bytes=file_size,
+            replay_hash=replay_hash,
+            error_type=error_type,
+            error_message=error_message[:500],  # Limit length
+            error_detail=error_detail[:2000] if error_detail else None,
+            map_name=map_name,
+            game_mode=game_mode,
+            duration_seconds=duration_seconds,
+            num_players=num_players
+        )
+        db.add(failed_upload)
+        db.commit()
+    except Exception:
+        # Don't let logging failures break the main flow
+        db.rollback()
+
+
 # Request/Response models
+class ProcessingStats(BaseModel):
+    """Statistics about the processing stages."""
+    parse_time_ms: float
+    validation_time_ms: float
+    duplicate_check_time_ms: float
+    rating_update_time_ms: float
+    total_time_ms: float
+
+
 class ReplayUploadResponse(BaseModel):
     """Response for successful replay upload."""
     match_id: int
@@ -30,6 +78,7 @@ class ReplayUploadResponse(BaseModel):
     duration_seconds: int
     num_players: int
     message: str
+    processing_stats: ProcessingStats
 
     class Config:
         from_attributes = True
@@ -103,15 +152,22 @@ async def upload_replay(
         tmp_file_path = tmp_file.name
 
     try:
+        start_time = time.time()
+
         # Parse the replay
+        parse_start = time.time()
         replay_data = parse_replay(tmp_file_path)
+        parse_time_ms = (time.time() - parse_start) * 1000
 
         # Validate replay data
+        validation_start = time.time()
         is_valid, error_msg = validate_replay_data(replay_data)
         if not is_valid:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPException(status_code=400, detail=f"Validation failed: {error_msg}")
+        validation_time_ms = (time.time() - validation_start) * 1000
 
         # Check for duplicate
+        duplicate_start = time.time()
         existing_match = db.query(Match).filter(
             Match.replay_hash == replay_data.replay_hash
         ).first()
@@ -121,6 +177,7 @@ async def upload_replay(
                 status_code=409,
                 detail=f"Replay already uploaded. Match ID: {existing_match.id}"
             )
+        duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
 
         # Create match record
         match = Match(
@@ -135,7 +192,11 @@ async def upload_replay(
         db.flush()  # Get match.id
 
         # Update ratings and create match_players
+        rating_start = time.time()
         RatingSystem.update_ratings_from_match(db, replay_data, match)
+        rating_time_ms = (time.time() - rating_start) * 1000
+
+        total_time_ms = (time.time() - start_time) * 1000
 
         return ReplayUploadResponse(
             match_id=match.id,
@@ -144,14 +205,55 @@ async def upload_replay(
             played_at=match.played_at,
             duration_seconds=match.duration_seconds,
             num_players=len(replay_data.players),
-            message="Replay processed successfully"
+            message="Replay processed successfully",
+            processing_stats=ProcessingStats(
+                parse_time_ms=round(parse_time_ms, 2),
+                validation_time_ms=round(validation_time_ms, 2),
+                duplicate_check_time_ms=round(duplicate_check_time_ms, 2),
+                rating_update_time_ms=round(rating_time_ms, 2),
+                total_time_ms=round(total_time_ms, 2)
+            )
         )
 
     except ReplayParseError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
+        # Log failed upload
+        _log_failed_upload(
+            db=db,
+            filename=file.filename,
+            file_size=len(content),
+            error_type=UploadErrorType.PARSE_ERROR,
+            error_message=str(e),
+            error_detail=traceback.format_exc()
+        )
+        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
+    except HTTPException as http_ex:
+        # Log validation and other HTTP errors (except duplicates)
+        if http_ex.status_code != 409:
+            error_type = UploadErrorType.VALIDATION_ERROR
+            if "Unable to determine" in str(http_ex.detail):
+                error_type = UploadErrorType.WINNER_DETERMINATION
+            elif "Invalid game mode" in str(http_ex.detail) or "Invalid number of players" in str(http_ex.detail):
+                error_type = UploadErrorType.UNSUPPORTED_MODE
+
+            _log_failed_upload(
+                db=db,
+                filename=file.filename,
+                file_size=len(content),
+                error_type=error_type,
+                error_message=str(http_ex.detail),
+                error_detail=traceback.format_exc()
+            )
         raise
     except Exception as e:
+        # Log unexpected errors
+        _log_failed_upload(
+            db=db,
+            filename=file.filename,
+            file_size=len(content),
+            error_type=UploadErrorType.OTHER,
+            error_message=str(e),
+            error_detail=traceback.format_exc()
+        )
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
     finally:
         # Clean up temporary file
@@ -287,16 +389,23 @@ async def upload_replay_advanced(
         tmp_file_path = tmp_file.name
 
     try:
+        start_time = time.time()
+
         # Parse the replay with advanced metrics
+        parse_start = time.time()
         advanced_data = parse_replay_advanced(tmp_file_path)
         replay_data = advanced_data.basic_data
+        parse_time_ms = (time.time() - parse_start) * 1000
 
         # Validate replay data
+        validation_start = time.time()
         is_valid, error_msg = validate_replay_data(replay_data)
         if not is_valid:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPException(status_code=400, detail=f"Validation failed: {error_msg}")
+        validation_time_ms = (time.time() - validation_start) * 1000
 
         # Check for duplicate
+        duplicate_start = time.time()
         existing_match = db.query(Match).filter(
             Match.replay_hash == replay_data.replay_hash
         ).first()
@@ -306,6 +415,7 @@ async def upload_replay_advanced(
                 status_code=409,
                 detail=f"Replay already uploaded. Match ID: {existing_match.id}"
             )
+        duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
 
         # Create match record
         match = Match(
@@ -320,6 +430,7 @@ async def upload_replay_advanced(
         db.flush()  # Get match.id
 
         # Update ratings and create match_players
+        rating_start = time.time()
         RatingSystem.update_ratings_from_match(db, replay_data, match)
 
         # Save advanced metrics for each player
@@ -342,6 +453,14 @@ async def upload_replay_advanced(
         # Update synergies
         ImpactService.update_synergies(db, match.id)
 
+        # Apply performance-based rating adjustments
+        # This modifies TrueSkill ratings based on individual performance
+        PerformanceRatingAdjuster.adjust_ratings_for_match(db, match.id)
+
+        rating_time_ms = (time.time() - rating_start) * 1000
+
+        total_time_ms = (time.time() - start_time) * 1000
+
         return ReplayUploadResponse(
             match_id=match.id,
             map_name=match.map_name,
@@ -349,16 +468,213 @@ async def upload_replay_advanced(
             played_at=match.played_at,
             duration_seconds=match.duration_seconds,
             num_players=len(replay_data.players),
-            message="Replay processed successfully with advanced metrics"
+            message="Replay processed successfully with advanced metrics",
+            processing_stats=ProcessingStats(
+                parse_time_ms=round(parse_time_ms, 2),
+                validation_time_ms=round(validation_time_ms, 2),
+                duplicate_check_time_ms=round(duplicate_check_time_ms, 2),
+                rating_update_time_ms=round(rating_time_ms, 2),
+                total_time_ms=round(total_time_ms, 2)
+            )
         )
 
     except ReplayParseError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
+        # Log failed upload
+        _log_failed_upload(
+            db=db,
+            filename=file.filename,
+            file_size=len(content),
+            error_type=UploadErrorType.PARSE_ERROR,
+            error_message=str(e),
+            error_detail=traceback.format_exc()
+        )
+        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
+    except HTTPException as http_ex:
+        # Log validation and other HTTP errors (except duplicates)
+        if http_ex.status_code != 409:
+            error_type = UploadErrorType.VALIDATION_ERROR
+            if "Unable to determine" in str(http_ex.detail):
+                error_type = UploadErrorType.WINNER_DETERMINATION
+            elif "Invalid game mode" in str(http_ex.detail) or "Invalid number of players" in str(http_ex.detail):
+                error_type = UploadErrorType.UNSUPPORTED_MODE
+
+            _log_failed_upload(
+                db=db,
+                filename=file.filename,
+                file_size=len(content),
+                error_type=error_type,
+                error_message=str(http_ex.detail),
+                error_detail=traceback.format_exc()
+            )
         raise
     except Exception as e:
+        # Log unexpected errors
+        _log_failed_upload(
+            db=db,
+            filename=file.filename,
+            file_size=len(content),
+            error_type=UploadErrorType.OTHER,
+            error_message=str(e),
+            error_detail=traceback.format_exc()
+        )
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
     finally:
         # Clean up temporary file
         if os.path.exists(tmp_file_path):
             os.remove(tmp_file_path)
+
+
+@router.get("/matches/{match_id}/commentary")
+def get_match_commentary(
+    match_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get AI-generated commentary for a specific match.
+
+    Analyzes match data and generates natural language insights including:
+    - Match overview and key moments
+    - Individual player performance analysis
+    - MVP identification and reasoning
+    - Team synergy analysis
+    - Final match summary
+
+    Args:
+        match_id: Match ID
+        db: Database session
+
+    Returns:
+        Dictionary with commentary sections
+
+    Raises:
+        HTTPException: If match not found or commentary generation fails
+    """
+    commentary = MatchCommentaryGenerator.generate_match_summary(db, match_id)
+
+    if 'error' in commentary:
+        raise HTTPException(status_code=404, detail=commentary['error'])
+
+    return commentary
+
+
+class FailedUploadResponse(BaseModel):
+    """Response model for failed uploads."""
+    id: int
+    filename: str
+    file_size_bytes: Optional[int]
+    error_type: str
+    error_message: str
+    map_name: Optional[str]
+    game_mode: Optional[str]
+    duration_seconds: Optional[int]
+    num_players: Optional[int]
+    uploaded_at: datetime
+    reviewed: bool
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/failed-uploads", response_model=List[FailedUploadResponse])
+def get_failed_uploads(
+    limit: int = 50,
+    offset: int = 0,
+    error_type: Optional[str] = None,
+    reviewed: Optional[bool] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get list of failed replay uploads for manual review.
+
+    Args:
+        limit: Maximum number of results to return
+        offset: Number of results to skip
+        error_type: Filter by error type (parse_error, validation_error, winner_determination, etc.)
+        reviewed: Filter by review status (true/false)
+        db: Database session
+
+    Returns:
+        List of FailedUploadResponse objects
+    """
+    query = db.query(FailedUpload).order_by(FailedUpload.uploaded_at.desc())
+
+    # Apply filters
+    if error_type:
+        try:
+            error_enum = UploadErrorType(error_type)
+            query = query.filter(FailedUpload.error_type == error_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid error_type: {error_type}")
+
+    if reviewed is not None:
+        query = query.filter(FailedUpload.reviewed == (1 if reviewed else 0))
+
+    failed_uploads = query.limit(limit).offset(offset).all()
+
+    return [
+        FailedUploadResponse(
+            id=fu.id,
+            filename=fu.filename,
+            file_size_bytes=fu.file_size_bytes,
+            error_type=fu.error_type.value,
+            error_message=fu.error_message,
+            map_name=fu.map_name,
+            game_mode=fu.game_mode,
+            duration_seconds=fu.duration_seconds,
+            num_players=fu.num_players,
+            uploaded_at=fu.uploaded_at,
+            reviewed=bool(fu.reviewed)
+        )
+        for fu in failed_uploads
+    ]
+
+
+class MarkReviewedRequest(BaseModel):
+    """Request to mark failed upload as reviewed."""
+    review_notes: Optional[str] = None
+
+
+@router.patch("/failed-uploads/{upload_id}/reviewed")
+def mark_upload_reviewed(
+    upload_id: int,
+    request: MarkReviewedRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Mark a failed upload as reviewed.
+
+    Args:
+        upload_id: Failed upload ID
+        request: Optional review notes
+        db: Database session
+
+    Returns:
+        Updated failed upload
+
+    Raises:
+        HTTPException: If upload not found
+    """
+    failed_upload = db.query(FailedUpload).filter(FailedUpload.id == upload_id).first()
+
+    if not failed_upload:
+        raise HTTPException(status_code=404, detail="Failed upload not found")
+
+    failed_upload.reviewed = 1
+    if request.review_notes:
+        failed_upload.review_notes = request.review_notes
+
+    db.commit()
+
+    return FailedUploadResponse(
+        id=failed_upload.id,
+        filename=failed_upload.filename,
+        file_size_bytes=failed_upload.file_size_bytes,
+        error_type=failed_upload.error_type.value,
+        error_message=failed_upload.error_message,
+        map_name=failed_upload.map_name,
+        game_mode=failed_upload.game_mode,
+        duration_seconds=failed_upload.duration_seconds,
+        num_players=failed_upload.num_players,
+        uploaded_at=failed_upload.uploaded_at,
+        reviewed=bool(failed_upload.reviewed)
+    )

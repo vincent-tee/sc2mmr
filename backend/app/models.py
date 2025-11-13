@@ -61,18 +61,25 @@ class Player(Base):
 
     @property
     def win_rate(self) -> float:
-        """Calculate win rate percentage."""
+        """Calculate win rate as decimal (0.0 to 1.0)."""
         if self.total_games == 0:
             return 0.0
-        return (self.wins / self.total_games) * 100
+        return self.wins / self.total_games
 
     @property
     def mmr(self) -> float:
         """
-        Conservative skill estimate for balancing.
-        mu - 3*sigma gives ~99.7% confidence lower bound.
+        Scaled MMR for display and balancing.
+
+        Uses a scaled formula to convert TrueSkill values to a more intuitive range:
+        MMR = 1000 + 40*mu - 120*sigma
+
+        This gives approximately:
+        - New players: ~1000 MMR
+        - Experienced players: 800-2200 MMR range
+        - Higher MMR = better skill, lower sigma = more certainty
         """
-        return self.mu - (3 * self.sigma)
+        return 1000 + (40 * self.mu) - (120 * self.sigma)
 
     @property
     def favorite_race(self) -> str:
@@ -90,6 +97,7 @@ class Player(Base):
 
 class GameMode(str, enum.Enum):
     """Enum for different game modes."""
+    TWO_V_TWO = "2v2"
     THREE_V_THREE = "3v3"
     FOUR_V_FOUR = "4v4"
     FIVE_V_FIVE = "5v5"
@@ -158,9 +166,9 @@ class MatchPlayer(Base):
 
     @property
     def mmr_change(self) -> float:
-        """Calculate the MMR change from this match."""
-        mmr_before = self.mu_before - (3 * self.sigma_before)
-        mmr_after = self.mu_after - (3 * self.sigma_after)
+        """Calculate the MMR change from this match using scaled formula."""
+        mmr_before = 1000 + (40 * self.mu_before) - (120 * self.sigma_before)
+        mmr_after = 1000 + (40 * self.mu_after) - (120 * self.sigma_after)
         return mmr_after - mmr_before
 
 
@@ -260,3 +268,48 @@ class PlayerSynergy(Base):
         if self.games_together == 0:
             return 0.0
         return (self.wins_together / self.games_together) * 100
+
+
+class UploadErrorType(enum.Enum):
+    """Types of replay upload errors."""
+    PARSE_ERROR = "parse_error"
+    VALIDATION_ERROR = "validation_error"
+    WINNER_DETERMINATION = "winner_determination"
+    UNSUPPORTED_MODE = "unsupported_mode"
+    CORRUPT_FILE = "corrupt_file"
+    OTHER = "other"
+
+
+class FailedUpload(Base):
+    """
+    Tracks replay files that failed to process.
+
+    This helps identify problematic replays that need manual review or
+    algorithm improvements to handle edge cases.
+    """
+    __tablename__ = "failed_uploads"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # File information
+    filename = Column(String, nullable=False)
+    file_size_bytes = Column(Integer, nullable=True)
+    replay_hash = Column(String, nullable=True, index=True)
+
+    # Error details
+    error_type = Column(SQLEnum(UploadErrorType), nullable=False, index=True)
+    error_message = Column(String, nullable=False)
+    error_detail = Column(String, nullable=True)  # Full stack trace or additional context
+
+    # Match metadata (if partially parsed)
+    map_name = Column(String, nullable=True)
+    game_mode = Column(String, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    num_players = Column(Integer, nullable=True)
+
+    # Timestamps
+    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Review status
+    reviewed = Column(Integer, default=0, nullable=False)  # 0 = not reviewed, 1 = reviewed
+    review_notes = Column(String, nullable=True)
