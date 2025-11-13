@@ -8,6 +8,7 @@ import Navigation from './components/Navigation';
 import Home from './pages/Home';
 import TeamGenerator from './pages/TeamGenerator';
 import UploadReplays from './pages/UploadReplays';
+import FailedUploads from './pages/FailedUploads';
 import Players from './pages/Players';
 import MatchHistory from './pages/MatchHistory';
 import MatchDetail from './pages/MatchDetail';
@@ -22,6 +23,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/balance" element={<TeamGenerator />} />
           <Route path="/upload" element={<UploadReplays />} />
+          <Route path="/failed-uploads" element={<FailedUploads />} />
           <Route path="/players" element={<Players />} />
           <Route path="/history" element={<MatchHistory />} />
           <Route path="/history/:matchId" element={<MatchDetail />} />

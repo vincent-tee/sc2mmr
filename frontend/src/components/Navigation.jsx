@@ -21,7 +21,7 @@ import {
   Text,
   Badge,
 } from '@chakra-ui/react';
-import { FiMenu, FiZap, FiUpload, FiUsers, FiBarChart2, FiHome, FiInfo } from 'react-icons/fi';
+import { FiMenu, FiZap, FiUpload, FiUsers, FiBarChart2, FiHome, FiInfo, FiAlertCircle } from 'react-icons/fi';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const Navigation = () => {
@@ -36,6 +36,7 @@ const Navigation = () => {
     { path: '/', label: 'Home', icon: FiHome },
     { path: '/balance', label: 'Generate Teams', icon: FiZap, highlight: true },
     { path: '/upload', label: 'Upload', icon: FiUpload },
+    { path: '/failed-uploads', label: 'Failed Uploads', icon: FiAlertCircle },
     { path: '/players', label: 'Players', icon: FiUsers },
     { path: '/history', label: 'History', icon: FiBarChart2 },
     { path: '/rating-system', label: 'Rating System', icon: FiInfo },

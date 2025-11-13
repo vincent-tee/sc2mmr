@@ -268,3 +268,48 @@ class PlayerSynergy(Base):
         if self.games_together == 0:
             return 0.0
         return (self.wins_together / self.games_together) * 100
+
+
+class UploadErrorType(enum.Enum):
+    """Types of replay upload errors."""
+    PARSE_ERROR = "parse_error"
+    VALIDATION_ERROR = "validation_error"
+    WINNER_DETERMINATION = "winner_determination"
+    UNSUPPORTED_MODE = "unsupported_mode"
+    CORRUPT_FILE = "corrupt_file"
+    OTHER = "other"
+
+
+class FailedUpload(Base):
+    """
+    Tracks replay files that failed to process.
+
+    This helps identify problematic replays that need manual review or
+    algorithm improvements to handle edge cases.
+    """
+    __tablename__ = "failed_uploads"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # File information
+    filename = Column(String, nullable=False)
+    file_size_bytes = Column(Integer, nullable=True)
+    replay_hash = Column(String, nullable=True, index=True)
+
+    # Error details
+    error_type = Column(SQLEnum(UploadErrorType), nullable=False, index=True)
+    error_message = Column(String, nullable=False)
+    error_detail = Column(String, nullable=True)  # Full stack trace or additional context
+
+    # Match metadata (if partially parsed)
+    map_name = Column(String, nullable=True)
+    game_mode = Column(String, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    num_players = Column(Integer, nullable=True)
+
+    # Timestamps
+    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Review status
+    reviewed = Column(Integer, default=0, nullable=False)  # 0 = not reviewed, 1 = reviewed
+    review_notes = Column(String, nullable=True)
