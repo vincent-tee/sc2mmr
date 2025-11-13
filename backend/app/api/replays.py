@@ -15,6 +15,8 @@ from ..replay_parser import parse_replay, validate_replay_data, ReplayParseError
 from ..rating_system import RatingSystem
 from ..advanced_parser import parse_replay_advanced
 from ..impact_service import ImpactService
+from ..performance_rating import PerformanceRatingAdjuster
+from ..match_commentary import MatchCommentaryGenerator
 from pydantic import BaseModel
 
 
@@ -380,6 +382,11 @@ async def upload_replay_advanced(
 
         # Update synergies
         ImpactService.update_synergies(db, match.id)
+
+        # Apply performance-based rating adjustments
+        # This modifies TrueSkill ratings based on individual performance
+        PerformanceRatingAdjuster.adjust_ratings_for_match(db, match.id)
+
         rating_time_ms = (time.time() - rating_start) * 1000
 
         total_time_ms = (time.time() - start_time) * 1000
@@ -411,3 +418,36 @@ async def upload_replay_advanced(
         # Clean up temporary file
         if os.path.exists(tmp_file_path):
             os.remove(tmp_file_path)
+
+
+@router.get("/matches/{match_id}/commentary")
+def get_match_commentary(
+    match_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get AI-generated commentary for a specific match.
+
+    Analyzes match data and generates natural language insights including:
+    - Match overview and key moments
+    - Individual player performance analysis
+    - MVP identification and reasoning
+    - Team synergy analysis
+    - Final match summary
+
+    Args:
+        match_id: Match ID
+        db: Database session
+
+    Returns:
+        Dictionary with commentary sections
+
+    Raises:
+        HTTPException: If match not found or commentary generation fails
+    """
+    commentary = MatchCommentaryGenerator.generate_match_summary(db, match_id)
+
+    if 'error' in commentary:
+        raise HTTPException(status_code=404, detail=commentary['error'])
+
+    return commentary

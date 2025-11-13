@@ -127,6 +127,11 @@ export const replaysApi = {
   // Get match details
   getMatchById: (matchId) => {
     return apiClient.get(`/replays/matches/${matchId}`);
+  },
+
+  // Get AI-generated match commentary
+  getMatchCommentary: (matchId) => {
+    return apiClient.get(`/replays/matches/${matchId}/commentary`);
   }
 };
 
