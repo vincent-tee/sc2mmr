@@ -10,6 +10,7 @@ import TeamGenerator from './pages/TeamGenerator';
 import UploadReplays from './pages/UploadReplays';
 import Players from './pages/Players';
 import MatchHistory from './pages/MatchHistory';
+import RatingSystem from './pages/RatingSystem';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="/upload" element={<UploadReplays />} />
           <Route path="/players" element={<Players />} />
           <Route path="/history" element={<MatchHistory />} />
+          <Route path="/rating-system" element={<RatingSystem />} />
         </Routes>
       </Box>
     </Router>
