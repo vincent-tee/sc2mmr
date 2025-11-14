@@ -107,7 +107,7 @@ def determine_game_mode(num_players: int) -> Optional[GameMode]:
     return mode_mapping.get(num_players)
 
 
-def determine_winner_from_stats(replay, human_players: List) -> Optional[int]:
+def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[int], Dict]:
     """
     Attempt to determine the winning team from game stats when result is ambiguous.
     This handles cases where players quit early.
@@ -117,56 +117,74 @@ def determine_winner_from_stats(replay, human_players: List) -> Optional[int]:
         human_players: List of human players from the replay
 
     Returns:
-        Winning team number (1 or 2), or None if unable to determine
+        Tuple of (winning team number (1 or 2) or None, stats dictionary)
     """
+    stats = {
+        'team_1': {'players_still_in': 0, 'supply': 0, 'resources': 0, 'players': []},
+        'team_2': {'players_still_in': 0, 'supply': 0, 'resources': 0, 'players': []}
+    }
+
     try:
         # Group players by team
         team_1_players = [p for p in human_players if p.team_id == 1]
         team_2_players = [p for p in human_players if p.team_id == 2]
 
-        # Method 1: Check who stayed in the game longest
-        # Players who quit have earlier finish times
-        team_1_still_playing = sum(1 for p in team_1_players if not hasattr(p, 'recorder_finished') or p.recorder_finished is None)
-        team_2_still_playing = sum(1 for p in team_2_players if not hasattr(p, 'recorder_finished') or p.recorder_finished is None)
-
-        if team_1_still_playing > team_2_still_playing:
-            return 1
-        elif team_2_still_playing > team_1_still_playing:
-            return 2
-
-        # Method 2: Compare army value / supply at end of game
-        # Higher supply usually indicates who was winning
-        if hasattr(replay, 'tracker_events'):
-            team_1_supply = sum(getattr(p, 'supply', 0) for p in team_1_players)
-            team_2_supply = sum(getattr(p, 'supply', 0) for p in team_2_players)
-
-            if team_1_supply > team_2_supply * 1.5:  # Significant advantage
-                return 1
-            elif team_2_supply > team_1_supply * 1.5:
-                return 2
-
-        # Method 3: Check resources collected (more resources = likely winning)
-        team_1_resources = 0
-        team_2_resources = 0
-
+        # Collect player-level stats
         for p in team_1_players:
+            player_info = {
+                'name': p.name,
+                'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
+                'supply': getattr(p, 'supply', 0),
+                'resources': 0
+            }
             if hasattr(p, 'stats') and p.stats:
-                team_1_resources += getattr(p.stats, 'resources_collected', 0)
+                player_info['resources'] = getattr(p.stats, 'resources_collected', 0)
+            stats['team_1']['players'].append(player_info)
+
+            if player_info['still_in']:
+                stats['team_1']['players_still_in'] += 1
+            stats['team_1']['supply'] += player_info['supply']
+            stats['team_1']['resources'] += player_info['resources']
 
         for p in team_2_players:
+            player_info = {
+                'name': p.name,
+                'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
+                'supply': getattr(p, 'supply', 0),
+                'resources': 0
+            }
             if hasattr(p, 'stats') and p.stats:
-                team_2_resources += getattr(p.stats, 'resources_collected', 0)
+                player_info['resources'] = getattr(p.stats, 'resources_collected', 0)
+            stats['team_2']['players'].append(player_info)
 
-        if team_1_resources > team_2_resources * 1.3:
-            return 1
-        elif team_2_resources > team_1_resources * 1.3:
-            return 2
+            if player_info['still_in']:
+                stats['team_2']['players_still_in'] += 1
+            stats['team_2']['supply'] += player_info['supply']
+            stats['team_2']['resources'] += player_info['resources']
+
+        # Method 1: Check who stayed in the game longest
+        if stats['team_1']['players_still_in'] > stats['team_2']['players_still_in']:
+            return 1, stats
+        elif stats['team_2']['players_still_in'] > stats['team_1']['players_still_in']:
+            return 2, stats
+
+        # Method 2: Compare army value / supply at end of game
+        if stats['team_1']['supply'] > stats['team_2']['supply'] * 1.5:
+            return 1, stats
+        elif stats['team_2']['supply'] > stats['team_1']['supply'] * 1.5:
+            return 2, stats
+
+        # Method 3: Check resources collected (more resources = likely winning)
+        if stats['team_1']['resources'] > stats['team_2']['resources'] * 1.3:
+            return 1, stats
+        elif stats['team_2']['resources'] > stats['team_1']['resources'] * 1.3:
+            return 2, stats
 
     except Exception:
-        # If stats analysis fails, return None
+        # If stats analysis fails, return None with empty stats
         pass
 
-    return None
+    return None, stats
 
 
 def parse_replay(file_path: str) -> ReplayData:
@@ -252,33 +270,50 @@ def parse_replay(file_path: str) -> ReplayData:
 
         # If result is ambiguous (early quit scenario), determine winner from stats
         if team_1_won == team_2_won:
-            winning_team = determine_winner_from_stats(replay, human_players)
+            winning_team, team_stats = determine_winner_from_stats(replay, human_players)
 
             if winning_team is None:
                 # Unable to determine winner even with stats
-                # Check if this looks like someone quit
+                # Build detailed error message with team comparisons
                 game_duration_minutes = duration_seconds / 60
                 quit_players = [p.name for p in human_players if hasattr(p, 'recorder_finished') and p.recorder_finished]
+
+                # Format team stats for error message
+                stats_msg = "\n\nTeam Stats Comparison:"
+                stats_msg += f"\n  Team 1:"
+                stats_msg += f"\n    Players still in: {team_stats['team_1']['players_still_in']}"
+                stats_msg += f"\n    Total supply: {team_stats['team_1']['supply']}"
+                stats_msg += f"\n    Total resources: {team_stats['team_1']['resources']:,}"
+                for player in team_stats['team_1']['players']:
+                    stats_msg += f"\n      - {player['name']}: {'IN GAME' if player['still_in'] else 'QUIT'} | Supply: {player['supply']} | Resources: {player['resources']:,}"
+
+                stats_msg += f"\n  Team 2:"
+                stats_msg += f"\n    Players still in: {team_stats['team_2']['players_still_in']}"
+                stats_msg += f"\n    Total supply: {team_stats['team_2']['supply']}"
+                stats_msg += f"\n    Total resources: {team_stats['team_2']['resources']:,}"
+                for player in team_stats['team_2']['players']:
+                    stats_msg += f"\n      - {player['name']}: {'IN GAME' if player['still_in'] else 'QUIT'} | Supply: {player['supply']} | Resources: {player['resources']:,}"
 
                 if game_duration_minutes < 10 and quit_players:
                     # Likely someone quit in early/mid game
                     raise ReplayParseError(
                         f"Cannot determine winner - player(s) quit at {game_duration_minutes:.1f} minutes. "
                         f"Quitters: {', '.join(quit_players)}. "
-                        "This replay was not played to completion and has ambiguous results."
+                        f"This replay was not played to completion and has ambiguous results.{stats_msg}\n\n"
+                        f"Suggestion: Manually verify which team should have won based on the stats above."
                     )
                 elif not quit_players and game_duration_minutes < 3:
                     # Very short game, might be a crash or test
                     raise ReplayParseError(
                         f"Game too short ({game_duration_minutes:.1f} minutes) with no clear winner. "
-                        "This may be a test game, crash, or incomplete replay."
+                        f"This may be a test game, crash, or incomplete replay.{stats_msg}"
                     )
                 else:
                     # Other ambiguous scenario
                     raise ReplayParseError(
                         f"Unable to determine game winner from {game_duration_minutes:.1f} minute game. "
-                        "Game may have ended abnormally (disconnection, draw, or corrupted replay data). "
-                        f"Teams showed equal results and stats were inconclusive."
+                        f"Game may have ended abnormally (disconnection, draw, or corrupted replay data).{stats_msg}\n\n"
+                        f"The stats are too close to automatically determine a winner. Manual verification recommended."
                     )
 
             # Update player won status based on determined winner
