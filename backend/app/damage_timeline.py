@@ -349,8 +349,21 @@ class DamageTimelineExtractor:
             # Unit died events indicate damage
             if event.name == 'UnitDiedEvent':
                 if hasattr(event, 'killer_pid') and event.killer_pid == player_id:
+                    # Try to get unit type name from various possible attributes
+                    try:
+                        unit_name = getattr(event, 'unit_type_name', None) or \
+                                   getattr(event, 'unit_type', None) or \
+                                   getattr(getattr(event, 'unit', None), 'name', None) or \
+                                   'Unknown'
+                    except AttributeError:
+                        unit_name = 'Unknown'
+
+                    if unit_name == 'Unknown':
+                        # Skip if we can't determine the unit type
+                        continue
+
                     second = event.second
-                    unit_cost = _get_unit_cost(event.unit_type_name)
+                    unit_cost = _get_unit_cost(unit_name)
                     damage_by_second[second] += unit_cost
 
         # Convert defaultdict to regular dict
