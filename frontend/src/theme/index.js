@@ -85,10 +85,14 @@ const theme = extendTheme({
   },
   styles: {
     global: (props) => ({
+      '@keyframes twinkle': {
+        '0%, 100%': { opacity: 0.6 },
+        '50%': { opacity: 1 },
+      },
       body: {
         bg: props.colorMode === 'dark' ? 'space.900' : 'gray.50',
         color: props.colorMode === 'dark' ? 'gray.100' : 'gray.900',
-        // Subtle starfield effect
+        // Dramatic starfield effect
         position: 'relative',
         '&::before': {
           content: '""',
@@ -97,12 +101,13 @@ const theme = extendTheme({
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundImage: 'radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.1), rgba(0,0,0,0)), radial-gradient(2px 2px at 60px 70px, rgba(255,255,255,0.1), rgba(0,0,0,0)), radial-gradient(1px 1px at 50px 50px, rgba(255,255,255,0.1), rgba(0,0,0,0)), radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.1), rgba(0,0,0,0)), radial-gradient(2px 2px at 90px 10px, rgba(255,255,255,0.1), rgba(0,0,0,0))',
+          backgroundImage: 'radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.4), rgba(0,0,0,0)), radial-gradient(2px 2px at 60px 70px, rgba(255,255,255,0.3), rgba(0,0,0,0)), radial-gradient(1px 1px at 50px 50px, rgba(255,255,255,0.5), rgba(0,0,0,0)), radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.3), rgba(0,0,0,0)), radial-gradient(2px 2px at 90px 10px, rgba(255,255,255,0.4), rgba(0,0,0,0)), radial-gradient(1px 1px at 10px 100px, rgba(0,212,255,0.2), rgba(0,0,0,0)), radial-gradient(1px 1px at 180px 20px, rgba(0,212,255,0.15), rgba(0,0,0,0)), radial-gradient(2px 2px at 140px 140px, rgba(255,179,0,0.1), rgba(0,0,0,0))',
           backgroundSize: '200px 200px',
           backgroundRepeat: 'repeat',
-          opacity: props.colorMode === 'dark' ? 0.3 : 0,
+          opacity: props.colorMode === 'dark' ? 0.8 : 0,
           pointerEvents: 'none',
           zIndex: 0,
+          animation: 'twinkle 3s ease-in-out infinite',
         },
         // Subtle scanline effect
         '&::after': {
