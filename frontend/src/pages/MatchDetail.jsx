@@ -43,7 +43,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FiArrowLeft, FiTarget, FiTrendingUp, FiUsers, FiZap, FiAward, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import { replaysApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
-import { formatDuration, formatWinRate } from '../utils/formatting';
+import { formatDuration, formatWinRate, formatDateTime } from '../utils/formatting';
 
 const MatchDetail = () => {
   const { matchId } = useParams();
@@ -125,7 +125,7 @@ const MatchDetail = () => {
                     </Badge>
                   </HStack>
                   <Text color="gray.500">
-                    {new Date(match.played_at).toLocaleString()}
+                    {formatDateTime(match.played_at)}
                   </Text>
                 </VStack>
 
