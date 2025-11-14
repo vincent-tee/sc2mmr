@@ -159,11 +159,10 @@ const AdaptiveModel = () => {
         <HStack spacing={6} align="stretch">
           {/* Model Performance Stats */}
           <TacticalCard flex={1}>
-            <CardHeader>
+            <Box mb={4}>
               <Heading size="md">Model Performance</Heading>
-            </CardHeader>
-            <CardBody>
-              <VStack spacing={4} align="stretch">
+            </Box>
+            <VStack spacing={4} align="stretch">
                 <Stat>
                   <StatLabel>Win Prediction Accuracy</StatLabel>
                   <StatNumber fontSize="3xl">
@@ -221,17 +220,15 @@ const AdaptiveModel = () => {
                   size="sm"
                   borderRadius="md"
                 />
-              </VStack>
-            </CardBody>
+            </VStack>
           </TacticalCard>
 
           {/* Current Weights */}
           <TacticalCard flex={1}>
-            <CardHeader>
+            <Box mb={4}>
               <Heading size="md">Current Weights</Heading>
-            </CardHeader>
-            <CardBody>
-              <VStack spacing={4} align="stretch">
+            </Box>
+            <VStack spacing={4} align="stretch">
                 {suggestions?.current_weights &&
                   Object.entries(suggestions.current_weights).map(([key, value]) => (
                     <Box key={key}>
@@ -249,15 +246,14 @@ const AdaptiveModel = () => {
                       />
                     </Box>
                   ))}
-              </VStack>
-            </CardBody>
+            </VStack>
           </TacticalCard>
         </HStack>
 
         {/* Suggested Updates */}
         {suggestions?.suggested_weights && (
           <TacticalCard>
-            <CardHeader>
+            <Box mb={4}>
               <HStack justify="space-between">
                 <Heading size="md">Suggested Weight Updates</Heading>
                 <Badge
@@ -270,9 +266,8 @@ const AdaptiveModel = () => {
                   {formatPercentage(suggestions.confidence)} Confidence
                 </Badge>
               </HStack>
-            </CardHeader>
-            <CardBody>
-              <VStack spacing={6} align="stretch">
+            </Box>
+            <VStack spacing={6} align="stretch">
                 <Alert status="info" borderRadius="md">
                   <AlertIcon />
                   <Box>
@@ -370,8 +365,7 @@ const AdaptiveModel = () => {
                     </Button>
                   </Tooltip>
                 </HStack>
-              </VStack>
-            </CardBody>
+            </VStack>
           </TacticalCard>
         )}
 
