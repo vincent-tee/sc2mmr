@@ -82,6 +82,16 @@ const AdaptiveModel = () => {
     cacheTime: 0, // Don't cache
   });
 
+  // Fetch auto-optimization status
+  const { data: autoStatus, refetch: refetchAutoStatus } = useQuery({
+    queryKey: ['auto-optimization-status'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/auto-status');
+      return response.data;
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
   const getSuggestionStatus = (suggestion) => {
     switch (suggestion) {
       case 'update_recommended':
@@ -166,7 +176,8 @@ const AdaptiveModel = () => {
               try {
                 await Promise.all([
                   refetchSuggestions(),
-                  refetchPerformance()
+                  refetchPerformance(),
+                  refetchAutoStatus()
                 ]);
                 setLastUpdated(new Date());
                 toast({
@@ -190,6 +201,50 @@ const AdaptiveModel = () => {
             Refresh Analysis
           </Button>
         </Alert>
+
+        {/* Auto-Optimization Status */}
+        {autoStatus && autoStatus.enabled && (
+          <TacticalCard>
+            <HStack justify="space-between" mb={3}>
+              <HStack>
+                <Icon as={FiCpu} color="cyan.500" />
+                <Heading size="sm">Auto-Optimization</Heading>
+                <Badge colorScheme="cyan">Active</Badge>
+              </HStack>
+              <Text fontSize="sm" color="gray.500">
+                Every {autoStatus.matches_per_optimization} matches
+              </Text>
+            </HStack>
+
+            <VStack align="stretch" spacing={2}>
+              <HStack justify="space-between" fontSize="sm">
+                <Text color="gray.500">Progress</Text>
+                <Text fontWeight="medium">
+                  {autoStatus.matches_since_last_optimization} / {autoStatus.matches_per_optimization} matches
+                </Text>
+              </HStack>
+
+              <Progress
+                value={(autoStatus.matches_since_last_optimization / autoStatus.matches_per_optimization) * 100}
+                colorScheme="cyan"
+                size="sm"
+                borderRadius="full"
+              />
+
+              <HStack justify="space-between" fontSize="xs" color="gray.500" pt={1}>
+                <Text>
+                  {autoStatus.next_optimization_in === 0
+                    ? 'Optimization due now!'
+                    : `Next in ${autoStatus.next_optimization_in} ${autoStatus.next_optimization_in === 1 ? 'match' : 'matches'}`
+                  }
+                </Text>
+                <Text>
+                  Total: {autoStatus.total_matches} matches
+                </Text>
+              </HStack>
+            </VStack>
+          </TacticalCard>
+        )}
 
         <HStack spacing={6} align="stretch">
           {/* Model Performance Stats */}

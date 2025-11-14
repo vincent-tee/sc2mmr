@@ -18,6 +18,7 @@ from ..advanced_parser import parse_replay_advanced
 from ..impact_service import ImpactService
 from ..performance_rating import PerformanceRatingAdjuster
 from ..match_commentary import MatchCommentaryGenerator
+from ..auto_adaptive import trigger_auto_optimization
 from pydantic import BaseModel
 import traceback
 
@@ -609,6 +610,15 @@ async def upload_replay_advanced(
         PerformanceRatingAdjuster.adjust_ratings_for_match(db, match.id)
 
         rating_time_ms = (time.time() - rating_start) * 1000
+
+        # Trigger auto-optimization if threshold reached
+        # This runs retroactive analysis on all matches to optimize metric weights
+        optimization_result = trigger_auto_optimization(db)
+        if optimization_result:
+            logger.info(
+                f"Auto-optimization triggered: {optimization_result.get('suggestion')} "
+                f"(confidence: {optimization_result.get('confidence', 0):.2f})"
+            )
 
         total_time_ms = (time.time() - start_time) * 1000
 

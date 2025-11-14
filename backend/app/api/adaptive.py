@@ -10,6 +10,9 @@ from typing import Dict, Optional
 
 from ..database import get_db
 from ..adaptive_model import AdaptiveModelTuner, PerformanceWeights, ModelPerformance
+from ..auto_adaptive import AutoAdaptiveTracker, AutoAdaptiveConfig
+from ..models import Match
+from sqlalchemy import func
 
 
 router = APIRouter(prefix="/adaptive", tags=["adaptive"])
@@ -163,4 +166,100 @@ def update_weights(
             'team_contribution': request.team_contribution_weight,
             'efficiency': request.efficiency_weight
         }
+    }
+
+
+@router.get("/auto-status")
+def get_auto_optimization_status(db: Session = Depends(get_db)):
+    """
+    Get auto-optimization status and configuration.
+
+    Returns:
+        Current configuration, progress, and statistics
+    """
+    total_matches = db.query(func.count(Match.id)).scalar()
+    matches_since_last = total_matches - AutoAdaptiveTracker._last_optimization_count
+    next_optimization_in = AutoAdaptiveConfig.MATCHES_PER_OPTIMIZATION - matches_since_last
+
+    return {
+        'enabled': AutoAdaptiveConfig.ENABLED,
+        'matches_per_optimization': AutoAdaptiveConfig.MATCHES_PER_OPTIMIZATION,
+        'min_matches_for_first_run': AutoAdaptiveConfig.MIN_MATCHES_FOR_FIRST_RUN,
+        'total_matches': total_matches,
+        'last_optimization_at_match': AutoAdaptiveTracker._last_optimization_count,
+        'matches_since_last_optimization': matches_since_last,
+        'next_optimization_in': max(0, next_optimization_in),
+        'has_current_weights': AutoAdaptiveTracker._current_weights is not None,
+        'current_weights': {
+            'combat': AutoAdaptiveTracker._current_weights.combat_weight,
+            'economic': AutoAdaptiveTracker._current_weights.economic_weight,
+            'team_contribution': AutoAdaptiveTracker._current_weights.team_contribution_weight,
+            'efficiency': AutoAdaptiveTracker._current_weights.efficiency_weight
+        } if AutoAdaptiveTracker._current_weights else None
+    }
+
+
+class AutoAdaptiveConfigRequest(BaseModel):
+    """Request to update auto-adaptive configuration."""
+    enabled: Optional[bool] = None
+    matches_per_optimization: Optional[int] = None
+
+
+@router.post("/auto-config")
+def update_auto_optimization_config(
+    request: AutoAdaptiveConfigRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Update auto-optimization configuration.
+
+    Args:
+        request: New configuration values
+
+    Returns:
+        Updated configuration
+    """
+    if request.enabled is not None:
+        AutoAdaptiveConfig.ENABLED = request.enabled
+
+    if request.matches_per_optimization is not None:
+        if request.matches_per_optimization < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="matches_per_optimization must be at least 1"
+            )
+        AutoAdaptiveConfig.MATCHES_PER_OPTIMIZATION = request.matches_per_optimization
+
+    return {
+        'status': 'success',
+        'message': 'Auto-optimization configuration updated',
+        'config': {
+            'enabled': AutoAdaptiveConfig.ENABLED,
+            'matches_per_optimization': AutoAdaptiveConfig.MATCHES_PER_OPTIMIZATION
+        }
+    }
+
+
+@router.post("/force-optimize")
+def force_optimization(db: Session = Depends(get_db)):
+    """
+    Force optimization regardless of threshold.
+
+    Useful for testing or manual triggers.
+
+    Returns:
+        Optimization result
+    """
+    result = AutoAdaptiveTracker.force_optimization(db)
+
+    if not result:
+        raise HTTPException(
+            status_code=500,
+            detail="Optimization failed to generate results"
+        )
+
+    return {
+        'status': 'success',
+        'message': 'Optimization completed',
+        'result': result
     }
