@@ -40,7 +40,7 @@ import {
 } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  FiBrain,
+  FiCpu,
   FiTrendingUp,
   FiCheckCircle,
   FiAlertCircle,
@@ -122,7 +122,7 @@ const AdaptiveModel = () => {
         {/* Header */}
         <Box>
           <HStack spacing={3} mb={2}>
-            <Icon as={FiBrain} boxSize={8} color="purple.500" />
+            <Icon as={FiCpu} boxSize={8} color="purple.500" />
             <Heading size="xl">Adaptive Model Performance</Heading>
           </HStack>
           <Text color="gray.500" fontSize="lg">
