@@ -174,14 +174,38 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
 
         # Collect player-level stats
         for p in team_1_players:
+            # Extract final supply (army + workers)
+            supply = 0
+            if hasattr(p, 'stats') and p.stats:
+                # Try to get supply from various possible attributes
+                if hasattr(p.stats, 'food_used') and p.stats.food_used:
+                    supply = p.stats.food_used[-1] if isinstance(p.stats.food_used, list) else p.stats.food_used
+                elif hasattr(p.stats, 'supply') and p.stats.supply:
+                    supply = p.stats.supply[-1] if isinstance(p.stats.supply, list) else p.stats.supply
+
+            # Extract total resources collected
+            resources = 0
+            if hasattr(p, 'stats') and p.stats:
+                minerals = 0
+                vespene = 0
+
+                # Get minerals collected (time series, take final value)
+                if hasattr(p.stats, 'minerals_collection_rate') and p.stats.minerals_collection_rate:
+                    minerals = int(p.stats.minerals_collection_rate[-1])
+
+                # Get vespene collected (time series, take final value)
+                if hasattr(p.stats, 'vespene_collection_rate') and p.stats.vespene_collection_rate:
+                    vespene = int(p.stats.vespene_collection_rate[-1])
+
+                resources = minerals + vespene
+                logger.debug(f"Player {p.name}: minerals={minerals}, vespene={vespene}, supply={supply}")
+
             player_info = {
                 'name': p.name,
                 'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
-                'supply': getattr(p, 'supply', 0),
-                'resources': 0
+                'supply': supply,
+                'resources': resources
             }
-            if hasattr(p, 'stats') and p.stats:
-                player_info['resources'] = getattr(p.stats, 'resources_collected', 0)
             stats['team_1']['players'].append(player_info)
 
             if player_info['still_in']:
@@ -190,20 +214,48 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
             stats['team_1']['resources'] += player_info['resources']
 
         for p in team_2_players:
+            # Extract final supply (army + workers)
+            supply = 0
+            if hasattr(p, 'stats') and p.stats:
+                # Try to get supply from various possible attributes
+                if hasattr(p.stats, 'food_used') and p.stats.food_used:
+                    supply = p.stats.food_used[-1] if isinstance(p.stats.food_used, list) else p.stats.food_used
+                elif hasattr(p.stats, 'supply') and p.stats.supply:
+                    supply = p.stats.supply[-1] if isinstance(p.stats.supply, list) else p.stats.supply
+
+            # Extract total resources collected
+            resources = 0
+            if hasattr(p, 'stats') and p.stats:
+                minerals = 0
+                vespene = 0
+
+                # Get minerals collected (time series, take final value)
+                if hasattr(p.stats, 'minerals_collection_rate') and p.stats.minerals_collection_rate:
+                    minerals = int(p.stats.minerals_collection_rate[-1])
+
+                # Get vespene collected (time series, take final value)
+                if hasattr(p.stats, 'vespene_collection_rate') and p.stats.vespene_collection_rate:
+                    vespene = int(p.stats.vespene_collection_rate[-1])
+
+                resources = minerals + vespene
+                logger.debug(f"Player {p.name}: minerals={minerals}, vespene={vespene}, supply={supply}")
+
             player_info = {
                 'name': p.name,
                 'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
-                'supply': getattr(p, 'supply', 0),
-                'resources': 0
+                'supply': supply,
+                'resources': resources
             }
-            if hasattr(p, 'stats') and p.stats:
-                player_info['resources'] = getattr(p.stats, 'resources_collected', 0)
             stats['team_2']['players'].append(player_info)
 
             if player_info['still_in']:
                 stats['team_2']['players_still_in'] += 1
             stats['team_2']['supply'] += player_info['supply']
             stats['team_2']['resources'] += player_info['resources']
+
+        # Log team totals for debugging
+        logger.info(f"Team stats extracted - Team 1: {stats['team_1']['players_still_in']} still in, {stats['team_1']['supply']} supply, {stats['team_1']['resources']:,} resources")
+        logger.info(f"Team stats extracted - Team 2: {stats['team_2']['players_still_in']} still in, {stats['team_2']['supply']} supply, {stats['team_2']['resources']:,} resources")
 
         # Method 1: Check who stayed in the game longest
         if stats['team_1']['players_still_in'] > stats['team_2']['players_still_in']:
