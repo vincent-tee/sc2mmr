@@ -53,6 +53,7 @@ import TacticalCard from '../components/TacticalCard';
 
 const AdaptiveModel = () => {
   const [acceptingUpdate, setAcceptingUpdate] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -132,6 +133,14 @@ const AdaptiveModel = () => {
           <Text color="gray.500" fontSize="lg">
             Self-improving model that optimizes performance weights based on match outcomes
           </Text>
+          <Text color="gray.400" fontSize="sm" mt={1}>
+            Last updated: {lastUpdated.toLocaleTimeString('en-AU', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              timeZone: 'Australia/Sydney'
+            })}
+          </Text>
         </Box>
 
         {/* Status Banner */}
@@ -159,6 +168,7 @@ const AdaptiveModel = () => {
                   refetchSuggestions(),
                   refetchPerformance()
                 ]);
+                setLastUpdated(new Date());
                 toast({
                   title: 'Analysis refreshed',
                   description: 'Model performance recalculated from latest match data',
