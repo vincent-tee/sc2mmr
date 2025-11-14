@@ -13,6 +13,10 @@ sc2reader==1.8.0
 # Rating system
 trueskill==0.4.5
 
+# Machine Learning / Optimization
+numpy==1.24.3
+scipy==1.11.4
+
 # Utilities
 python-dateutil==2.8.2
 pydantic==2.5.0
