@@ -70,20 +70,19 @@ def balance_teams(
     Raises:
         HTTPException: If invalid number of players or players not found
     """
-    # Validate even number of players
-    if len(request.player_ids) % 2 != 0:
+    # Validate minimum players
+    num_players = len(request.player_ids)
+    if num_players < 2:
         raise HTTPException(
             status_code=400,
-            detail=f"Need even number of players, got {len(request.player_ids)}"
+            detail=f"Need at least 2 players, got {num_players}"
         )
 
-    # Validate supported game modes
-    num_players = len(request.player_ids)
-    if num_players not in [6, 8, 10]:
+    # Maximum reasonable limit
+    if num_players > 20:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported number of players: {num_players}. "
-                   "Must be 6 (3v3), 8 (4v4), or 10 (5v5)"
+            detail=f"Too many players: {num_players}. Maximum is 20 players (10v10)"
         )
 
     try:
@@ -260,11 +259,19 @@ def balance_teams_with_model(
             detail=f"Invalid model: {request.model}. Valid options: {[m.value for m in RatingModel]}"
         )
 
-    # Validate even number of players
-    if len(request.player_ids) % 2 != 0:
+    # Validate minimum players
+    num_players = len(request.player_ids)
+    if num_players < 2:
         raise HTTPException(
             status_code=400,
-            detail=f"Need even number of players, got {len(request.player_ids)}"
+            detail=f"Need at least 2 players, got {num_players}"
+        )
+
+    # Maximum reasonable limit
+    if num_players > 20:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many players: {num_players}. Maximum is 20 players (10v10)"
         )
 
     # Get player ratings
@@ -279,11 +286,16 @@ def balance_teams_with_model(
         )
 
     # Generate all possible team splits
-    team_size = len(request.player_ids) // 2
+    # Support both even and uneven player counts
+    if num_players % 2 == 0:
+        team_1_size = num_players // 2
+    else:
+        team_1_size = (num_players // 2) + 1
+
     best_balance = None
     best_quality = -1
 
-    for team1_indices in combinations(range(len(all_ratings)), team_size):
+    for team1_indices in combinations(range(len(all_ratings)), team_1_size):
         team1_ratings = [all_ratings[i] for i in team1_indices]
         team2_ratings = [all_ratings[i] for i in range(len(all_ratings)) if i not in team1_indices]
 
@@ -382,13 +394,19 @@ def compare_balance_models(
     # Compare all models
     results = {}
 
+    # Determine team sizes (support uneven)
+    num_players = len(request.player_ids)
+    if num_players % 2 == 0:
+        team_1_size = num_players // 2
+    else:
+        team_1_size = (num_players // 2) + 1
+
     for model in RatingModel:
         # Find best balance for this model
-        team_size = len(request.player_ids) // 2
         best_balance = None
         best_quality = -1
 
-        for team1_indices in combinations(range(len(all_ratings)), team_size):
+        for team1_indices in combinations(range(len(all_ratings)), team_1_size):
             team1_ratings = [all_ratings[i] for i in team1_indices]
             team2_ratings = [all_ratings[i] for i in range(len(all_ratings)) if i not in team1_indices]
 

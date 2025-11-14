@@ -99,10 +99,21 @@ const TeamGenerator = () => {
   };
 
   // Can generate teams?
-  const canGenerate = selectedPlayers.length >= 6 && selectedPlayers.length % 2 === 0;
-  const minPlayers = 6;
+  const minPlayers = 2;
+  const canGenerate = selectedPlayers.length >= minPlayers;
   const needMorePlayers = selectedPlayers.length < minPlayers;
-  const needEvenPlayers = selectedPlayers.length >= minPlayers && selectedPlayers.length % 2 !== 0;
+  const hasOddPlayers = selectedPlayers.length % 2 !== 0;
+
+  // Determine game mode
+  const getGameMode = (count) => {
+    if (count === 2) return '1v1';
+    if (count === 4) return '2v2';
+    if (count === 6) return '3v3';
+    if (count === 8) return '4v4';
+    if (count === 10) return '5v5';
+    if (count % 2 === 0) return `${count/2}v${count/2}`;
+    return `${Math.ceil(count/2)}v${Math.floor(count/2)}`;
+  };
 
   // Export team composition
   const handleExport = async (suggestion, format) => {
@@ -253,7 +264,7 @@ const TeamGenerator = () => {
                         OPERATIVE SELECTION
                       </Heading>
                     </HStack>
-                    <HStack spacing={3}>
+                    <HStack spacing={3} flexWrap="wrap">
                       <Badge
                         colorScheme={canGenerate ? 'green' : 'orange'}
                         fontSize="lg"
@@ -263,15 +274,32 @@ const TeamGenerator = () => {
                       >
                         {selectedPlayers.length} SELECTED
                       </Badge>
+                      {selectedPlayers.length >= minPlayers && (
+                        <Badge
+                          colorScheme={hasOddPlayers ? 'yellow' : 'blue'}
+                          fontSize="lg"
+                          px={3}
+                          py={1}
+                          fontFamily="heading"
+                        >
+                          {getGameMode(selectedPlayers.length)}
+                        </Badge>
+                      )}
                       {needMorePlayers && (
                         <Text fontSize="sm" color="gray.500" fontFamily="heading">
                           (MIN {minPlayers} REQUIRED)
                         </Text>
                       )}
-                      {needEvenPlayers && (
-                        <Text fontSize="sm" color="orange.400" fontFamily="heading">
-                          (EVEN NUMBER REQUIRED)
-                        </Text>
+                      {hasOddPlayers && selectedPlayers.length >= minPlayers && (
+                        <Badge
+                          colorScheme="purple"
+                          fontSize="sm"
+                          px={2}
+                          py={1}
+                          fontFamily="heading"
+                        >
+                          💡 UNEVEN TEAMS - CONSIDER AI PLAYER
+                        </Badge>
                       )}
                     </HStack>
                   </VStack>
@@ -363,10 +391,31 @@ const TeamGenerator = () => {
                 fontFamily="heading"
                 textTransform="uppercase"
               >
-                {needMorePlayers
-                  ? `SELECT ${minPlayers - selectedPlayers.length} MORE OPERATIVES`
-                  : 'SELECT ONE MORE FOR EVEN TEAMS'}
+                SELECT {minPlayers - selectedPlayers.length} MORE OPERATIVE{minPlayers - selectedPlayers.length !== 1 ? 'S' : ''}
               </Text>
+            )}
+
+            {canGenerate && hasOddPlayers && (
+              <VStack spacing={2} mt={4}>
+                <Text
+                  color="purple.400"
+                  fontSize="sm"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                >
+                  ⚠️ UNEVEN TEAMS DETECTED
+                </Text>
+                <Text
+                  color="gray.500"
+                  fontSize="xs"
+                  fontFamily="heading"
+                  textAlign="center"
+                  maxW="md"
+                >
+                  Teams will be unbalanced ({getGameMode(selectedPlayers.length)}).
+                  Consider adding 1 more player or adding an AI to balance.
+                </Text>
+              </VStack>
             )}
           </Box>
 
