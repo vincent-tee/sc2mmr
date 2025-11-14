@@ -35,6 +35,13 @@ class ReplayParseError(Exception):
     pass
 
 
+class WinnerDeterminationError(Exception):
+    """Custom exception for when winner cannot be determined automatically."""
+    def __init__(self, message: str, team_stats: dict = None):
+        super().__init__(message)
+        self.team_stats = team_stats
+
+
 def calculate_replay_hash(file_path: str) -> str:
     """
     Calculate SHA256 hash of replay file to detect duplicates.
@@ -88,16 +95,43 @@ def normalize_race_name(race_name: str) -> Race:
     return Race.RANDOM
 
 
-def determine_game_mode(num_players: int) -> Optional[GameMode]:
+def determine_game_mode(num_players: int, team_1_size: int = None, team_2_size: int = None) -> Optional[GameMode]:
     """
-    Determine game mode from number of players.
+    Determine game mode from number of players and optional team sizes.
 
     Args:
         num_players: Total number of players in the game
+        team_1_size: Size of team 1 (optional, for uneven teams)
+        team_2_size: Size of team 2 (optional, for uneven teams)
 
     Returns:
         GameMode enum or None if invalid
     """
+    # If team sizes provided, use them for accurate mode detection
+    if team_1_size is not None and team_2_size is not None:
+        # Ensure larger team is first in the mode name (e.g., 4v3 not 3v4)
+        larger = max(team_1_size, team_2_size)
+        smaller = min(team_1_size, team_2_size)
+
+        mode_map = {
+            (2, 2): GameMode.TWO_V_TWO,
+            (3, 3): GameMode.THREE_V_THREE,
+            (4, 4): GameMode.FOUR_V_FOUR,
+            (5, 5): GameMode.FIVE_V_FIVE,
+            (2, 1): GameMode.TWO_V_ONE,
+            (3, 1): GameMode.THREE_V_ONE,
+            (3, 2): GameMode.THREE_V_TWO,
+            (4, 1): GameMode.FOUR_V_ONE,
+            (4, 2): GameMode.FOUR_V_TWO,
+            (4, 3): GameMode.FOUR_V_THREE,
+            (5, 1): GameMode.FIVE_V_ONE,
+            (5, 2): GameMode.FIVE_V_TWO,
+            (5, 3): GameMode.FIVE_V_THREE,
+            (5, 4): GameMode.FIVE_V_FOUR,
+        }
+        return mode_map.get((larger, smaller))
+
+    # Fallback: Try to infer from total players (even teams only)
     mode_mapping = {
         4: GameMode.TWO_V_TWO,
         6: GameMode.THREE_V_THREE,
@@ -216,14 +250,18 @@ def parse_replay(file_path: str) -> ReplayData:
         players: List[PlayerData] = []
         human_players = [p for p in replay.players if p.is_human]
 
-        # Determine game mode
+        # Count team sizes
         num_players = len(human_players)
-        game_mode = determine_game_mode(num_players)
+        team_1_size = sum(1 for p in human_players if p.team_id == 1)
+        team_2_size = sum(1 for p in human_players if p.team_id == 2)
+
+        # Determine game mode (supports both even and uneven teams)
+        game_mode = determine_game_mode(num_players, team_1_size, team_2_size)
 
         if game_mode is None:
             raise ReplayParseError(
-                f"Invalid number of players: {num_players}. "
-                "Expected 4 (2v2), 6 (3v3), 8 (4v4), or 10 (5v5)"
+                f"Unsupported game configuration: {team_1_size}v{team_2_size} ({num_players} total players). "
+                "Supported modes: 2v2, 3v3, 4v4, 5v5, and uneven teams (2v1, 3v2, 4v3, etc.)"
             )
 
         # Extract player data (first pass - basic info)
@@ -252,17 +290,6 @@ def parse_replay(file_path: str) -> ReplayData:
         teams = set(p.team for p in players)
         if len(teams) != 2:
             raise ReplayParseError(f"Expected 2 teams, found {len(teams)}")
-
-        # Validate team sizes are equal
-        team_sizes = {}
-        for team in teams:
-            team_sizes[team] = sum(1 for p in players if p.team == team)
-
-        if len(set(team_sizes.values())) != 1:
-            raise ReplayParseError(
-                f"Uneven team sizes: {team_sizes}. "
-                f"Expected equal teams for {game_mode.value}"
-            )
 
         # Check if winner is clear from results
         team_1_won = any(p.won for p in players if p.team == 1)
@@ -296,24 +323,27 @@ def parse_replay(file_path: str) -> ReplayData:
 
                 if game_duration_minutes < 10 and quit_players:
                     # Likely someone quit in early/mid game
-                    raise ReplayParseError(
+                    raise WinnerDeterminationError(
                         f"Cannot determine winner - player(s) quit at {game_duration_minutes:.1f} minutes. "
                         f"Quitters: {', '.join(quit_players)}. "
                         f"This replay was not played to completion and has ambiguous results.{stats_msg}\n\n"
-                        f"Suggestion: Manually verify which team should have won based on the stats above."
+                        f"Suggestion: Manually verify which team should have won based on the stats above.",
+                        team_stats=team_stats
                     )
                 elif not quit_players and game_duration_minutes < 3:
                     # Very short game, might be a crash or test
-                    raise ReplayParseError(
+                    raise WinnerDeterminationError(
                         f"Game too short ({game_duration_minutes:.1f} minutes) with no clear winner. "
-                        f"This may be a test game, crash, or incomplete replay.{stats_msg}"
+                        f"This may be a test game, crash, or incomplete replay.{stats_msg}",
+                        team_stats=team_stats
                     )
                 else:
                     # Other ambiguous scenario
-                    raise ReplayParseError(
+                    raise WinnerDeterminationError(
                         f"Unable to determine game winner from {game_duration_minutes:.1f} minute game. "
                         f"Game may have ended abnormally (disconnection, draw, or corrupted replay data).{stats_msg}\n\n"
-                        f"The stats are too close to automatically determine a winner. Manual verification recommended."
+                        f"The stats are too close to automatically determine a winner. Manual verification recommended.",
+                        team_stats=team_stats
                     )
 
             # Update player won status based on determined winner
@@ -356,16 +386,18 @@ def validate_replay_data(replay_data: ReplayData) -> Tuple[bool, Optional[str]]:
     if not replay_data.players:
         return False, "No players found in replay"
 
-    # Check game mode is valid
-    if replay_data.game_mode not in [GameMode.TWO_V_TWO, GameMode.THREE_V_THREE, GameMode.FOUR_V_FOUR, GameMode.FIVE_V_FIVE]:
+    # Check game mode is valid (all modes from GameMode enum are valid)
+    try:
+        GameMode(replay_data.game_mode)
+    except ValueError:
         return False, f"Invalid game mode: {replay_data.game_mode}"
 
-    # Check each team has same number of players
+    # Validate we have exactly 2 teams
     team_1_count = sum(1 for p in replay_data.players if p.team == 1)
     team_2_count = sum(1 for p in replay_data.players if p.team == 2)
 
-    if team_1_count != team_2_count:
-        return False, f"Uneven teams: Team 1 has {team_1_count}, Team 2 has {team_2_count}"
+    if team_1_count == 0 or team_2_count == 0:
+        return False, f"One team has no players: Team 1 has {team_1_count}, Team 2 has {team_2_count}"
 
     # Check exactly one winning team
     team_1_won = any(p.won for p in replay_data.players if p.team == 1)

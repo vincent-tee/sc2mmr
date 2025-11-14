@@ -11,7 +11,7 @@ import time
 
 from ..database import get_db
 from ..models import Match, MatchPlayer, Player, FailedUpload, UploadErrorType
-from ..replay_parser import parse_replay, validate_replay_data, ReplayParseError
+from ..replay_parser import parse_replay, validate_replay_data, ReplayParseError, WinnerDeterminationError
 from ..rating_system import RatingSystem
 from ..advanced_parser import parse_replay_advanced
 from ..impact_service import ImpactService
@@ -39,23 +39,57 @@ def _log_failed_upload(
     num_players: int = None,
     replay_file_path: str = None
 ):
-    """Log a failed replay upload to the database."""
+    """
+    Log a failed replay upload to the database.
+
+    If a failed upload with the same replay_hash already exists, it updates
+    the existing record instead of creating a duplicate.
+    """
     try:
-        failed_upload = FailedUpload(
-            filename=filename,
-            file_size_bytes=file_size,
-            replay_hash=replay_hash,
-            replay_file_path=replay_file_path,
-            error_type=error_type,
-            error_message=error_message[:500],  # Limit length
-            error_detail=error_detail[:2000] if error_detail else None,
-            map_name=map_name,
-            game_mode=game_mode,
-            duration_seconds=duration_seconds,
-            num_players=num_players
-        )
-        db.add(failed_upload)
-        db.commit()
+        # Check for existing failed upload with same hash
+        existing = None
+        if replay_hash:
+            existing = db.query(FailedUpload).filter(
+                FailedUpload.replay_hash == replay_hash
+            ).first()
+
+        if existing:
+            # Update existing record
+            existing.filename = filename  # Update to latest filename
+            existing.uploaded_at = datetime.utcnow()  # Update timestamp
+            existing.file_size_bytes = file_size
+            existing.error_type = error_type
+            existing.error_message = error_message[:500]
+            existing.error_detail = error_detail[:2000] if error_detail else None
+            # Update optional fields if provided
+            if map_name:
+                existing.map_name = map_name
+            if game_mode:
+                existing.game_mode = game_mode
+            if duration_seconds:
+                existing.duration_seconds = duration_seconds
+            if num_players:
+                existing.num_players = num_players
+            if replay_file_path:
+                existing.replay_file_path = replay_file_path
+            db.commit()
+        else:
+            # Create new record
+            failed_upload = FailedUpload(
+                filename=filename,
+                file_size_bytes=file_size,
+                replay_hash=replay_hash,
+                replay_file_path=replay_file_path,
+                error_type=error_type,
+                error_message=error_message[:500],  # Limit length
+                error_detail=error_detail[:2000] if error_detail else None,
+                map_name=map_name,
+                game_mode=game_mode,
+                duration_seconds=duration_seconds,
+                num_players=num_players
+            )
+            db.add(failed_upload)
+            db.commit()
     except Exception:
         # Don't let logging failures break the main flow
         db.rollback()
@@ -216,6 +250,52 @@ async def upload_replay(
                 total_time_ms=round(total_time_ms, 2)
             )
         )
+
+    except WinnerDeterminationError as e:
+        # Winner cannot be determined automatically - save replay for manual review
+        # Try to extract basic metadata from replay
+        import sc2reader
+        replay_hash = None
+        map_name = None
+        game_mode = None
+        duration_seconds = None
+        num_players = None
+
+        try:
+            # Re-load replay with minimal parsing to get metadata
+            replay = sc2reader.load_replay(tmp_file_path, load_level=2)
+            from ..replay_parser import calculate_replay_hash, determine_game_mode
+            replay_hash = calculate_replay_hash(tmp_file_path)
+            map_name = replay.map_name
+            duration_seconds = replay.game_length.seconds if hasattr(replay, 'game_length') else None
+            human_players = [p for p in replay.players if p.is_human]
+            num_players = len(human_players)
+            game_mode_enum = determine_game_mode(num_players)
+            game_mode = game_mode_enum.value if game_mode_enum else None
+        except Exception:
+            # If even basic parsing fails, continue without metadata
+            pass
+
+        # Save replay file for manual review
+        saved_path = None
+        if replay_hash:
+            saved_path = _save_failed_replay_file(content, file.filename, replay_hash)
+
+        _log_failed_upload(
+            db=db,
+            filename=file.filename,
+            file_size=len(content),
+            error_type=UploadErrorType.WINNER_DETERMINATION,
+            error_message=str(e),
+            error_detail=traceback.format_exc(),
+            replay_hash=replay_hash,
+            map_name=map_name,
+            game_mode=game_mode,
+            duration_seconds=duration_seconds,
+            num_players=num_players,
+            replay_file_path=saved_path
+        )
+        raise HTTPException(status_code=400, detail=f"Winner determination failed: {str(e)}")
 
     except ReplayParseError as e:
         # Log failed upload
