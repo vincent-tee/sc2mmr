@@ -380,9 +380,11 @@ def parse_replay(file_path: str) -> ReplayData:
             replay_hash=replay_hash
         )
 
-    except ReplayParseError:
+    except (ReplayParseError, WinnerDeterminationError):
+        # Re-raise these exceptions without wrapping
         raise
     except Exception as e:
+        # Wrap all other exceptions as ReplayParseError
         raise ReplayParseError(f"Failed to parse replay: {str(e)}") from e
 
 
