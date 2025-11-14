@@ -265,31 +265,46 @@ const FailedUploads = () => {
         {/* Filters */}
         <Card bg={cardBg}>
           <CardBody>
-            <HStack spacing={4}>
-              <Icon as={FiFilter} color="gray.500" />
-              <Select
-                placeholder="All Error Types"
-                value={errorTypeFilter}
-                onChange={(e) => setErrorTypeFilter(e.target.value)}
-                maxW="300px"
-              >
-                <option value="parse_error">Parse Error</option>
-                <option value="validation_error">Validation Error</option>
-                <option value="winner_determination">Winner Determination</option>
-                <option value="unsupported_mode">Unsupported Mode</option>
-                <option value="corrupt_file">Corrupt File</option>
-                <option value="other">Other</option>
-              </Select>
+            <HStack spacing={4} justify="space-between">
+              <HStack spacing={4}>
+                <Icon as={FiFilter} color="gray.500" />
+                <Select
+                  placeholder="All Error Types"
+                  value={errorTypeFilter}
+                  onChange={(e) => setErrorTypeFilter(e.target.value)}
+                  maxW="300px"
+                >
+                  <option value="parse_error">Parse Error</option>
+                  <option value="validation_error">Validation Error</option>
+                  <option value="winner_determination">Winner Determination</option>
+                  <option value="unsupported_mode">Unsupported Mode</option>
+                  <option value="corrupt_file">Corrupt File</option>
+                  <option value="other">Other</option>
+                </Select>
 
-              <Select
-                placeholder="All Statuses"
-                value={reviewedFilter}
-                onChange={(e) => setReviewedFilter(e.target.value)}
-                maxW="200px"
-              >
-                <option value="false">Not Reviewed</option>
-                <option value="true">Reviewed</option>
-              </Select>
+                <Select
+                  placeholder="All Statuses"
+                  value={reviewedFilter}
+                  onChange={(e) => setReviewedFilter(e.target.value)}
+                  maxW="200px"
+                >
+                  <option value="false">Not Reviewed</option>
+                  <option value="true">Reviewed</option>
+                </Select>
+              </HStack>
+
+              {(errorTypeFilter || reviewedFilter) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setErrorTypeFilter('');
+                    setReviewedFilter('');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
             </HStack>
           </CardBody>
         </Card>

@@ -60,21 +60,25 @@ const AdaptiveModel = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.700');
 
   // Fetch weight suggestions
-  const { data: suggestions, isLoading: suggestionsLoading, refetch: refetchSuggestions } = useQuery({
+  const { data: suggestions, isLoading: suggestionsLoading, refetch: refetchSuggestions, isFetching: suggestionsFetching } = useQuery({
     queryKey: ['adaptive-suggestions'],
     queryFn: async () => {
       const response = await apiClient.get('/adaptive/suggest-weights');
       return response.data;
     },
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0, // Don't cache
   });
 
   // Fetch model performance
-  const { data: performance, isLoading: performanceLoading } = useQuery({
+  const { data: performance, isLoading: performanceLoading, refetch: refetchPerformance, isFetching: performanceFetching } = useQuery({
     queryKey: ['model-performance'],
     queryFn: async () => {
       const response = await apiClient.get('/adaptive/model-performance');
       return response.data;
     },
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0, // Don't cache
   });
 
   const getSuggestionStatus = (suggestion) => {
@@ -147,9 +151,30 @@ const AdaptiveModel = () => {
             leftIcon={<FiRefreshCw />}
             size="sm"
             variant="ghost"
-            onClick={() => {
-              refetchSuggestions();
-              queryClient.invalidateQueries(['model-performance']);
+            isLoading={suggestionsFetching || performanceFetching}
+            loadingText="Analyzing..."
+            onClick={async () => {
+              try {
+                await Promise.all([
+                  refetchSuggestions(),
+                  refetchPerformance()
+                ]);
+                toast({
+                  title: 'Analysis refreshed',
+                  description: 'Model performance recalculated from latest match data',
+                  status: 'success',
+                  duration: 3000,
+                  isClosable: true,
+                });
+              } catch (error) {
+                toast({
+                  title: 'Refresh failed',
+                  description: error.message || 'Failed to refresh analysis',
+                  status: 'error',
+                  duration: 5000,
+                  isClosable: true,
+                });
+              }
             }}
           >
             Refresh Analysis

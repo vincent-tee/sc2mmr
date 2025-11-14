@@ -2,7 +2,7 @@
  * Upload Replays Page
  * Drag-and-drop bulk upload interface for SC2 replay files
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -54,14 +54,33 @@ const UploadReplays = () => {
   const dropzoneBg = useColorModeValue('white', 'gray.800');
   const dropzoneBorder = useColorModeValue('gray.300', 'gray.600');
 
+  // Check if any files are currently uploading
+  const hasUploadsInProgress = files.some(
+    (file) => file.status === UPLOAD_STATUS.UPLOADING || file.status === UPLOAD_STATUS.PROCESSING
+  );
+
+  // Warn user before leaving page if uploads are in progress
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUploadsInProgress) {
+        e.preventDefault();
+        e.returnValue = 'Uploads are still in progress. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUploadsInProgress]);
+
   // Process a single file
   const processFile = async (file) => {
     // Update status to uploading
     updateFileStatus(file.id, UPLOAD_STATUS.UPLOADING, null, 0);
 
     try {
-      // Upload the file
-      const response = await replaysApi.upload(file.file, (progressEvent) => {
+      // Upload the file with advanced metrics (required for match commentary)
+      const response = await replaysApi.uploadAdvanced(file.file, (progressEvent) => {
         const percentCompleted = Math.round(
           (progressEvent.loaded * 100) / progressEvent.total
         );
