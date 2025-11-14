@@ -912,8 +912,11 @@ def set_manual_winner(
     Raises:
         HTTPException: If upload not found, file missing, or processing fails
     """
+    logger.info(f"📌 Manual winner determination requested for upload_id={upload_id}, winner_team={request.winner_team}")
+
     # Validate winner_team
     if request.winner_team not in [1, 2]:
+        logger.warning(f"❌ Invalid winner_team value: {request.winner_team}")
         raise HTTPException(
             status_code=400,
             detail="winner_team must be 1 or 2"
@@ -923,20 +926,27 @@ def set_manual_winner(
     failed_upload = db.query(FailedUpload).filter(FailedUpload.id == upload_id).first()
 
     if not failed_upload:
+        logger.warning(f"❌ Failed upload not found: upload_id={upload_id}")
         raise HTTPException(status_code=404, detail="Failed upload not found")
+
+    logger.info(f"✓ Found failed upload: filename='{failed_upload.filename}', error_type='{failed_upload.error_type}'")
 
     # Check if replay file was saved
     if not failed_upload.replay_file_path or not os.path.exists(failed_upload.replay_file_path):
+        logger.error(f"❌ Replay file not found at path: {failed_upload.replay_file_path}")
         raise HTTPException(
             status_code=404,
             detail="Replay file not found. Original file may not have been saved."
         )
+
+    logger.info(f"✓ Replay file exists at: {failed_upload.replay_file_path}")
 
     try:
         start_time = time.time()
 
         # Parse the replay with advanced metrics
         # Pass manual winner to parser so it can use it during parsing instead of auto-determining
+        logger.info(f"🔄 Starting replay parsing with manual winner: Team {request.winner_team}")
         parse_start = time.time()
         advanced_data = parse_replay_advanced(
             failed_upload.replay_file_path,
@@ -944,21 +954,27 @@ def set_manual_winner(
         )
         replay_data = advanced_data.basic_data
         parse_time_ms = (time.time() - parse_start) * 1000
+        logger.info(f"✓ Replay parsed successfully in {parse_time_ms:.2f}ms - {len(replay_data.players)} players, map: {replay_data.map_name}")
 
         # Validate replay data
+        logger.info("🔄 Validating replay data...")
         validation_start = time.time()
         is_valid, error_msg = validate_replay_data(replay_data)
         if not is_valid:
+            logger.error(f"❌ Validation failed: {error_msg}")
             raise HTTPException(status_code=400, detail=f"Validation failed: {error_msg}")
         validation_time_ms = (time.time() - validation_start) * 1000
+        logger.info(f"✓ Validation passed in {validation_time_ms:.2f}ms")
 
         # Check for duplicate
+        logger.info("🔄 Checking for duplicate replays...")
         duplicate_start = time.time()
         existing_match = db.query(Match).filter(
             Match.replay_hash == replay_data.replay_hash
         ).first()
 
         if existing_match:
+            logger.warning(f"⚠️ Duplicate replay detected: existing match_id={existing_match.id}")
             # Delete the failed upload record since we're reprocessing
             db.delete(failed_upload)
             db.commit()
@@ -967,8 +983,10 @@ def set_manual_winner(
                 detail=f"Replay already processed. Match ID: {existing_match.id}"
             )
         duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
+        logger.info(f"✓ No duplicate found in {duplicate_check_time_ms:.2f}ms")
 
         # Create match record
+        logger.info("🔄 Creating match record...")
         match = Match(
             played_at=replay_data.played_at,
             game_mode=replay_data.game_mode,
@@ -979,12 +997,17 @@ def set_manual_winner(
         )
         db.add(match)
         db.flush()  # Get match.id
+        logger.info(f"✓ Match created: match_id={match.id}")
 
         # Update ratings and create match_players
+        logger.info("🔄 Updating player ratings...")
         rating_start = time.time()
         RatingSystem.update_ratings_from_match(db, replay_data, match)
+        logger.info(f"✓ Ratings updated for {len(replay_data.players)} players")
 
         # Save advanced metrics for each player
+        logger.info("🔄 Saving advanced metrics for each player...")
+        metrics_saved = 0
         for player_metrics in advanced_data.player_metrics:
             # Find the corresponding MatchPlayer
             player = db.query(Player).filter(Player.name == player_metrics.player_name).first()
@@ -1000,20 +1023,30 @@ def set_manual_winner(
 
                     # Update player averages
                     ImpactService.update_player_averages(db, player.id)
+                    metrics_saved += 1
+
+        logger.info(f"✓ Advanced metrics saved for {metrics_saved} players")
 
         # Update synergies
+        logger.info("🔄 Updating player synergies...")
         ImpactService.update_synergies(db, match.id)
+        logger.info("✓ Synergies updated")
 
         # Apply performance-based rating adjustments
+        logger.info("🔄 Applying performance-based rating adjustments...")
         PerformanceRatingAdjuster.adjust_ratings_for_match(db, match.id)
+        logger.info("✓ Performance adjustments applied")
 
         rating_time_ms = (time.time() - rating_start) * 1000
 
         # Delete the failed upload record since processing succeeded
         db.delete(failed_upload)
         db.commit()
+        logger.info(f"✓ Failed upload record deleted (id={upload_id})")
 
         total_time_ms = (time.time() - start_time) * 1000
+
+        logger.info(f"✅ Manual winner determination completed successfully in {total_time_ms:.2f}ms - Match ID: {match.id}")
 
         return ReplayUploadResponse(
             match_id=match.id,
