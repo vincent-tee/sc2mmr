@@ -133,6 +133,8 @@ class MatchResponse(BaseModel):
     map_name: str
     duration_seconds: int
     replay_hash: str
+    predicted_team1_win_prob: Optional[float] = None
+    predicted_team2_win_prob: Optional[float] = None
 
     class Config:
         from_attributes = True
