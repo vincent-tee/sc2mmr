@@ -12,12 +12,13 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.database import engine
+from sqlalchemy import text
 
 def run_migration():
     """Add replay_file_path column to failed_uploads table."""
     with engine.connect() as connection:
         try:
-            connection.execute("ALTER TABLE failed_uploads ADD COLUMN replay_file_path VARCHAR")
+            connection.execute(text("ALTER TABLE failed_uploads ADD COLUMN replay_file_path VARCHAR"))
             connection.commit()
             print("✓ Successfully added replay_file_path column to failed_uploads table")
         except Exception as e:
