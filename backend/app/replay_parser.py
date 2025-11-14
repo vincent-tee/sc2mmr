@@ -440,7 +440,14 @@ def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> Re
                 winning_team = manual_winner_team
                 team_stats = None  # Stats not needed for manual determination
             else:
-                winning_team, team_stats = determine_winner_from_stats(replay, human_players)
+                # Try tracker events first (more reliable)
+                logger.info("Attempting winner determination from tracker events")
+                winning_team, team_stats = determine_winner_from_tracker_events(replay, human_players)
+
+                # If tracker events didn't work, fall back to player.stats
+                if winning_team is None and all(p.supply == 0 for p in team_stats['team_1']['players'] + team_stats['team_2']['players']):
+                    logger.info("Tracker events had no data, falling back to player.stats method")
+                    winning_team, team_stats = determine_winner_from_stats(replay, human_players)
 
             if winning_team is None:
                 # Unable to determine winner even with stats
