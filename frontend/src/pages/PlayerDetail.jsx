@@ -2,6 +2,7 @@
  * Player Detail Page
  * Shows comprehensive player information including stats and match history
  */
+import { useState } from 'react';
 import {
   Box,
   Container,
@@ -33,6 +34,7 @@ import {
   GridItem,
   Progress,
   Flex,
+  ButtonGroup,
 } from '@chakra-ui/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -44,6 +46,7 @@ import { formatDuration, formatWinRate } from '../utils/formatting';
 const PlayerDetail = () => {
   const { playerId } = useParams();
   const navigate = useNavigate();
+  const [matchesLimit, setMatchesLimit] = useState(10);
 
   const cardBg = useColorModeValue('white', 'gray.800');
   const teamBg = useColorModeValue('gray.50', 'gray.700');
@@ -52,9 +55,9 @@ const PlayerDetail = () => {
 
   // Fetch player details
   const { data: playerData, isLoading } = useQuery({
-    queryKey: ['player', playerId],
+    queryKey: ['player', playerId, matchesLimit],
     queryFn: async () => {
-      const response = await playersApi.getById(playerId, 20);
+      const response = await playersApi.getById(playerId, matchesLimit);
       return response.data;
     },
   });
@@ -246,7 +249,46 @@ const PlayerDetail = () => {
         {/* Recent Matches */}
         <Card bg={cardBg}>
           <CardBody>
-            <Heading size="md" mb={4}>Recent Matches</Heading>
+            <HStack justify="space-between" align="center" mb={4}>
+              <Heading size="md">
+                Recent Matches
+                {playerData.recent_matches && playerData.recent_matches.length > 0 && (
+                  <Badge ml={2} colorScheme="blue">
+                    Showing {playerData.recent_matches.length}{playerData.total_games > matchesLimit ? ` of ${playerData.total_games}` : ''}
+                  </Badge>
+                )}
+              </Heading>
+              {playerData.total_games > 10 && (
+                <ButtonGroup size="sm" variant="outline">
+                  <Button
+                    onClick={() => setMatchesLimit(10)}
+                    isActive={matchesLimit === 10}
+                  >
+                    10
+                  </Button>
+                  <Button
+                    onClick={() => setMatchesLimit(25)}
+                    isActive={matchesLimit === 25}
+                  >
+                    25
+                  </Button>
+                  <Button
+                    onClick={() => setMatchesLimit(50)}
+                    isActive={matchesLimit === 50}
+                  >
+                    50
+                  </Button>
+                  {playerData.total_games > 50 && (
+                    <Button
+                      onClick={() => setMatchesLimit(playerData.total_games)}
+                      isActive={matchesLimit === playerData.total_games}
+                    >
+                      All ({playerData.total_games})
+                    </Button>
+                  )}
+                </ButtonGroup>
+              )}
+            </HStack>
             {playerData.recent_matches && playerData.recent_matches.length > 0 ? (
               <TableContainer>
                 <Table variant="simple" size="sm">
