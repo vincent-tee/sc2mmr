@@ -95,6 +95,41 @@ export const formatWinRate = (rate) => {
 };
 
 /**
+ * Format win probability as percentage (alias for formatWinRate)
+ */
+export const formatWinProbability = (probability) => {
+  return formatWinRate(probability);
+};
+
+/**
+ * Check if a match was an upset based on win probability
+ * Returns true if the underdog (< 40% predicted chance) won
+ */
+export const isUpset = (teamWon, team1WinProb, team2WinProb) => {
+  if (!team1WinProb || !team2WinProb) return false;
+
+  if (teamWon === 1) {
+    return team1WinProb < 0.4;
+  } else if (teamWon === 2) {
+    return team2WinProb < 0.4;
+  }
+  return false;
+};
+
+/**
+ * Get upset indicator emoji/text
+ */
+export const getUpsetIndicator = (teamWon, team1WinProb, team2WinProb) => {
+  if (isUpset(teamWon, team1WinProb, team2WinProb)) {
+    const winProb = teamWon === 1 ? team1WinProb : team2WinProb;
+    if (winProb < 0.25) return '🚨 MAJOR UPSET';
+    if (winProb < 0.35) return '⚠️ UPSET';
+    return '📈 UNDERDOG WIN';
+  }
+  return null;
+};
+
+/**
  * Format game duration
  */
 export const formatDuration = (seconds) => {

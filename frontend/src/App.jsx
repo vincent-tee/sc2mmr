@@ -1,6 +1,6 @@
 /**
  * Main App Component
- * Sets up routing and layout
+ * Sets up routing and layout with individual error boundaries per page
  */
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Box } from '@chakra-ui/react';
@@ -22,20 +22,18 @@ function App() {
     <Router>
       <Box minH="100vh" position="relative" zIndex={1}>
         <Navigation />
-        <ErrorBoundary>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/balance" element={<TeamGenerator />} />
-            <Route path="/upload" element={<UploadReplays />} />
-            <Route path="/failed-uploads" element={<FailedUploads />} />
-            <Route path="/players" element={<Players />} />
-            <Route path="/players/:playerId" element={<PlayerDetail />} />
-            <Route path="/history" element={<MatchHistory />} />
-            <Route path="/history/:matchId" element={<MatchDetail />} />
-            <Route path="/rating-system" element={<RatingSystem />} />
-            <Route path="/adaptive-model" element={<AdaptiveModel />} />
-          </Routes>
-        </ErrorBoundary>
+        <Routes>
+          <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
+          <Route path="/balance" element={<ErrorBoundary><TeamGenerator /></ErrorBoundary>} />
+          <Route path="/upload" element={<ErrorBoundary><UploadReplays /></ErrorBoundary>} />
+          <Route path="/failed-uploads" element={<ErrorBoundary><FailedUploads /></ErrorBoundary>} />
+          <Route path="/players" element={<ErrorBoundary><Players /></ErrorBoundary>} />
+          <Route path="/players/:playerId" element={<ErrorBoundary><PlayerDetail /></ErrorBoundary>} />
+          <Route path="/history" element={<ErrorBoundary><MatchHistory /></ErrorBoundary>} />
+          <Route path="/history/:matchId" element={<ErrorBoundary><MatchDetail /></ErrorBoundary>} />
+          <Route path="/rating-system" element={<ErrorBoundary><RatingSystem /></ErrorBoundary>} />
+          <Route path="/adaptive-model" element={<ErrorBoundary><AdaptiveModel /></ErrorBoundary>} />
+        </Routes>
       </Box>
     </Router>
   );

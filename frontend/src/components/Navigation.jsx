@@ -53,13 +53,29 @@ const Navigation = () => {
   return (
     <Box
       bg={bgColor}
-      borderBottom="2px"
+      borderBottom="3px"
       borderColor={borderColor}
       position="sticky"
       top={0}
       zIndex={10}
-      boxShadow="0 4px 20px rgba(0, 212, 255, 0.1)"
-      backdropFilter="blur(10px)"
+      boxShadow="0 6px 30px rgba(0, 212, 255, 0.3), 0 0 60px rgba(255, 179, 0, 0.1)"
+      backdropFilter="blur(16px)"
+      _before={{
+        content: '""',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '3px',
+        background: 'linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.8), rgba(255, 179, 0, 0.8), transparent)',
+        animation: 'slideGlow 3s ease-in-out infinite',
+      }}
+      sx={{
+        '@keyframes slideGlow': {
+          '0%, 100%': { transform: 'translateX(-100%)' },
+          '50%': { transform: 'translateX(100%)' },
+        },
+      }}
     >
       <Container maxW="container.xl">
         <Flex h={16} alignItems="center" justifyContent="space-between">
@@ -77,7 +93,18 @@ const Navigation = () => {
                 fontFamily="heading"
                 position="relative"
                 clipPath="polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 calc(100% - 8px))"
-                boxShadow="0 0 20px rgba(0, 212, 255, 0.4)"
+                boxShadow="0 0 30px rgba(0, 212, 255, 0.6), 0 0 60px rgba(0, 212, 255, 0.3)"
+                animation="logoPulse 2s ease-in-out infinite"
+                sx={{
+                  '@keyframes logoPulse': {
+                    '0%, 100%': {
+                      boxShadow: '0 0 30px rgba(0, 212, 255, 0.6), 0 0 60px rgba(0, 212, 255, 0.3)',
+                    },
+                    '50%': {
+                      boxShadow: '0 0 40px rgba(0, 212, 255, 0.8), 0 0 80px rgba(255, 179, 0, 0.4)',
+                    },
+                  },
+                }}
               >
                 SC2
                 {/* Top-left corner bracket */}
