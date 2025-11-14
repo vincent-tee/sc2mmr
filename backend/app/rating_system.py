@@ -74,6 +74,49 @@ class RatingSystem:
         return 1000 + (40 * mu) - (120 * sigma)
 
     @staticmethod
+    def calculate_win_probability(
+        team1_ratings: List[trueskill.Rating],
+        team2_ratings: List[trueskill.Rating]
+    ) -> Tuple[float, float]:
+        """
+        Calculate win probability for each team using TrueSkill.
+
+        This uses the Gaussian CDF to calculate the probability that
+        team 1's skill is greater than team 2's skill.
+
+        Args:
+            team1_ratings: List of TrueSkill Rating objects for team 1
+            team2_ratings: List of TrueSkill Rating objects for team 2
+
+        Returns:
+            Tuple of (team1_win_prob, team2_win_prob)
+            Both values are between 0.0 and 1.0 and sum to 1.0
+        """
+        import math
+        from scipy.stats import norm
+
+        # Calculate team strengths (sum of mu values)
+        team1_mu = sum(r.mu for r in team1_ratings)
+        team2_mu = sum(r.mu for r in team2_ratings)
+
+        # Calculate team uncertainties (sum of sigma squared, then sqrt)
+        team1_sigma_sq = sum(r.sigma ** 2 for r in team1_ratings)
+        team2_sigma_sq = sum(r.sigma ** 2 for r in team2_ratings)
+
+        # Total variance
+        total_sigma = math.sqrt(team1_sigma_sq + team2_sigma_sq)
+
+        # Difference in team strengths
+        delta_mu = team1_mu - team2_mu
+
+        # Calculate win probability using cumulative distribution function
+        # P(team1 wins) = P(team1_strength > team2_strength)
+        team1_win_prob = norm.cdf(delta_mu / total_sigma)
+        team2_win_prob = 1.0 - team1_win_prob
+
+        return (team1_win_prob, team2_win_prob)
+
+    @staticmethod
     def apply_skill_decay(player: Player, days_since_last_game: int) -> None:
         """
         Increase uncertainty (sigma) for players who haven't played recently.
@@ -240,6 +283,13 @@ class RatingSystem:
             trueskill.Rating(mu=player.mu, sigma=player.sigma)
             for player, _ in team_2_db
         ]
+
+        # Calculate and store win probabilities BEFORE the match
+        team1_win_prob, team2_win_prob = RatingSystem.calculate_win_probability(
+            team_1_ratings, team_2_ratings
+        )
+        match.predicted_team1_win_prob = team1_win_prob
+        match.predicted_team2_win_prob = team2_win_prob
 
         # Determine winner (ranks: 0 for winner, 1 for loser)
         team_1_won = team_1_players[0].won

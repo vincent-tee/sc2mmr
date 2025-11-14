@@ -142,6 +142,11 @@ class Match(Base):
     replay_file_path = Column(String, nullable=True)
     replay_hash = Column(String, unique=True, nullable=True, index=True)  # To prevent duplicate uploads
 
+    # Win probability predictions (calculated before match from TrueSkill ratings)
+    predicted_team1_win_prob = Column(Float, nullable=True)  # 0.0 to 1.0
+    predicted_team2_win_prob = Column(Float, nullable=True)  # 0.0 to 1.0
+    # Note: team1 + team2 should equal 1.0 (complementary probabilities)
+
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

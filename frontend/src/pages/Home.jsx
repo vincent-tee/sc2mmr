@@ -21,6 +21,7 @@ import { useQuery } from '@tanstack/react-query';
 import { playersApi, replaysApi } from '../api/endpoints';
 import TacticalCard from '../components/TacticalCard';
 import HexagonalStat from '../components/HexagonalStat';
+import { formatDateOnly } from '../utils/formatting';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -414,7 +415,7 @@ const Home = () => {
                             {match.map_name}
                           </Text>
                           <Text fontSize="sm" color="gray.500" fontFamily="heading">
-                            {match.game_mode} • {new Date(match.played_at).toLocaleDateString()}
+                            {match.game_mode} • {formatDateOnly(match.played_at)}
                           </Text>
                         </VStack>
                       </HStack>

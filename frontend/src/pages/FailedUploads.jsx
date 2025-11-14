@@ -50,15 +50,19 @@ import {
   FiCheck,
   FiFilter,
   FiEye,
+  FiChevronDown,
+  FiChevronRight,
 } from 'react-icons/fi';
 import { replaysApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
 import EmptyState from '../components/EmptyState';
+import { formatDateOnly, formatTimeOnly } from '../utils/formatting';
 
 const FailedUploads = () => {
   const [errorTypeFilter, setErrorTypeFilter] = useState('');
   const [reviewedFilter, setReviewedFilter] = useState('');
   const [selectedUpload, setSelectedUpload] = useState(null);
+  const [expandedRow, setExpandedRow] = useState(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isDetailsOpen, onOpen: onDetailsOpen, onClose: onDetailsClose } = useDisclosure();
   const [reviewNotes, setReviewNotes] = useState('');
@@ -68,6 +72,9 @@ const FailedUploads = () => {
   const queryClient = useQueryClient();
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
+  const errorBoxBg = useColorModeValue('gray.50', 'gray.900');
+  const hoverBg = useColorModeValue('gray.50', 'gray.700');
+  const expandedRowBg = useColorModeValue('gray.50', 'gray.900');
 
   // Fetch failed uploads
   const { data: failedUploads, isLoading } = useQuery({
@@ -259,31 +266,46 @@ const FailedUploads = () => {
         {/* Filters */}
         <Card bg={cardBg}>
           <CardBody>
-            <HStack spacing={4}>
-              <Icon as={FiFilter} color="gray.500" />
-              <Select
-                placeholder="All Error Types"
-                value={errorTypeFilter}
-                onChange={(e) => setErrorTypeFilter(e.target.value)}
-                maxW="300px"
-              >
-                <option value="parse_error">Parse Error</option>
-                <option value="validation_error">Validation Error</option>
-                <option value="winner_determination">Winner Determination</option>
-                <option value="unsupported_mode">Unsupported Mode</option>
-                <option value="corrupt_file">Corrupt File</option>
-                <option value="other">Other</option>
-              </Select>
+            <HStack spacing={4} justify="space-between">
+              <HStack spacing={4}>
+                <Icon as={FiFilter} color="gray.500" />
+                <Select
+                  placeholder="All Error Types"
+                  value={errorTypeFilter}
+                  onChange={(e) => setErrorTypeFilter(e.target.value)}
+                  maxW="300px"
+                >
+                  <option value="parse_error">Parse Error</option>
+                  <option value="validation_error">Validation Error</option>
+                  <option value="winner_determination">Winner Determination</option>
+                  <option value="unsupported_mode">Unsupported Mode</option>
+                  <option value="corrupt_file">Corrupt File</option>
+                  <option value="other">Other</option>
+                </Select>
 
-              <Select
-                placeholder="All Statuses"
-                value={reviewedFilter}
-                onChange={(e) => setReviewedFilter(e.target.value)}
-                maxW="200px"
-              >
-                <option value="false">Not Reviewed</option>
-                <option value="true">Reviewed</option>
-              </Select>
+                <Select
+                  placeholder="All Statuses"
+                  value={reviewedFilter}
+                  onChange={(e) => setReviewedFilter(e.target.value)}
+                  maxW="200px"
+                >
+                  <option value="false">Not Reviewed</option>
+                  <option value="true">Reviewed</option>
+                </Select>
+              </HStack>
+
+              {(errorTypeFilter || reviewedFilter) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setErrorTypeFilter('');
+                    setReviewedFilter('');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
             </HStack>
           </CardBody>
         </Card>
@@ -301,145 +323,186 @@ const FailedUploads = () => {
           />
         ) : (
           <Card bg={cardBg}>
-            <CardBody>
-              <TableContainer>
+            <CardBody p={0}>
+              <Box overflowX="auto" maxW="100%">
                 <Table variant="simple" size="sm">
                   <Thead>
                     <Tr>
-                      <Th>Filename</Th>
-                      <Th>Error Type</Th>
-                      <Th>Error Message</Th>
-                      <Th>Match Info</Th>
-                      <Th>Uploaded</Th>
-                      <Th>Status</Th>
-                      <Th>Actions</Th>
+                      <Th w="40px"></Th>
+                      <Th minW="180px">Filename</Th>
+                      <Th minW="140px">Error Type</Th>
+                      <Th minW="100px">Date</Th>
+                      <Th minW="80px">Status</Th>
+                      <Th minW="120px">Actions</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {failedUploads.map((upload) => (
-                      <Tr
-                        key={upload.id}
-                        opacity={upload.reviewed ? 0.6 : 1}
-                        borderLeft="4px solid"
-                        borderLeftColor={
-                          upload.reviewed ? 'green.500' : `${getErrorColor(upload.error_type)}.500`
-                        }
-                      >
-                        <Td>
-                          <Tooltip label={upload.filename}>
-                            <Text fontSize="sm" isTruncated maxW="200px">
-                              {upload.filename}
-                            </Text>
-                          </Tooltip>
-                          {upload.file_size_bytes && (
-                            <Text fontSize="xs" color="gray.500">
-                              {(upload.file_size_bytes / 1024).toFixed(1)} KB
-                            </Text>
-                          )}
-                        </Td>
-                        <Td>
-                          <Badge
-                            colorScheme={getErrorColor(upload.error_type)}
-                            display="flex"
-                            alignItems="center"
-                            gap={1}
-                            w="fit-content"
-                          >
-                            <Icon as={getErrorIcon(upload.error_type)} />
-                            {formatErrorType(upload.error_type)}
-                          </Badge>
-                        </Td>
-                        <Td>
-                          <VStack align="start" spacing={1}>
-                            <Text fontSize="sm" color="gray.600" noOfLines={3} maxW="400px">
-                              {upload.error_message}
-                            </Text>
-                            <Button
-                              size="xs"
-                              leftIcon={<FiEye />}
-                              variant="ghost"
-                              colorScheme="blue"
-                              onClick={() => openDetailsModal(upload)}
+                      <>
+                        <Tr
+                          key={upload.id}
+                          opacity={upload.reviewed ? 0.6 : 1}
+                          borderLeft="4px solid"
+                          borderLeftColor={
+                            upload.reviewed ? 'green.500' : `${getErrorColor(upload.error_type)}.500`
+                          }
+                          _hover={{ bg: hoverBg }}
+                          cursor="pointer"
+                          onClick={() => setExpandedRow(expandedRow === upload.id ? null : upload.id)}
+                        >
+                          <Td p={2}>
+                            <Icon
+                              as={expandedRow === upload.id ? FiChevronDown : FiChevronRight}
+                              color="gray.500"
+                              boxSize={4}
+                            />
+                          </Td>
+                          <Td>
+                            <Tooltip label={upload.filename}>
+                              <VStack align="start" spacing={0}>
+                                <Text fontSize="sm" isTruncated maxW="180px" fontWeight="medium">
+                                  {upload.filename}
+                                </Text>
+                                {upload.file_size_bytes && (
+                                  <Text fontSize="xs" color="gray.500">
+                                    {(upload.file_size_bytes / 1024).toFixed(1)} KB
+                                  </Text>
+                                )}
+                              </VStack>
+                            </Tooltip>
+                          </Td>
+                          <Td>
+                            <Badge
+                              colorScheme={getErrorColor(upload.error_type)}
+                              display="flex"
+                              alignItems="center"
+                              gap={1}
+                              w="fit-content"
+                              fontSize="xs"
                             >
-                              View Full Error
-                            </Button>
-                          </VStack>
-                        </Td>
-                        <Td>
-                          {upload.map_name || upload.game_mode ? (
-                            <VStack align="start" spacing={0}>
-                              {upload.map_name && (
-                                <Text fontSize="xs">{upload.map_name}</Text>
-                              )}
-                              {upload.game_mode && (
-                                <Badge size="sm" fontSize="xx-small">
-                                  {upload.game_mode}
-                                </Badge>
-                              )}
-                            </VStack>
-                          ) : (
-                            <Text fontSize="xs" color="gray.500">
-                              N/A
-                            </Text>
-                          )}
-                        </Td>
-                        <Td>
-                          <Text fontSize="xs">
-                            {new Date(upload.uploaded_at).toLocaleDateString()}
-                          </Text>
-                          <Text fontSize="xs" color="gray.500">
-                            {new Date(upload.uploaded_at).toLocaleTimeString()}
-                          </Text>
-                        </Td>
-                        <Td>
-                          {upload.reviewed ? (
-                            <Badge colorScheme="green" display="flex" alignItems="center" gap={1}>
-                              <Icon as={FiCheck} />
-                              Reviewed
+                              <Icon as={getErrorIcon(upload.error_type)} boxSize={3} />
+                              {formatErrorType(upload.error_type)}
                             </Badge>
-                          ) : (
-                            <Badge colorScheme="gray">Pending</Badge>
-                          )}
-                        </Td>
-                        <Td>
-                          <VStack spacing={2} align="stretch">
-                            {upload.error_type === 'winner_determination' && !upload.reviewed && (
-                              <HStack spacing={2}>
+                          </Td>
+                          <Td>
+                            <Text fontSize="xs">
+                              {formatDateOnly(upload.uploaded_at)}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500">
+                              {formatTimeOnly(upload.uploaded_at)}
+                            </Text>
+                          </Td>
+                          <Td>
+                            {upload.reviewed ? (
+                              <Badge colorScheme="green" display="flex" alignItems="center" gap={1} fontSize="xs">
+                                <Icon as={FiCheck} boxSize={3} />
+                                Reviewed
+                              </Badge>
+                            ) : (
+                              <Badge colorScheme="gray" fontSize="xs">Pending</Badge>
+                            )}
+                          </Td>
+                          <Td onClick={(e) => e.stopPropagation()}>
+                            <HStack spacing={1}>
+                              <Tooltip label="View Details">
                                 <Button
-                                  size="sm"
+                                  size="xs"
+                                  variant="ghost"
                                   colorScheme="blue"
-                                  onClick={() => handleSetWinner(upload, 1)}
-                                  isLoading={setWinnerMutation.isLoading}
+                                  onClick={() => openDetailsModal(upload)}
                                 >
-                                  Team 1 Won
+                                  <Icon as={FiEye} />
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  colorScheme="orange"
-                                  onClick={() => handleSetWinner(upload, 2)}
-                                  isLoading={setWinnerMutation.isLoading}
-                                >
-                                  Team 2 Won
-                                </Button>
-                              </HStack>
-                            )}
-                            {!upload.reviewed && (
-                              <Button
-                                size="sm"
-                                colorScheme="green"
-                                variant="ghost"
-                                onClick={() => openReviewModal(upload)}
-                              >
-                                Mark Reviewed
-                              </Button>
-                            )}
-                          </VStack>
-                        </Td>
-                      </Tr>
+                              </Tooltip>
+                              {!upload.reviewed && (
+                                <Tooltip label="Mark Reviewed">
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    colorScheme="green"
+                                    onClick={() => openReviewModal(upload)}
+                                  >
+                                    <Icon as={FiCheck} />
+                                  </Button>
+                                </Tooltip>
+                              )}
+                            </HStack>
+                          </Td>
+                        </Tr>
+                        {expandedRow === upload.id && (
+                          <Tr key={`${upload.id}-expanded`}>
+                            <Td colSpan={6} bg={expandedRowBg} p={4}>
+                              <VStack align="stretch" spacing={4}>
+                                {/* Error Message Section */}
+                                <Box>
+                                  <Text fontSize="sm" fontWeight="bold" mb={2}>
+                                    Error Message:
+                                  </Text>
+                                  <Box
+                                    bg={cardBg}
+                                    p={3}
+                                    borderRadius="md"
+                                    border="1px solid"
+                                    borderColor={borderColor}
+                                    maxH="200px"
+                                    overflowY="auto"
+                                  >
+                                    <Text fontSize="sm" fontFamily="mono" whiteSpace="pre-wrap">
+                                      {upload.error_message}
+                                    </Text>
+                                  </Box>
+                                </Box>
+
+                                {/* Match Info Section */}
+                                {(upload.map_name || upload.game_mode) && (
+                                  <HStack spacing={4}>
+                                    <Text fontSize="sm" fontWeight="bold">
+                                      Match Info:
+                                    </Text>
+                                    {upload.map_name && (
+                                      <Badge variant="outline">{upload.map_name}</Badge>
+                                    )}
+                                    {upload.game_mode && (
+                                      <Badge variant="outline">{upload.game_mode}</Badge>
+                                    )}
+                                  </HStack>
+                                )}
+
+                                {/* Winner Determination Actions */}
+                                {upload.error_type === 'winner_determination' && !upload.reviewed && (
+                                  <Box>
+                                    <Text fontSize="sm" fontWeight="bold" mb={2}>
+                                      Manual Winner Selection:
+                                    </Text>
+                                    <HStack spacing={3}>
+                                      <Button
+                                        size="sm"
+                                        colorScheme="blue"
+                                        onClick={() => handleSetWinner(upload, 1)}
+                                        isLoading={setWinnerMutation.isLoading}
+                                      >
+                                        Team 1 Won
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        colorScheme="orange"
+                                        onClick={() => handleSetWinner(upload, 2)}
+                                        isLoading={setWinnerMutation.isLoading}
+                                      >
+                                        Team 2 Won
+                                      </Button>
+                                    </HStack>
+                                  </Box>
+                                )}
+                              </VStack>
+                            </Td>
+                          </Tr>
+                        )}
+                      </>
                     ))}
                   </Tbody>
                 </Table>
-              </TableContainer>
+              </Box>
             </CardBody>
           </Card>
         )}
@@ -526,7 +589,7 @@ const FailedUploads = () => {
                 </Box>
 
                 <Box
-                  bg={useColorModeValue('gray.50', 'gray.900')}
+                  bg={errorBoxBg}
                   p={4}
                   borderRadius="md"
                   border="1px solid"

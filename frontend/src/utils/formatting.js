@@ -12,7 +12,7 @@ export const formatMMR = (value) => {
 };
 
 /**
- * Format date/time for user display
+ * Format date/time for user display in AEST (Australian Eastern Standard Time)
  */
 export const formatDate = (isoString) => {
   if (!isoString) return 'Never';
@@ -29,11 +29,60 @@ export const formatDate = (isoString) => {
   if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
   if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
 
-  // Show full date for older entries
-  return date.toLocaleDateString('en-US', {
+  // Show full date for older entries in AEST
+  return date.toLocaleDateString('en-AU', {
     month: 'short',
     day: 'numeric',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'Australia/Sydney'
+  });
+};
+
+/**
+ * Format date and time in AEST (Australian Eastern Standard Time)
+ */
+export const formatDateTime = (isoString) => {
+  if (!isoString) return 'Never';
+
+  const date = new Date(isoString);
+  return date.toLocaleString('en-AU', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+};
+
+/**
+ * Format date only in AEST (Australian Eastern Standard Time)
+ */
+export const formatDateOnly = (isoString) => {
+  if (!isoString) return 'Never';
+
+  const date = new Date(isoString);
+  return date.toLocaleDateString('en-AU', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+/**
+ * Format time only in AEST (Australian Eastern Standard Time)
+ */
+export const formatTimeOnly = (isoString) => {
+  if (!isoString) return '';
+
+  const date = new Date(isoString);
+  return date.toLocaleTimeString('en-AU', {
+    timeZone: 'Australia/Sydney',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
   });
 };
 

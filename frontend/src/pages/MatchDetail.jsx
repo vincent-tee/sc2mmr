@@ -17,7 +17,6 @@ import {
   StatLabel,
   StatNumber,
   StatHelpText,
-  StatArrow,
   Table,
   Thead,
   Tbody,
@@ -41,10 +40,10 @@ import {
 } from '@chakra-ui/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { FiArrowLeft, FiTarget, FiTrendingUp, FiUsers, FiZap, FiAward } from 'react-icons/fi';
+import { FiArrowLeft, FiTarget, FiTrendingUp, FiUsers, FiZap, FiAward, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import { replaysApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
-import { formatDuration, formatWinRate } from '../utils/formatting';
+import { formatDuration, formatWinRate, formatDateTime } from '../utils/formatting';
 
 const MatchDetail = () => {
   const { matchId } = useParams();
@@ -126,7 +125,7 @@ const MatchDetail = () => {
                     </Badge>
                   </HStack>
                   <Text color="gray.500">
-                    {new Date(match.played_at).toLocaleString()}
+                    {formatDateTime(match.played_at)}
                   </Text>
                 </VStack>
 
@@ -193,8 +192,9 @@ const MatchDetail = () => {
                                 <Td isNumeric>{Math.round(player.mmr_after)}</Td>
                                 <Td isNumeric>
                                   <HStack justify="flex-end" spacing={1}>
-                                    <StatArrow
-                                      type={player.mmr_change >= 0 ? 'increase' : 'decrease'}
+                                    <Icon
+                                      as={player.mmr_change >= 0 ? FiArrowUp : FiArrowDown}
+                                      color={player.mmr_change >= 0 ? 'green.500' : 'red.500'}
                                     />
                                     <Text
                                       color={player.mmr_change >= 0 ? 'green.500' : 'red.500'}
@@ -248,8 +248,9 @@ const MatchDetail = () => {
                                 <Td isNumeric>{Math.round(player.mmr_after)}</Td>
                                 <Td isNumeric>
                                   <HStack justify="flex-end" spacing={1}>
-                                    <StatArrow
-                                      type={player.mmr_change >= 0 ? 'increase' : 'decrease'}
+                                    <Icon
+                                      as={player.mmr_change >= 0 ? FiArrowUp : FiArrowDown}
+                                      color={player.mmr_change >= 0 ? 'green.500' : 'red.500'}
                                     />
                                     <Text
                                       color={player.mmr_change >= 0 ? 'green.500' : 'red.500'}

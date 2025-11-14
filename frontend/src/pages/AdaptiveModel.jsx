@@ -53,6 +53,7 @@ import TacticalCard from '../components/TacticalCard';
 
 const AdaptiveModel = () => {
   const [acceptingUpdate, setAcceptingUpdate] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -60,21 +61,35 @@ const AdaptiveModel = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.700');
 
   // Fetch weight suggestions
-  const { data: suggestions, isLoading: suggestionsLoading, refetch: refetchSuggestions } = useQuery({
+  const { data: suggestions, isLoading: suggestionsLoading, refetch: refetchSuggestions, isFetching: suggestionsFetching } = useQuery({
     queryKey: ['adaptive-suggestions'],
     queryFn: async () => {
       const response = await apiClient.get('/adaptive/suggest-weights');
       return response.data;
     },
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0, // Don't cache
   });
 
   // Fetch model performance
-  const { data: performance, isLoading: performanceLoading } = useQuery({
+  const { data: performance, isLoading: performanceLoading, refetch: refetchPerformance, isFetching: performanceFetching } = useQuery({
     queryKey: ['model-performance'],
     queryFn: async () => {
       const response = await apiClient.get('/adaptive/model-performance');
       return response.data;
     },
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0, // Don't cache
+  });
+
+  // Fetch auto-optimization status
+  const { data: autoStatus, refetch: refetchAutoStatus } = useQuery({
+    queryKey: ['auto-optimization-status'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/auto-status');
+      return response.data;
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   const getSuggestionStatus = (suggestion) => {
@@ -128,6 +143,14 @@ const AdaptiveModel = () => {
           <Text color="gray.500" fontSize="lg">
             Self-improving model that optimizes performance weights based on match outcomes
           </Text>
+          <Text color="gray.400" fontSize="sm" mt={1}>
+            Last updated: {lastUpdated.toLocaleTimeString('en-AU', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              timeZone: 'Australia/Sydney'
+            })}
+          </Text>
         </Box>
 
         {/* Status Banner */}
@@ -147,14 +170,81 @@ const AdaptiveModel = () => {
             leftIcon={<FiRefreshCw />}
             size="sm"
             variant="ghost"
-            onClick={() => {
-              refetchSuggestions();
-              queryClient.invalidateQueries(['model-performance']);
+            isLoading={suggestionsFetching || performanceFetching}
+            loadingText="Analyzing..."
+            onClick={async () => {
+              try {
+                await Promise.all([
+                  refetchSuggestions(),
+                  refetchPerformance(),
+                  refetchAutoStatus()
+                ]);
+                setLastUpdated(new Date());
+                toast({
+                  title: 'Analysis refreshed',
+                  description: 'Model performance recalculated from latest match data',
+                  status: 'success',
+                  duration: 3000,
+                  isClosable: true,
+                });
+              } catch (error) {
+                toast({
+                  title: 'Refresh failed',
+                  description: error.message || 'Failed to refresh analysis',
+                  status: 'error',
+                  duration: 5000,
+                  isClosable: true,
+                });
+              }
             }}
           >
             Refresh Analysis
           </Button>
         </Alert>
+
+        {/* Auto-Optimization Status */}
+        {autoStatus && autoStatus.enabled && (
+          <TacticalCard>
+            <HStack justify="space-between" mb={3}>
+              <HStack>
+                <Icon as={FiCpu} color="cyan.500" />
+                <Heading size="sm">Auto-Optimization</Heading>
+                <Badge colorScheme="cyan">Active</Badge>
+              </HStack>
+              <Text fontSize="sm" color="gray.500">
+                Every {autoStatus.matches_per_optimization} matches
+              </Text>
+            </HStack>
+
+            <VStack align="stretch" spacing={2}>
+              <HStack justify="space-between" fontSize="sm">
+                <Text color="gray.500">Progress</Text>
+                <Text fontWeight="medium">
+                  {autoStatus.matches_since_last_optimization} / {autoStatus.matches_per_optimization} matches
+                </Text>
+              </HStack>
+
+              <Progress
+                value={(autoStatus.matches_since_last_optimization / autoStatus.matches_per_optimization) * 100}
+                colorScheme="cyan"
+                size="sm"
+                borderRadius="full"
+              />
+
+              <HStack justify="space-between" fontSize="xs" color="gray.500" pt={1}>
+                <Text>
+                  {autoStatus.next_optimization_in === 0
+                    ? 'Optimization due now!'
+                    : `Next in ${autoStatus.next_optimization_in} ${autoStatus.next_optimization_in === 1 ? 'match' : 'matches'}`
+                  }
+                </Text>
+                <Text>
+                  Total: {autoStatus.total_matches} matches
+                </Text>
+              </HStack>
+            </VStack>
+          </TacticalCard>
+        )}
 
         <HStack spacing={6} align="stretch">
           {/* Model Performance Stats */}
