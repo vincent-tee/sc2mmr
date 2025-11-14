@@ -7,9 +7,16 @@ maintain player ratings using TrueSkill, and balance teams for fair matches.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import logging
 
 from .database import init_db
 from .api import replays, players, teams, impact, adaptive
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 
 @asynccontextmanager
