@@ -173,9 +173,13 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
         team_2_players = [p for p in human_players if p.team_id == 2]
 
         # Collect player-level stats
+        logger.info(f"Extracting stats for {len(team_1_players)} Team 1 players and {len(team_2_players)} Team 2 players")
+
         for p in team_1_players:
             # Extract final supply (army + workers)
             supply = 0
+            logger.info(f"Processing Team 1 player: {p.name}, has stats object: {hasattr(p, 'stats') and p.stats is not None}")
+
             if hasattr(p, 'stats') and p.stats:
                 # Debug: Log all available stat attributes
                 logger.debug(f"Player {p.name} stats attributes: {dir(p.stats)}")
@@ -196,9 +200,9 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
                         supply = p.stats.supply
                         logger.debug(f"Player {p.name}: supply is single value={supply}")
                 else:
-                    logger.warning(f"Player {p.name}: No food_used or supply attribute found in stats")
+                    logger.info(f"Player {p.name}: NO food_used or supply attribute found! Available: {[a for a in dir(p.stats) if not a.startswith('_')]}")
             else:
-                logger.warning(f"Player {p.name}: No stats object available")
+                logger.info(f"Player {p.name}: NO stats object available!")
 
             # Extract total resources collected
             resources = 0
@@ -212,9 +216,9 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
                         minerals = int(p.stats.minerals_collection_rate[-1])
                         logger.debug(f"Player {p.name}: minerals_collection_rate final={minerals}")
                     else:
-                        logger.warning(f"Player {p.name}: minerals_collection_rate exists but is not a valid list")
+                        logger.info(f"Player {p.name}: minerals_collection_rate exists but NOT a valid list: type={type(p.stats.minerals_collection_rate)}")
                 else:
-                    logger.warning(f"Player {p.name}: No minerals_collection_rate attribute")
+                    logger.info(f"Player {p.name}: NO minerals_collection_rate attribute")
 
                 # Get vespene collected (time series, take final value)
                 if hasattr(p.stats, 'vespene_collection_rate') and p.stats.vespene_collection_rate:
@@ -222,9 +226,9 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
                         vespene = int(p.stats.vespene_collection_rate[-1])
                         logger.debug(f"Player {p.name}: vespene_collection_rate final={vespene}")
                     else:
-                        logger.warning(f"Player {p.name}: vespene_collection_rate exists but is not a valid list")
+                        logger.info(f"Player {p.name}: vespene_collection_rate exists but NOT a valid list: type={type(p.stats.vespene_collection_rate)}")
                 else:
-                    logger.warning(f"Player {p.name}: No vespene_collection_rate attribute")
+                    logger.info(f"Player {p.name}: NO vespene_collection_rate attribute")
 
                 resources = minerals + vespene
                 logger.info(f"Player {p.name} (Team 1): minerals={minerals}, vespene={vespene}, supply={supply}, total_resources={resources}")
@@ -265,9 +269,9 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
                         supply = p.stats.supply
                         logger.debug(f"Player {p.name}: supply is single value={supply}")
                 else:
-                    logger.warning(f"Player {p.name}: No food_used or supply attribute found in stats")
+                    logger.info(f"Player {p.name}: NO food_used or supply attribute found! Available: {[a for a in dir(p.stats) if not a.startswith('_')]}")
             else:
-                logger.warning(f"Player {p.name}: No stats object available")
+                logger.info(f"Player {p.name}: NO stats object available!")
 
             # Extract total resources collected
             resources = 0
@@ -281,9 +285,9 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
                         minerals = int(p.stats.minerals_collection_rate[-1])
                         logger.debug(f"Player {p.name}: minerals_collection_rate final={minerals}")
                     else:
-                        logger.warning(f"Player {p.name}: minerals_collection_rate exists but is not a valid list")
+                        logger.info(f"Player {p.name}: minerals_collection_rate exists but NOT a valid list: type={type(p.stats.minerals_collection_rate)}")
                 else:
-                    logger.warning(f"Player {p.name}: No minerals_collection_rate attribute")
+                    logger.info(f"Player {p.name}: NO minerals_collection_rate attribute")
 
                 # Get vespene collected (time series, take final value)
                 if hasattr(p.stats, 'vespene_collection_rate') and p.stats.vespene_collection_rate:
@@ -291,9 +295,9 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
                         vespene = int(p.stats.vespene_collection_rate[-1])
                         logger.debug(f"Player {p.name}: vespene_collection_rate final={vespene}")
                     else:
-                        logger.warning(f"Player {p.name}: vespene_collection_rate exists but is not a valid list")
+                        logger.info(f"Player {p.name}: vespene_collection_rate exists but NOT a valid list: type={type(p.stats.vespene_collection_rate)}")
                 else:
-                    logger.warning(f"Player {p.name}: No vespene_collection_rate attribute")
+                    logger.info(f"Player {p.name}: NO vespene_collection_rate attribute")
 
                 resources = minerals + vespene
                 logger.info(f"Player {p.name} (Team 2): minerals={minerals}, vespene={vespene}, supply={supply}, total_resources={resources}")
