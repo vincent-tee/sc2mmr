@@ -41,6 +41,7 @@ import {
   AlertDescription,
 } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   FiAlertCircle,
   FiXCircle,
@@ -62,6 +63,7 @@ const FailedUploads = () => {
   const { isOpen: isDetailsOpen, onOpen: onDetailsOpen, onClose: onDetailsClose } = useDisclosure();
   const [reviewNotes, setReviewNotes] = useState('');
 
+  const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
   const cardBg = useColorModeValue('white', 'gray.800');
@@ -111,13 +113,28 @@ const FailedUploads = () => {
   const setWinnerMutation = useMutation({
     mutationFn: ({ uploadId, winnerTeam }) => replaysApi.setManualWinner(uploadId, winnerTeam),
     onSuccess: (response) => {
+      const matchId = response.data.match_id;
       queryClient.invalidateQueries(['failed-uploads']);
       queryClient.invalidateQueries(['matches']);
+
+      // Show success toast with "View Match" button
       toast({
         title: 'Replay processed successfully',
-        description: `Match ID ${response.data.match_id} created with manual winner determination`,
+        description: (
+          <VStack align="start" spacing={2}>
+            <Text>{response.data.message || `Match #${matchId} created with manual winner determination`}</Text>
+            <Button
+              size="sm"
+              colorScheme="blue"
+              onClick={() => navigate(`/history/${matchId}`)}
+            >
+              View Match Details
+            </Button>
+          </VStack>
+        ),
         status: 'success',
-        duration: 5000,
+        duration: 8000,
+        isClosable: true,
       });
     },
     onError: (error) => {
