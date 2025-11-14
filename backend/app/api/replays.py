@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 import tempfile
 import time
+import logging
 
 from ..database import get_db
 from ..models import Match, MatchPlayer, Player, FailedUpload, UploadErrorType
@@ -19,6 +20,8 @@ from ..performance_rating import PerformanceRatingAdjuster
 from ..match_commentary import MatchCommentaryGenerator
 from pydantic import BaseModel
 import traceback
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/replays", tags=["replays"])
@@ -174,6 +177,8 @@ async def upload_replay(
     Raises:
         HTTPException: If replay parsing fails or is duplicate
     """
+    logger.info(f"📥 Starting replay upload: '{file.filename}'")
+
     # Validate file extension
     if not file.filename.endswith('.SC2Replay'):
         raise HTTPException(
@@ -253,6 +258,10 @@ async def upload_replay(
 
     except WinnerDeterminationError as e:
         # Winner cannot be determined automatically - save replay for manual review
+        logger.error(
+            f"✅ CAUGHT WinnerDeterminationError for file '{file.filename}': {str(e)[:200]}...",
+            exc_info=False
+        )
         # Try to extract basic metadata from replay
         import sc2reader
         replay_hash = None
@@ -295,10 +304,17 @@ async def upload_replay(
             num_players=num_players,
             replay_file_path=saved_path
         )
+        logger.info(
+            f"📤 Returning HTTPException 400: 'Winner determination failed: {str(e)[:100]}...'"
+        )
         raise HTTPException(status_code=400, detail=f"Winner determination failed: {str(e)}")
 
     except ReplayParseError as e:
         # Log failed upload
+        logger.error(
+            f"⚠️ CAUGHT ReplayParseError for file '{file.filename}': {str(e)[:200]}...",
+            exc_info=False
+        )
         _log_failed_upload(
             db=db,
             filename=file.filename,
@@ -306,6 +322,9 @@ async def upload_replay(
             error_type=UploadErrorType.PARSE_ERROR,
             error_message=str(e),
             error_detail=traceback.format_exc()
+        )
+        logger.info(
+            f"📤 Returning HTTPException 400: 'Parse error: {str(e)[:100]}...'"
         )
         raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
     except HTTPException as http_ex:
@@ -607,6 +626,10 @@ async def upload_replay_advanced(
 
     except ReplayParseError as e:
         # Log failed upload
+        logger.error(
+            f"⚠️ CAUGHT ReplayParseError for file '{file.filename}': {str(e)[:200]}...",
+            exc_info=False
+        )
         _log_failed_upload(
             db=db,
             filename=file.filename,
@@ -614,6 +637,9 @@ async def upload_replay_advanced(
             error_type=UploadErrorType.PARSE_ERROR,
             error_message=str(e),
             error_detail=traceback.format_exc()
+        )
+        logger.info(
+            f"📤 Returning HTTPException 400: 'Parse error: {str(e)[:100]}...'"
         )
         raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
     except HTTPException as http_ex:

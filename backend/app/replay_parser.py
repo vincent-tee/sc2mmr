@@ -6,8 +6,11 @@ from datetime import datetime
 import hashlib
 import sc2reader
 from dataclasses import dataclass
+import logging
 
 from .models import GameMode, Race
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -323,6 +326,10 @@ def parse_replay(file_path: str) -> ReplayData:
 
                 if game_duration_minutes < 10 and quit_players:
                     # Likely someone quit in early/mid game
+                    logger.warning(
+                        f"🔍 RAISING WinnerDeterminationError: Player(s) quit at {game_duration_minutes:.1f} minutes. "
+                        f"Quitters: {', '.join(quit_players)}"
+                    )
                     raise WinnerDeterminationError(
                         f"Cannot determine winner - player(s) quit at {game_duration_minutes:.1f} minutes. "
                         f"Quitters: {', '.join(quit_players)}. "
@@ -332,6 +339,9 @@ def parse_replay(file_path: str) -> ReplayData:
                     )
                 elif not quit_players and game_duration_minutes < 3:
                     # Very short game, might be a crash or test
+                    logger.warning(
+                        f"🔍 RAISING WinnerDeterminationError: Game too short ({game_duration_minutes:.1f} minutes) with no clear winner"
+                    )
                     raise WinnerDeterminationError(
                         f"Game too short ({game_duration_minutes:.1f} minutes) with no clear winner. "
                         f"This may be a test game, crash, or incomplete replay.{stats_msg}",
@@ -339,6 +349,10 @@ def parse_replay(file_path: str) -> ReplayData:
                     )
                 else:
                     # Other ambiguous scenario
+                    logger.warning(
+                        f"🔍 RAISING WinnerDeterminationError: Unable to determine winner from {game_duration_minutes:.1f} minute game. "
+                        f"Ambiguous results."
+                    )
                     raise WinnerDeterminationError(
                         f"Unable to determine game winner from {game_duration_minutes:.1f} minute game. "
                         f"Game may have ended abnormally (disconnection, draw, or corrupted replay data).{stats_msg}\n\n"
