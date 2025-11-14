@@ -72,12 +72,37 @@ export const getRaceEmoji = (race) => {
  */
 export const getRaceColor = (race) => {
   const colorMap = {
-    Terran: 'blue',
-    Protoss: 'yellow',
-    Zerg: 'purple',
+    Terran: 'terran',
+    Protoss: 'protoss',
+    Zerg: 'zerg',
     Random: 'gray'
   };
   return colorMap[race] || 'gray';
+};
+
+/**
+ * Get all races a player has played
+ * Returns array of race objects with game counts
+ */
+export const getPlayerRaces = (player) => {
+  const races = [];
+  if (player.terran_games > 0) {
+    races.push({ name: 'Terran', games: player.terran_games, emoji: '⚔️' });
+  }
+  if (player.protoss_games > 0) {
+    races.push({ name: 'Protoss', games: player.protoss_games, emoji: '🛡️' });
+  }
+  if (player.zerg_games > 0) {
+    races.push({ name: 'Zerg', games: player.zerg_games, emoji: '🦗' });
+  }
+  if (player.random_games > 0) {
+    races.push({ name: 'Random', games: player.random_games, emoji: '🎲' });
+  }
+
+  // Sort by most played
+  races.sort((a, b) => b.games - a.games);
+
+  return races;
 };
 
 /**

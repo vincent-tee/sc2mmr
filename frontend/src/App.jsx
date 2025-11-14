@@ -17,7 +17,7 @@ import RatingSystem from './pages/RatingSystem';
 function App() {
   return (
     <Router>
-      <Box minH="100vh">
+      <Box minH="100vh" position="relative" zIndex={1}>
         <Navigation />
         <Routes>
           <Route path="/" element={<Home />} />
