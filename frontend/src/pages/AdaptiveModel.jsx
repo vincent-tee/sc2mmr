@@ -77,16 +77,16 @@ const AdaptiveModel = () => {
     },
   });
 
-  const getSuggestionStatusColor = (suggestion) => {
+  const getSuggestionStatus = (suggestion) => {
     switch (suggestion) {
       case 'update_recommended':
-        return 'green';
+        return 'success';
       case 'no_change_needed':
-        return 'blue';
+        return 'info';
       case 'insufficient_data':
-        return 'orange';
+        return 'warning';
       default:
-        return 'gray';
+        return 'info';
     }
   };
 
@@ -132,7 +132,7 @@ const AdaptiveModel = () => {
 
         {/* Status Banner */}
         <Alert
-          status={getSuggestionStatusColor(suggestions?.suggestion)}
+          status={getSuggestionStatus(suggestions?.suggestion)}
           variant="left-accent"
           borderRadius="md"
         >
