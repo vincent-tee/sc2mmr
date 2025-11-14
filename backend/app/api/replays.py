@@ -36,7 +36,8 @@ def _log_failed_upload(
     map_name: str = None,
     game_mode: str = None,
     duration_seconds: int = None,
-    num_players: int = None
+    num_players: int = None,
+    replay_file_path: str = None
 ):
     """Log a failed replay upload to the database."""
     try:
@@ -44,6 +45,7 @@ def _log_failed_upload(
             filename=filename,
             file_size_bytes=file_size,
             replay_hash=replay_hash,
+            replay_file_path=replay_file_path,
             error_type=error_type,
             error_message=error_message[:500],  # Limit length
             error_detail=error_detail[:2000] if error_detail else None,
@@ -227,13 +229,26 @@ async def upload_replay(
         )
         raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
     except HTTPException as http_ex:
-        # Log validation and other HTTP errors (except duplicates)
+        # Log validation and other HTTP errors (except duplicates and already-logged winner determination)
         if http_ex.status_code != 409:
-            error_type = UploadErrorType.VALIDATION_ERROR
+            # Skip logging if this is a winner determination error (already logged above)
             if "Unable to determine" in str(http_ex.detail):
-                error_type = UploadErrorType.WINNER_DETERMINATION
-            elif "Invalid game mode" in str(http_ex.detail) or "Invalid number of players" in str(http_ex.detail):
+                raise
+
+            error_type = UploadErrorType.VALIDATION_ERROR
+            if "Invalid game mode" in str(http_ex.detail) or "Invalid number of players" in str(http_ex.detail):
                 error_type = UploadErrorType.UNSUPPORTED_MODE
+
+            # Include metadata if replay_data was parsed
+            extra_kwargs = {}
+            if replay_data:
+                extra_kwargs.update({
+                    'replay_hash': replay_data.replay_hash,
+                    'map_name': replay_data.map_name,
+                    'game_mode': replay_data.game_mode.value if hasattr(replay_data.game_mode, 'value') else str(replay_data.game_mode),
+                    'duration_seconds': replay_data.duration_seconds,
+                    'num_players': len(replay_data.players)
+                })
 
             _log_failed_upload(
                 db=db,
@@ -241,18 +256,30 @@ async def upload_replay(
                 file_size=len(content),
                 error_type=error_type,
                 error_message=str(http_ex.detail),
-                error_detail=traceback.format_exc()
+                error_detail=traceback.format_exc(),
+                **extra_kwargs
             )
         raise
     except Exception as e:
         # Log unexpected errors
+        extra_kwargs = {}
+        if replay_data:
+            extra_kwargs.update({
+                'replay_hash': replay_data.replay_hash,
+                'map_name': replay_data.map_name,
+                'game_mode': replay_data.game_mode.value if hasattr(replay_data.game_mode, 'value') else str(replay_data.game_mode),
+                'duration_seconds': replay_data.duration_seconds,
+                'num_players': len(replay_data.players)
+            })
+
         _log_failed_upload(
             db=db,
             filename=file.filename,
             file_size=len(content),
             error_type=UploadErrorType.OTHER,
             error_message=str(e),
-            error_detail=traceback.format_exc()
+            error_detail=traceback.format_exc(),
+            **extra_kwargs
         )
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
     finally:
@@ -388,6 +415,8 @@ async def upload_replay_advanced(
         tmp_file.write(content)
         tmp_file_path = tmp_file.name
 
+    replay_data = None  # Track for error handling
+
     try:
         start_time = time.time()
 
@@ -401,6 +430,24 @@ async def upload_replay_advanced(
         validation_start = time.time()
         is_valid, error_msg = validate_replay_data(replay_data)
         if not is_valid:
+            # Check if this is a winner determination error
+            if "Unable to determine" in error_msg:
+                # Save the replay file for manual review
+                saved_path = _save_failed_replay_file(content, file.filename, replay_data.replay_hash)
+                _log_failed_upload(
+                    db=db,
+                    filename=file.filename,
+                    file_size=len(content),
+                    error_type=UploadErrorType.WINNER_DETERMINATION,
+                    error_message=error_msg,
+                    error_detail=traceback.format_exc(),
+                    replay_hash=replay_data.replay_hash,
+                    map_name=replay_data.map_name,
+                    game_mode=replay_data.game_mode.value if hasattr(replay_data.game_mode, 'value') else str(replay_data.game_mode),
+                    duration_seconds=replay_data.duration_seconds,
+                    num_players=len(replay_data.players),
+                    replay_file_path=saved_path
+                )
             raise HTTPException(status_code=400, detail=f"Validation failed: {error_msg}")
         validation_time_ms = (time.time() - validation_start) * 1000
 
@@ -490,13 +537,26 @@ async def upload_replay_advanced(
         )
         raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
     except HTTPException as http_ex:
-        # Log validation and other HTTP errors (except duplicates)
+        # Log validation and other HTTP errors (except duplicates and already-logged winner determination)
         if http_ex.status_code != 409:
-            error_type = UploadErrorType.VALIDATION_ERROR
+            # Skip logging if this is a winner determination error (already logged above)
             if "Unable to determine" in str(http_ex.detail):
-                error_type = UploadErrorType.WINNER_DETERMINATION
-            elif "Invalid game mode" in str(http_ex.detail) or "Invalid number of players" in str(http_ex.detail):
+                raise
+
+            error_type = UploadErrorType.VALIDATION_ERROR
+            if "Invalid game mode" in str(http_ex.detail) or "Invalid number of players" in str(http_ex.detail):
                 error_type = UploadErrorType.UNSUPPORTED_MODE
+
+            # Include metadata if replay_data was parsed
+            extra_kwargs = {}
+            if replay_data:
+                extra_kwargs.update({
+                    'replay_hash': replay_data.replay_hash,
+                    'map_name': replay_data.map_name,
+                    'game_mode': replay_data.game_mode.value if hasattr(replay_data.game_mode, 'value') else str(replay_data.game_mode),
+                    'duration_seconds': replay_data.duration_seconds,
+                    'num_players': len(replay_data.players)
+                })
 
             _log_failed_upload(
                 db=db,
@@ -504,18 +564,30 @@ async def upload_replay_advanced(
                 file_size=len(content),
                 error_type=error_type,
                 error_message=str(http_ex.detail),
-                error_detail=traceback.format_exc()
+                error_detail=traceback.format_exc(),
+                **extra_kwargs
             )
         raise
     except Exception as e:
         # Log unexpected errors
+        extra_kwargs = {}
+        if replay_data:
+            extra_kwargs.update({
+                'replay_hash': replay_data.replay_hash,
+                'map_name': replay_data.map_name,
+                'game_mode': replay_data.game_mode.value if hasattr(replay_data.game_mode, 'value') else str(replay_data.game_mode),
+                'duration_seconds': replay_data.duration_seconds,
+                'num_players': len(replay_data.players)
+            })
+
         _log_failed_upload(
             db=db,
             filename=file.filename,
             file_size=len(content),
             error_type=UploadErrorType.OTHER,
             error_message=str(e),
-            error_detail=traceback.format_exc()
+            error_detail=traceback.format_exc(),
+            **extra_kwargs
         )
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
     finally:
@@ -678,3 +750,186 @@ def mark_upload_reviewed(
         uploaded_at=failed_upload.uploaded_at,
         reviewed=bool(failed_upload.reviewed)
     )
+
+
+def _save_failed_replay_file(content: bytes, filename: str, replay_hash: str) -> str:
+    """
+    Save a failed replay file to persistent storage for manual review.
+
+    Args:
+        content: Raw replay file bytes
+        filename: Original filename
+        replay_hash: Replay hash for unique identification
+
+    Returns:
+        Path to saved file
+    """
+    # Create failed_replays directory if it doesn't exist
+    failed_replays_dir = os.path.join(os.getcwd(), "failed_replays")
+    os.makedirs(failed_replays_dir, exist_ok=True)
+
+    # Use replay hash for unique filename
+    safe_filename = f"{replay_hash}_{filename}"
+    file_path = os.path.join(failed_replays_dir, safe_filename)
+
+    with open(file_path, 'wb') as f:
+        f.write(content)
+
+    return file_path
+
+
+class ManualWinnerRequest(BaseModel):
+    """Request to manually specify winner for failed replay."""
+    winner_team: int  # 1 or 2
+
+
+@router.post("/failed-uploads/{upload_id}/set-winner", response_model=ReplayUploadResponse)
+def set_manual_winner(
+    upload_id: int,
+    request: ManualWinnerRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually specify the winner for a failed replay and reprocess it.
+
+    This endpoint is used when automatic winner determination fails but
+    the user can manually determine the winner from the game stats.
+
+    Args:
+        upload_id: Failed upload ID
+        request: Winner team number (1 or 2)
+        db: Database session
+
+    Returns:
+        ReplayUploadResponse with processed match details
+
+    Raises:
+        HTTPException: If upload not found, file missing, or processing fails
+    """
+    # Validate winner_team
+    if request.winner_team not in [1, 2]:
+        raise HTTPException(
+            status_code=400,
+            detail="winner_team must be 1 or 2"
+        )
+
+    # Get the failed upload
+    failed_upload = db.query(FailedUpload).filter(FailedUpload.id == upload_id).first()
+
+    if not failed_upload:
+        raise HTTPException(status_code=404, detail="Failed upload not found")
+
+    # Check if replay file was saved
+    if not failed_upload.replay_file_path or not os.path.exists(failed_upload.replay_file_path):
+        raise HTTPException(
+            status_code=404,
+            detail="Replay file not found. Original file may not have been saved."
+        )
+
+    try:
+        start_time = time.time()
+
+        # Parse the replay with advanced metrics
+        parse_start = time.time()
+        advanced_data = parse_replay_advanced(failed_upload.replay_file_path)
+        replay_data = advanced_data.basic_data
+        parse_time_ms = (time.time() - parse_start) * 1000
+
+        # Override the winner with manual determination
+        replay_data.winner_team = request.winner_team
+
+        # Validate replay data
+        validation_start = time.time()
+        is_valid, error_msg = validate_replay_data(replay_data)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=f"Validation failed: {error_msg}")
+        validation_time_ms = (time.time() - validation_start) * 1000
+
+        # Check for duplicate
+        duplicate_start = time.time()
+        existing_match = db.query(Match).filter(
+            Match.replay_hash == replay_data.replay_hash
+        ).first()
+
+        if existing_match:
+            # Delete the failed upload record since we're reprocessing
+            db.delete(failed_upload)
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail=f"Replay already processed. Match ID: {existing_match.id}"
+            )
+        duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
+
+        # Create match record
+        match = Match(
+            played_at=replay_data.played_at,
+            game_mode=replay_data.game_mode,
+            map_name=replay_data.map_name,
+            duration_seconds=replay_data.duration_seconds,
+            replay_file_path=failed_upload.replay_file_path,  # Keep the saved file
+            replay_hash=replay_data.replay_hash
+        )
+        db.add(match)
+        db.flush()  # Get match.id
+
+        # Update ratings and create match_players
+        rating_start = time.time()
+        RatingSystem.update_ratings_from_match(db, replay_data, match)
+
+        # Save advanced metrics for each player
+        for player_metrics in advanced_data.player_metrics:
+            # Find the corresponding MatchPlayer
+            player = db.query(Player).filter(Player.name == player_metrics.player_name).first()
+            if player:
+                match_player = db.query(MatchPlayer).filter(
+                    MatchPlayer.match_id == match.id,
+                    MatchPlayer.player_id == player.id
+                ).first()
+
+                if match_player:
+                    # Save detailed metrics
+                    ImpactService.save_match_metrics(db, match_player.id, player_metrics)
+
+                    # Update player averages
+                    ImpactService.update_player_averages(db, player.id)
+
+        # Update synergies
+        ImpactService.update_synergies(db, match.id)
+
+        # Apply performance-based rating adjustments
+        PerformanceRatingAdjuster.adjust_ratings_for_match(db, match.id)
+
+        rating_time_ms = (time.time() - rating_start) * 1000
+
+        # Delete the failed upload record since processing succeeded
+        db.delete(failed_upload)
+        db.commit()
+
+        total_time_ms = (time.time() - start_time) * 1000
+
+        return ReplayUploadResponse(
+            match_id=match.id,
+            map_name=match.map_name,
+            game_mode=match.game_mode.value,
+            played_at=match.played_at,
+            duration_seconds=match.duration_seconds,
+            num_players=len(replay_data.players),
+            message="Replay processed successfully with manual winner determination",
+            processing_stats=ProcessingStats(
+                parse_time_ms=round(parse_time_ms, 2),
+                validation_time_ms=round(validation_time_ms, 2),
+                duplicate_check_time_ms=round(duplicate_check_time_ms, 2),
+                rating_update_time_ms=round(rating_time_ms, 2),
+                total_time_ms=round(total_time_ms, 2)
+            )
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Log the error but don't delete the failed upload
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reprocess replay: {str(e)}"
+        )

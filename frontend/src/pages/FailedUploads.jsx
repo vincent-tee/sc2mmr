@@ -107,6 +107,38 @@ const FailedUploads = () => {
     },
   });
 
+  // Manual winner determination mutation
+  const setWinnerMutation = useMutation({
+    mutationFn: ({ uploadId, winnerTeam }) => replaysApi.setManualWinner(uploadId, winnerTeam),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries(['failed-uploads']);
+      queryClient.invalidateQueries(['matches']);
+      toast({
+        title: 'Replay processed successfully',
+        description: `Match ID ${response.data.match_id} created with manual winner determination`,
+        status: 'success',
+        duration: 5000,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error processing replay',
+        description: error.response?.data?.detail || 'Failed to process replay with manual winner',
+        status: 'error',
+        duration: 5000,
+      });
+    },
+  });
+
+  const handleSetWinner = (upload, winnerTeam) => {
+    if (window.confirm(`Set Team ${winnerTeam} as the winner for this match?`)) {
+      setWinnerMutation.mutate({
+        uploadId: upload.id,
+        winnerTeam
+      });
+    }
+  };
+
   const handleMarkReviewed = () => {
     if (selectedUpload) {
       markReviewedMutation.mutate({
@@ -353,16 +385,38 @@ const FailedUploads = () => {
                           )}
                         </Td>
                         <Td>
-                          {!upload.reviewed && (
-                            <Button
-                              size="sm"
-                              colorScheme="green"
-                              variant="ghost"
-                              onClick={() => openReviewModal(upload)}
-                            >
-                              Mark Reviewed
-                            </Button>
-                          )}
+                          <VStack spacing={2} align="stretch">
+                            {upload.error_type === 'winner_determination' && !upload.reviewed && (
+                              <HStack spacing={2}>
+                                <Button
+                                  size="sm"
+                                  colorScheme="blue"
+                                  onClick={() => handleSetWinner(upload, 1)}
+                                  isLoading={setWinnerMutation.isLoading}
+                                >
+                                  Team 1 Won
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  colorScheme="orange"
+                                  onClick={() => handleSetWinner(upload, 2)}
+                                  isLoading={setWinnerMutation.isLoading}
+                                >
+                                  Team 2 Won
+                                </Button>
+                              </HStack>
+                            )}
+                            {!upload.reviewed && (
+                              <Button
+                                size="sm"
+                                colorScheme="green"
+                                variant="ghost"
+                                onClick={() => openReviewModal(upload)}
+                              >
+                                Mark Reviewed
+                              </Button>
+                            )}
+                          </VStack>
                         </Td>
                       </Tr>
                     ))}

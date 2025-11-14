@@ -295,6 +295,7 @@ class FailedUpload(Base):
     filename = Column(String, nullable=False)
     file_size_bytes = Column(Integer, nullable=True)
     replay_hash = Column(String, nullable=True, index=True)
+    replay_file_path = Column(String, nullable=True)  # Saved file path for manual review
 
     # Error details
     error_type = Column(SQLEnum(UploadErrorType), nullable=False, index=True)

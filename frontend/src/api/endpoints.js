@@ -151,6 +151,13 @@ export const replaysApi = {
     return apiClient.patch(`/replays/failed-uploads/${uploadId}/reviewed`, {
       review_notes: reviewNotes
     });
+  },
+
+  // Manually set winner for failed replay
+  setManualWinner: (uploadId, winnerTeam) => {
+    return apiClient.post(`/replays/failed-uploads/${uploadId}/set-winner`, {
+      winner_team: winnerTeam
+    });
   }
 };
 
