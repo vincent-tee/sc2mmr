@@ -13,6 +13,7 @@ import Players from './pages/Players';
 import MatchHistory from './pages/MatchHistory';
 import MatchDetail from './pages/MatchDetail';
 import RatingSystem from './pages/RatingSystem';
+import AdaptiveModel from './pages/AdaptiveModel';
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
           <Route path="/history" element={<MatchHistory />} />
           <Route path="/history/:matchId" element={<MatchDetail />} />
           <Route path="/rating-system" element={<RatingSystem />} />
+          <Route path="/adaptive-model" element={<AdaptiveModel />} />
         </Routes>
       </Box>
     </Router>

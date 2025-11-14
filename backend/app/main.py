@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .database import init_db
-from .api import replays, players, teams, impact
+from .api import replays, players, teams, impact, adaptive
 
 
 @asynccontextmanager
@@ -64,6 +64,7 @@ app.include_router(replays.router)
 app.include_router(players.router)
 app.include_router(teams.router)
 app.include_router(impact.router)
+app.include_router(adaptive.router)
 
 
 @app.get("/")
