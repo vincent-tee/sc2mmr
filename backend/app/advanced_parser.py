@@ -271,7 +271,15 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         if event.name == 'UnitBornEvent':
             pid = event.control_pid
             if pid in player_metrics:
-                unit_name = event.unit_type_name
+                # Try to get unit type name from various possible attributes
+                unit_name = getattr(event, 'unit_type_name', None) or \
+                           getattr(event, 'unit_type', None) or \
+                           getattr(getattr(event, 'unit', None), 'name', None) or \
+                           'Unknown'
+
+                if unit_name == 'Unknown':
+                    # Skip if we can't determine the unit type
+                    continue
 
                 # Track unit composition
                 if pid not in unit_compositions:
@@ -290,11 +298,20 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
 
         # Unit died events
         elif event.name == 'UnitDiedEvent':
+            # Try to get unit type name from various possible attributes
+            unit_name = getattr(event, 'unit_type_name', None) or \
+                       getattr(event, 'unit_type', None) or \
+                       getattr(getattr(event, 'unit', None), 'name', None) or \
+                       'Unknown'
+
+            if unit_name == 'Unknown':
+                # Skip if we can't determine the unit type
+                continue
+
+            unit_cost = get_unit_cost(unit_name)
+
             if hasattr(event, 'killer_pid') and event.killer_pid in player_metrics:
                 killer_pid = event.killer_pid
-                unit_name = event.unit_type_name
-                unit_cost = get_unit_cost(unit_name)
-
                 # Killer gains credit
                 player_metrics[killer_pid].army_value_killed += unit_cost
                 player_metrics[killer_pid].units_killed += 1
@@ -302,9 +319,6 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
             # Unit owner loses value
             if hasattr(event, 'unit_pid') and event.unit_pid in player_metrics:
                 owner_pid = event.unit_pid
-                unit_name = event.unit_type_name
-                unit_cost = get_unit_cost(unit_name)
-
                 player_metrics[owner_pid].army_value_lost += unit_cost
                 player_metrics[owner_pid].units_lost += 1
 
