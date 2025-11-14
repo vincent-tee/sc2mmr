@@ -45,14 +45,14 @@ git log --oneline -5
 
 Expected output:
 ```
+7cd4df6 Fix critical bug: Add missing determine_winner_from_tracker_events function
+0af3ff8 Add comprehensive deployment guide for stats extraction fix
 a32ebf0 Update documentation to reflect tracker events solution
-54ef378 Add tracker events fallback for stats extraction
+54ef378 Add tracker events fallback for stats extraction (INCOMPLETE - missing function)
 1700d4a Change diagnostic logging from DEBUG/WARNING to INFO level
-ebf5686 Add diagnostic guide for zero stats issue
-8520d7b Add comprehensive debug logging for stats extraction
 ```
 
-Key commit: **54ef378** - Add tracker events fallback for stats extraction
+Key commit: **7cd4df6** - Fix critical bug: Add missing determine_winner_from_tracker_events function
 
 ### 3. Restart Backend
 
@@ -127,7 +127,7 @@ Once replays have real stats in the error messages:
 
 ## Verification Checklist
 
-- [ ] Backend code updated to commit `a32ebf0` or later
+- [ ] Backend code updated to commit `7cd4df6` or later (critical: includes tracker events function)
 - [ ] Backend service restarted
 - [ ] New replay uploaded OR old failed replay re-uploaded
 - [ ] Backend logs show "Attempting winner determination from tracker events"
@@ -148,7 +148,7 @@ Once replays have real stats in the error messages:
 cd /home/user/sc2mmr
 git log --oneline -1
 ```
-Should show commit `a32ebf0` or later.
+Should show commit `7cd4df6` or later (CRITICAL - this includes the tracker events function).
 
 **Check 3: Are logs showing the new messages?**
 ```bash

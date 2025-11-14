@@ -115,7 +115,7 @@ Has stats: False
 
 ### Step 3: Check if Backend is Running Updated Code
 
-The tracker events fix was committed in commit `54ef378`. Check your backend is running this version:
+The tracker events fix was committed in commit `7cd4df6`. Check your backend is running this version:
 
 ```bash
 cd /home/user/sc2mmr
@@ -124,12 +124,14 @@ git log --oneline -5
 
 Should show:
 ```
-54ef378 Add tracker events fallback for stats extraction
+7cd4df6 Fix critical bug: Add missing determine_winner_from_tracker_events function
+0af3ff8 Add comprehensive deployment guide for stats extraction fix
+a32ebf0 Update documentation to reflect tracker events solution
+54ef378 Add tracker events fallback for stats extraction (INCOMPLETE)
 1700d4a Change diagnostic logging from DEBUG/WARNING to INFO level
-ebf5686 Add diagnostic guide for zero stats issue
-8520d7b Add comprehensive debug logging for stats extraction
-07e440d Fix critical replay stats extraction bug - all zeros issue
 ```
+
+**CRITICAL**: You MUST have commit `7cd4df6` or later. Commit `54ef378` was incomplete and will cause a NameError.
 
 **Then restart your backend**:
 ```bash
@@ -226,7 +228,8 @@ With actual stats, you can:
 
 ## TL;DR Checklist
 
-- [ ] Backend code updated to commit `54ef378` (tracker events fix) or later
+- [ ] Backend code updated to commit `7cd4df6` (tracker events fix - COMPLETE) or later
+- [ ] **CRITICAL**: Do NOT use commit `54ef378` - it's incomplete and will crash
 - [ ] Backend restarted after updating
 - [ ] Test with a NEW replay upload (not an old failed one)
 - [ ] Check backend logs for:
@@ -240,5 +243,6 @@ With actual stats, you can:
 
 **Most likely issues:**
 1. **OLD failed upload** - Error from BEFORE the fix was deployed → Re-upload the replay
-2. **SC2 version 5.0.14+** - Newer versions need tracker events fix (commit `54ef378`)
-3. **Backend not restarted** - Old code still running → Restart backend after pulling latest code
+2. **SC2 version 5.0.14+** - Newer versions need tracker events fix (commit `7cd4df6`)
+3. **Incomplete fix** - If you have commit `54ef378`, upgrade to `7cd4df6` (the function was missing)
+4. **Backend not restarted** - Old code still running → Restart backend after pulling latest code
