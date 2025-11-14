@@ -252,6 +252,10 @@ def parse_replay_advanced(file_path: str, manual_winner_team: Optional[int] = No
         raise
     except Exception as e:
         # Wrap all other exceptions as ReplayParseError
+        # Log the full traceback to see where the error actually occurred
+        import traceback
+        logger.error(f"❌ Exception during advanced replay parsing: {str(e)}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
         raise ReplayParseError(f"Failed to parse advanced replay data: {str(e)}") from e
 
 
