@@ -41,7 +41,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FiArrowLeft, FiTrendingUp, FiActivity, FiAward, FiTarget } from 'react-icons/fi';
 import { playersApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
-import { formatDuration, formatWinRate } from '../utils/formatting';
+import { formatDuration, formatWinRate, formatDateOnly } from '../utils/formatting';
 
 const PlayerDetail = () => {
   const { playerId } = useParams();
@@ -131,7 +131,7 @@ const PlayerDetail = () => {
                   </HStack>
                   {playerData.last_played && (
                     <Text color="gray.500" fontSize="sm">
-                      Last played: {new Date(playerData.last_played).toLocaleDateString()}
+                      Last played: {formatDateOnly(playerData.last_played)}
                     </Text>
                   )}
                 </VStack>
@@ -315,7 +315,7 @@ const PlayerDetail = () => {
                       >
                         <Td>
                           <Text fontSize="xs">
-                            {new Date(match.played_at).toLocaleDateString()}
+                            {formatDateOnly(match.played_at)}
                           </Text>
                         </Td>
                         <Td>{match.map_name}</Td>

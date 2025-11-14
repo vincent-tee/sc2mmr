@@ -56,6 +56,7 @@ import {
 import { replaysApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
 import EmptyState from '../components/EmptyState';
+import { formatDateOnly, formatTimeOnly } from '../utils/formatting';
 
 const FailedUploads = () => {
   const [errorTypeFilter, setErrorTypeFilter] = useState('');
@@ -385,13 +386,10 @@ const FailedUploads = () => {
                           </Td>
                           <Td>
                             <Text fontSize="xs">
-                              {new Date(upload.uploaded_at).toLocaleDateString()}
+                              {formatDateOnly(upload.uploaded_at)}
                             </Text>
                             <Text fontSize="xs" color="gray.500">
-                              {new Date(upload.uploaded_at).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                              {formatTimeOnly(upload.uploaded_at)}
                             </Text>
                           </Td>
                           <Td>

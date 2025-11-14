@@ -20,7 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 import { replaysApi } from '../api/endpoints';
 import EmptyState from '../components/EmptyState';
 import LoadingState, { MatchCardSkeleton } from '../components/LoadingState';
-import { formatDuration } from '../utils/formatting';
+import { formatDuration, formatDateTime } from '../utils/formatting';
 
 const MatchHistory = () => {
   const navigate = useNavigate();
@@ -105,7 +105,7 @@ const MatchHistory = () => {
 
                     <HStack spacing={4} fontSize="sm" color="gray.500">
                       <Text>
-                        {new Date(match.played_at).toLocaleString()}
+                        {formatDateTime(match.played_at)}
                       </Text>
                       <Text>•</Text>
                       <Text>
