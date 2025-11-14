@@ -334,8 +334,8 @@ const FailedUploads = () => {
                         </Td>
                         <Td>
                           <VStack align="start" spacing={1}>
-                            <Text fontSize="sm" isTruncated maxW="300px" color="gray.600">
-                              {upload.error_message.split('\n')[0]}
+                            <Text fontSize="sm" color="gray.600" noOfLines={3} maxW="400px">
+                              {upload.error_message}
                             </Text>
                             <Button
                               size="xs"

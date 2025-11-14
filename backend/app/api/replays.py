@@ -1034,8 +1034,22 @@ def set_manual_winner(
 
     except HTTPException:
         raise
+    except WinnerDeterminationError as e:
+        # Winner determination still failed even with manual selection
+        logger.error(f"Winner determination error during manual reprocessing: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Winner determination failed: {str(e)}"
+        )
+    except ReplayParseError as e:
+        logger.error(f"Parse error during manual reprocessing: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Parse error: {str(e)}"
+        )
     except Exception as e:
         # Log the error but don't delete the failed upload
+        logger.error(f"Unexpected error during manual reprocessing: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to reprocess replay: {str(e)}"
