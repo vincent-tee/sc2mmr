@@ -48,6 +48,7 @@ import {
   FiFileText,
   FiCheck,
   FiFilter,
+  FiEye,
 } from 'react-icons/fi';
 import { replaysApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
@@ -58,6 +59,7 @@ const FailedUploads = () => {
   const [reviewedFilter, setReviewedFilter] = useState('');
   const [selectedUpload, setSelectedUpload] = useState(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const { isOpen: isDetailsOpen, onOpen: onDetailsOpen, onClose: onDetailsClose } = useDisclosure();
   const [reviewNotes, setReviewNotes] = useState('');
 
   const toast = useToast();
@@ -118,6 +120,20 @@ const FailedUploads = () => {
     setSelectedUpload(upload);
     setReviewNotes('');
     onOpen();
+  };
+
+  const openDetailsModal = (upload) => {
+    setSelectedUpload(upload);
+    onDetailsOpen();
+  };
+
+  const formatErrorMessage = (message) => {
+    // Split by newlines and preserve formatting
+    return message.split('\n').map((line, i) => (
+      <Text key={i} fontFamily="mono" fontSize="sm" whiteSpace="pre">
+        {line}
+      </Text>
+    ));
   };
 
   const getErrorIcon = (errorType) => {
@@ -285,11 +301,20 @@ const FailedUploads = () => {
                           </Badge>
                         </Td>
                         <Td>
-                          <Tooltip label={upload.error_message}>
-                            <Text fontSize="sm" isTruncated maxW="300px">
-                              {upload.error_message}
+                          <VStack align="start" spacing={1}>
+                            <Text fontSize="sm" isTruncated maxW="300px" color="gray.600">
+                              {upload.error_message.split('\n')[0]}
                             </Text>
-                          </Tooltip>
+                            <Button
+                              size="xs"
+                              leftIcon={<FiEye />}
+                              variant="ghost"
+                              colorScheme="blue"
+                              onClick={() => openDetailsModal(upload)}
+                            >
+                              View Full Error
+                            </Button>
+                          </VStack>
                         </Td>
                         <Td>
                           {upload.map_name || upload.game_mode ? (
@@ -393,6 +418,88 @@ const FailedUploads = () => {
             >
               Mark as Reviewed
             </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Error Details Modal */}
+      <Modal isOpen={isDetailsOpen} onClose={onDetailsClose} size="4xl">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Error Details</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {selectedUpload && (
+              <VStack align="stretch" spacing={4}>
+                <Box>
+                  <Text fontWeight="bold" fontSize="lg" mb={2}>
+                    {selectedUpload.filename}
+                  </Text>
+                  <HStack spacing={3} mb={4}>
+                    <Badge
+                      colorScheme={getErrorColor(selectedUpload.error_type)}
+                      display="flex"
+                      alignItems="center"
+                      gap={1}
+                    >
+                      <Icon as={getErrorIcon(selectedUpload.error_type)} />
+                      {formatErrorType(selectedUpload.error_type)}
+                    </Badge>
+                    {selectedUpload.map_name && (
+                      <Badge variant="outline">{selectedUpload.map_name}</Badge>
+                    )}
+                    {selectedUpload.game_mode && (
+                      <Badge variant="outline">{selectedUpload.game_mode}</Badge>
+                    )}
+                  </HStack>
+                </Box>
+
+                <Box
+                  bg={useColorModeValue('gray.50', 'gray.900')}
+                  p={4}
+                  borderRadius="md"
+                  border="1px solid"
+                  borderColor={borderColor}
+                  maxH="500px"
+                  overflowY="auto"
+                >
+                  <VStack align="stretch" spacing={1}>
+                    {formatErrorMessage(selectedUpload.error_message)}
+                  </VStack>
+                </Box>
+
+                {selectedUpload.error_type === 'winner_determination' && (
+                  <Alert status="info" borderRadius="md">
+                    <AlertIcon />
+                    <Box>
+                      <AlertTitle>Manual Review Suggested</AlertTitle>
+                      <AlertDescription fontSize="sm">
+                        Use the team stats above to manually verify which team won.
+                        A future update will allow you to manually specify the winner.
+                      </AlertDescription>
+                    </Box>
+                  </Alert>
+                )}
+              </VStack>
+            )}
+          </ModalBody>
+
+          <ModalFooter>
+            <Button variant="ghost" onClick={onDetailsClose}>
+              Close
+            </Button>
+            {selectedUpload && !selectedUpload.reviewed && (
+              <Button
+                colorScheme="green"
+                ml={3}
+                onClick={() => {
+                  onDetailsClose();
+                  openReviewModal(selectedUpload);
+                }}
+              >
+                Mark as Reviewed
+              </Button>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>
