@@ -185,7 +185,10 @@ class ImpactService:
                 if not synergy:
                     synergy = PlayerSynergy(
                         player1_id=player1_id,
-                        player2_id=player2_id
+                        player2_id=player2_id,
+                        games_together=0,
+                        wins_together=0,
+                        losses_together=0
                     )
                     db.add(synergy)
 
