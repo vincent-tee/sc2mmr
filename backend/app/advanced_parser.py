@@ -284,10 +284,14 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
             pid = event.control_pid
             if pid in player_metrics:
                 # Try to get unit type name from various possible attributes
-                unit_name = getattr(event, 'unit_type_name', None) or \
-                           getattr(event, 'unit_type', None) or \
-                           getattr(getattr(event, 'unit', None), 'name', None) or \
-                           'Unknown'
+                try:
+                    unit_name = getattr(event, 'unit_type_name', None) or \
+                               getattr(event, 'unit_type', None) or \
+                               getattr(getattr(event, 'unit', None), 'name', None) or \
+                               'Unknown'
+                except AttributeError as e:
+                    logger.warning(f"⚠️ AttributeError getting unit type from UnitBornEvent: {e}")
+                    unit_name = 'Unknown'
 
                 if unit_name == 'Unknown':
                     # Debug logging: show what attributes are actually available
@@ -317,10 +321,14 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         # Unit died events
         elif event.name == 'UnitDiedEvent':
             # Try to get unit type name from various possible attributes
-            unit_name = getattr(event, 'unit_type_name', None) or \
-                       getattr(event, 'unit_type', None) or \
-                       getattr(getattr(event, 'unit', None), 'name', None) or \
-                       'Unknown'
+            try:
+                unit_name = getattr(event, 'unit_type_name', None) or \
+                           getattr(event, 'unit_type', None) or \
+                           getattr(getattr(event, 'unit', None), 'name', None) or \
+                           'Unknown'
+            except AttributeError as e:
+                logger.warning(f"⚠️ AttributeError getting unit type from UnitDiedEvent: {e}")
+                unit_name = 'Unknown'
 
             if unit_name == 'Unknown':
                 # Debug logging: show what attributes are actually available
