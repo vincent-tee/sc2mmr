@@ -936,13 +936,14 @@ def set_manual_winner(
         start_time = time.time()
 
         # Parse the replay with advanced metrics
+        # Pass manual winner to parser so it can use it during parsing instead of auto-determining
         parse_start = time.time()
-        advanced_data = parse_replay_advanced(failed_upload.replay_file_path)
+        advanced_data = parse_replay_advanced(
+            failed_upload.replay_file_path,
+            manual_winner_team=request.winner_team
+        )
         replay_data = advanced_data.basic_data
         parse_time_ms = (time.time() - parse_start) * 1000
-
-        # Override the winner with manual determination
-        replay_data.winner_team = request.winner_team
 
         # Validate replay data
         validation_start = time.time()

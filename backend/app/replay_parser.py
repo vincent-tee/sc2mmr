@@ -224,18 +224,21 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
     return None, stats
 
 
-def parse_replay(file_path: str) -> ReplayData:
+def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> ReplayData:
     """
     Parse a StarCraft 2 replay file and extract relevant information.
 
     Args:
         file_path: Path to the .SC2Replay file
+        manual_winner_team: Optional manual winner determination (1 or 2).
+                           If provided, skips automatic winner determination.
 
     Returns:
         ReplayData object with extracted information
 
     Raises:
         ReplayParseError: If replay cannot be parsed or is invalid
+        WinnerDeterminationError: If winner cannot be determined automatically
     """
     try:
         # Load the replay with detailed stats
@@ -300,7 +303,13 @@ def parse_replay(file_path: str) -> ReplayData:
 
         # If result is ambiguous (early quit scenario), determine winner from stats
         if team_1_won == team_2_won:
-            winning_team, team_stats = determine_winner_from_stats(replay, human_players)
+            # Use manual winner if provided, otherwise determine from stats
+            if manual_winner_team is not None:
+                logger.info(f"✅ Using manual winner determination: Team {manual_winner_team}")
+                winning_team = manual_winner_team
+                team_stats = None  # Stats not needed for manual determination
+            else:
+                winning_team, team_stats = determine_winner_from_stats(replay, human_players)
 
             if winning_team is None:
                 # Unable to determine winner even with stats

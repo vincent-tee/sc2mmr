@@ -14,7 +14,7 @@ from datetime import timedelta
 import sc2reader
 from sc2reader.events import TrackerEvent
 
-from .replay_parser import parse_replay, ReplayData, ReplayParseError
+from .replay_parser import parse_replay, ReplayData, ReplayParseError, WinnerDeterminationError
 from .damage_timeline import DamageTimelineExtractor, DamageTimeline
 
 
@@ -134,22 +134,25 @@ def get_unit_cost(unit_name: str) -> int:
     return UNIT_COSTS.get(unit_name, 100)  # Default 100 for unknown units
 
 
-def parse_replay_advanced(file_path: str) -> AdvancedReplayData:
+def parse_replay_advanced(file_path: str, manual_winner_team: Optional[int] = None) -> AdvancedReplayData:
     """
     Parse replay and extract advanced player metrics.
 
     Args:
         file_path: Path to .SC2Replay file
+        manual_winner_team: Optional manual winner determination (1 or 2).
+                           If provided, skips automatic winner determination.
 
     Returns:
         AdvancedReplayData with detailed metrics
 
     Raises:
         ReplayParseError: If parsing fails
+        WinnerDeterminationError: If winner cannot be determined automatically
     """
     try:
         # Get basic replay data
-        basic_data = parse_replay(file_path)
+        basic_data = parse_replay(file_path, manual_winner_team=manual_winner_team)
 
         # Load replay with full detail level
         replay = sc2reader.load_replay(file_path, load_level=4)
@@ -241,9 +244,11 @@ def parse_replay_advanced(file_path: str) -> AdvancedReplayData:
             team_2_total_resources=team_2_resources
         )
 
-    except ReplayParseError:
+    except (ReplayParseError, WinnerDeterminationError):
+        # Re-raise these exceptions without wrapping
         raise
     except Exception as e:
+        # Wrap all other exceptions as ReplayParseError
         raise ReplayParseError(f"Failed to parse advanced replay data: {str(e)}") from e
 
 
