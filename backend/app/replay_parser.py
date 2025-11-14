@@ -177,11 +177,28 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
             # Extract final supply (army + workers)
             supply = 0
             if hasattr(p, 'stats') and p.stats:
+                # Debug: Log all available stat attributes
+                logger.debug(f"Player {p.name} stats attributes: {dir(p.stats)}")
+
                 # Try to get supply from various possible attributes
                 if hasattr(p.stats, 'food_used') and p.stats.food_used:
-                    supply = p.stats.food_used[-1] if isinstance(p.stats.food_used, list) else p.stats.food_used
+                    if isinstance(p.stats.food_used, list):
+                        supply = p.stats.food_used[-1] if len(p.stats.food_used) > 0 else 0
+                        logger.debug(f"Player {p.name}: food_used is list with {len(p.stats.food_used)} entries, final={supply}")
+                    else:
+                        supply = p.stats.food_used
+                        logger.debug(f"Player {p.name}: food_used is single value={supply}")
                 elif hasattr(p.stats, 'supply') and p.stats.supply:
-                    supply = p.stats.supply[-1] if isinstance(p.stats.supply, list) else p.stats.supply
+                    if isinstance(p.stats.supply, list):
+                        supply = p.stats.supply[-1] if len(p.stats.supply) > 0 else 0
+                        logger.debug(f"Player {p.name}: supply is list with {len(p.stats.supply)} entries, final={supply}")
+                    else:
+                        supply = p.stats.supply
+                        logger.debug(f"Player {p.name}: supply is single value={supply}")
+                else:
+                    logger.warning(f"Player {p.name}: No food_used or supply attribute found in stats")
+            else:
+                logger.warning(f"Player {p.name}: No stats object available")
 
             # Extract total resources collected
             resources = 0
@@ -191,14 +208,26 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
 
                 # Get minerals collected (time series, take final value)
                 if hasattr(p.stats, 'minerals_collection_rate') and p.stats.minerals_collection_rate:
-                    minerals = int(p.stats.minerals_collection_rate[-1])
+                    if isinstance(p.stats.minerals_collection_rate, list) and len(p.stats.minerals_collection_rate) > 0:
+                        minerals = int(p.stats.minerals_collection_rate[-1])
+                        logger.debug(f"Player {p.name}: minerals_collection_rate final={minerals}")
+                    else:
+                        logger.warning(f"Player {p.name}: minerals_collection_rate exists but is not a valid list")
+                else:
+                    logger.warning(f"Player {p.name}: No minerals_collection_rate attribute")
 
                 # Get vespene collected (time series, take final value)
                 if hasattr(p.stats, 'vespene_collection_rate') and p.stats.vespene_collection_rate:
-                    vespene = int(p.stats.vespene_collection_rate[-1])
+                    if isinstance(p.stats.vespene_collection_rate, list) and len(p.stats.vespene_collection_rate) > 0:
+                        vespene = int(p.stats.vespene_collection_rate[-1])
+                        logger.debug(f"Player {p.name}: vespene_collection_rate final={vespene}")
+                    else:
+                        logger.warning(f"Player {p.name}: vespene_collection_rate exists but is not a valid list")
+                else:
+                    logger.warning(f"Player {p.name}: No vespene_collection_rate attribute")
 
                 resources = minerals + vespene
-                logger.debug(f"Player {p.name}: minerals={minerals}, vespene={vespene}, supply={supply}")
+                logger.info(f"Player {p.name} (Team 1): minerals={minerals}, vespene={vespene}, supply={supply}, total_resources={resources}")
 
             player_info = {
                 'name': p.name,
@@ -217,11 +246,28 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
             # Extract final supply (army + workers)
             supply = 0
             if hasattr(p, 'stats') and p.stats:
+                # Debug: Log all available stat attributes
+                logger.debug(f"Player {p.name} stats attributes: {dir(p.stats)}")
+
                 # Try to get supply from various possible attributes
                 if hasattr(p.stats, 'food_used') and p.stats.food_used:
-                    supply = p.stats.food_used[-1] if isinstance(p.stats.food_used, list) else p.stats.food_used
+                    if isinstance(p.stats.food_used, list):
+                        supply = p.stats.food_used[-1] if len(p.stats.food_used) > 0 else 0
+                        logger.debug(f"Player {p.name}: food_used is list with {len(p.stats.food_used)} entries, final={supply}")
+                    else:
+                        supply = p.stats.food_used
+                        logger.debug(f"Player {p.name}: food_used is single value={supply}")
                 elif hasattr(p.stats, 'supply') and p.stats.supply:
-                    supply = p.stats.supply[-1] if isinstance(p.stats.supply, list) else p.stats.supply
+                    if isinstance(p.stats.supply, list):
+                        supply = p.stats.supply[-1] if len(p.stats.supply) > 0 else 0
+                        logger.debug(f"Player {p.name}: supply is list with {len(p.stats.supply)} entries, final={supply}")
+                    else:
+                        supply = p.stats.supply
+                        logger.debug(f"Player {p.name}: supply is single value={supply}")
+                else:
+                    logger.warning(f"Player {p.name}: No food_used or supply attribute found in stats")
+            else:
+                logger.warning(f"Player {p.name}: No stats object available")
 
             # Extract total resources collected
             resources = 0
@@ -231,14 +277,26 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
 
                 # Get minerals collected (time series, take final value)
                 if hasattr(p.stats, 'minerals_collection_rate') and p.stats.minerals_collection_rate:
-                    minerals = int(p.stats.minerals_collection_rate[-1])
+                    if isinstance(p.stats.minerals_collection_rate, list) and len(p.stats.minerals_collection_rate) > 0:
+                        minerals = int(p.stats.minerals_collection_rate[-1])
+                        logger.debug(f"Player {p.name}: minerals_collection_rate final={minerals}")
+                    else:
+                        logger.warning(f"Player {p.name}: minerals_collection_rate exists but is not a valid list")
+                else:
+                    logger.warning(f"Player {p.name}: No minerals_collection_rate attribute")
 
                 # Get vespene collected (time series, take final value)
                 if hasattr(p.stats, 'vespene_collection_rate') and p.stats.vespene_collection_rate:
-                    vespene = int(p.stats.vespene_collection_rate[-1])
+                    if isinstance(p.stats.vespene_collection_rate, list) and len(p.stats.vespene_collection_rate) > 0:
+                        vespene = int(p.stats.vespene_collection_rate[-1])
+                        logger.debug(f"Player {p.name}: vespene_collection_rate final={vespene}")
+                    else:
+                        logger.warning(f"Player {p.name}: vespene_collection_rate exists but is not a valid list")
+                else:
+                    logger.warning(f"Player {p.name}: No vespene_collection_rate attribute")
 
                 resources = minerals + vespene
-                logger.debug(f"Player {p.name}: minerals={minerals}, vespene={vespene}, supply={supply}")
+                logger.info(f"Player {p.name} (Team 2): minerals={minerals}, vespene={vespene}, supply={supply}, total_resources={resources}")
 
             player_info = {
                 'name': p.name,
