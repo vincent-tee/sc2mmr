@@ -54,6 +54,7 @@ class PlayerMetrics:
     # Timing metrics (in game seconds)
     first_expansion_timing: Optional[int] = None
     first_army_timing: Optional[int] = None  # When 8+ army supply
+    first_damage_timing: Optional[int] = None  # When first damage was dealt
     bases_created: int = 0
 
     # Mechanics
@@ -72,6 +73,15 @@ class PlayerMetrics:
     team_fight_participation: float = 0.0  # % of team fights participated in (0-1)
     team_fight_damage: int = 0  # Damage dealt in multi-player engagements
     team_fight_damage_ratio: float = 0.0  # Team fight damage / total damage
+
+    # Game phase damage (for timeline analysis)
+    early_game_damage: int = 0  # Damage in first 5 minutes
+    mid_game_damage: int = 0    # Damage 5-15 minutes
+    late_game_damage: int = 0   # Damage 15+ minutes
+
+    # Player style metrics
+    aggression_score: float = 0.0  # How aggressive the player is (0-100)
+    player_archetype: Optional[str] = None  # e.g., 'Rusher', 'Macro', 'Harasser'
 
     # Damage timeline (second-by-second)
     damage_timeline: Optional[DamageTimeline] = None
@@ -215,6 +225,17 @@ def parse_replay_advanced(file_path: str, manual_winner_team: Optional[int] = No
             first_damage = damage_timeline.get_first_damage_second()
             if first_damage is not None:
                 metrics.first_damage_timing = first_damage
+
+            # Calculate game phase damage
+            metrics.early_game_damage = damage_timeline.get_window_damage(0, 300)  # 0-5 minutes
+            metrics.mid_game_damage = damage_timeline.get_window_damage(300, 900)  # 5-15 minutes
+            metrics.late_game_damage = damage_timeline.get_window_damage(900, 99999)  # 15+ minutes
+
+            # Calculate aggression score based on early damage
+            total_damage = metrics.damage_dealt
+            if total_damage > 0:
+                early_damage_ratio = metrics.early_game_damage / total_damage
+                metrics.aggression_score = min(100, early_damage_ratio * 200)  # Scale to 0-100
 
         # Detect team engagements (where 3+ players are fighting)
         player_metrics_list = list(player_metrics_dict.values())
