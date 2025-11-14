@@ -1,5 +1,5 @@
 /**
- * Team Generator Page - PRIMARY FEATURE
+ * Team Generator Page - TACTICAL DEPLOYMENT SYSTEM
  * Quick team balancing interface for casual gaming groups
  */
 import { useState, useEffect } from 'react';
@@ -13,11 +13,9 @@ import {
   VStack,
   HStack,
   Badge,
-  Card,
-  CardHeader,
-  CardBody,
   Divider,
   Progress,
+  Icon,
   useColorModeValue,
   Spinner,
   Collapse,
@@ -27,10 +25,11 @@ import {
   MenuList,
   MenuItem,
 } from '@chakra-ui/react';
-import { FiChevronDown, FiCopy, FiDownload, FiShare2 } from 'react-icons/fi';
+import { FiChevronDown, FiCopy, FiDownload, FiShare2, FiZap, FiUsers, FiCheck, FiX, FiTarget } from 'react-icons/fi';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { playersApi, teamsApi } from '../api/endpoints';
 import PlayerCard from '../components/PlayerCard';
+import TacticalCard from '../components/TacticalCard';
 import EmptyState from '../components/EmptyState';
 import LoadingState, { TeamResultSkeleton } from '../components/LoadingState';
 import { useToast } from '../hooks/useToast';
@@ -100,10 +99,21 @@ const TeamGenerator = () => {
   };
 
   // Can generate teams?
-  const canGenerate = selectedPlayers.length >= 6 && selectedPlayers.length % 2 === 0;
-  const minPlayers = 6;
+  const minPlayers = 2;
+  const canGenerate = selectedPlayers.length >= minPlayers;
   const needMorePlayers = selectedPlayers.length < minPlayers;
-  const needEvenPlayers = selectedPlayers.length >= minPlayers && selectedPlayers.length % 2 !== 0;
+  const hasOddPlayers = selectedPlayers.length % 2 !== 0;
+
+  // Determine game mode
+  const getGameMode = (count) => {
+    if (count === 2) return '1v1';
+    if (count === 4) return '2v2';
+    if (count === 6) return '3v3';
+    if (count === 8) return '4v4';
+    if (count === 10) return '5v5';
+    if (count % 2 === 0) return `${count/2}v${count/2}`;
+    return `${Math.ceil(count/2)}v${Math.floor(count/2)}`;
+  };
 
   // Export team composition
   const handleExport = async (suggestion, format) => {
@@ -132,7 +142,16 @@ const TeamGenerator = () => {
     return (
       <Container maxW="container.xl" py={8}>
         <VStack spacing={8} align="stretch">
-          <Heading>Generate Teams</Heading>
+          <Heading
+            size="2xl"
+            fontFamily="heading"
+            textTransform="uppercase"
+            letterSpacing="wider"
+            color="brand.400"
+            textAlign="center"
+          >
+            TACTICAL DEPLOYMENT
+          </Heading>
           <LoadingState variant="players" count={8} />
         </VStack>
       </Container>
@@ -143,7 +162,16 @@ const TeamGenerator = () => {
     return (
       <Container maxW="container.xl" py={8}>
         <VStack spacing={8} align="stretch">
-          <Heading>Generate Teams</Heading>
+          <Heading
+            size="2xl"
+            fontFamily="heading"
+            textTransform="uppercase"
+            letterSpacing="wider"
+            color="brand.400"
+            textAlign="center"
+          >
+            TACTICAL DEPLOYMENT
+          </Heading>
           <EmptyState
             variant="players"
             title="No Players Found"
@@ -155,246 +183,590 @@ const TeamGenerator = () => {
   }
 
   return (
-    <Container maxW="container.xl" py={8}>
-      <VStack spacing={8} align="stretch">
-        {/* Header */}
-        <Box>
-          <Heading size="xl" mb={2}>
-            Generate Balanced Teams
-          </Heading>
-          <Text color="gray.500">
-            Select players and generate fair team compositions for your next game
-          </Text>
-        </Box>
+    <Box position="relative">
+      {/* Animated grid background */}
+      <Box
+        position="fixed"
+        top={0}
+        left={0}
+        right={0}
+        bottom={0}
+        opacity={0.03}
+        pointerEvents="none"
+        backgroundImage="linear-gradient(rgba(0, 212, 255, 0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 212, 255, 0.5) 1px, transparent 1px)"
+        backgroundSize="40px 40px"
+        zIndex={0}
+      />
 
-        {/* Player Selection Section */}
-        <Box>
-          <HStack justify="space-between" mb={4}>
-            <VStack align="start" spacing={1}>
-              <Heading size="md">Select Players</Heading>
-              <HStack>
-                <Badge colorScheme={canGenerate ? 'green' : 'orange'} fontSize="md">
-                  {selectedPlayers.length} players selected
-                </Badge>
-                {needMorePlayers && (
-                  <Text fontSize="sm" color="gray.500">
-                    (minimum {minPlayers} required)
-                  </Text>
-                )}
-                {needEvenPlayers && (
-                  <Text fontSize="sm" color="orange.500">
-                    (need even number of players)
-                  </Text>
-                )}
-              </HStack>
-            </VStack>
-
-            <HStack>
-              <Button size="sm" variant="ghost" onClick={clearSelection}>
-                Clear
-              </Button>
-              <Button size="sm" variant="outline" onClick={selectAll}>
-                Select All
-              </Button>
-            </HStack>
-          </HStack>
-
-          <SimpleGrid columns={{ base: 2, md: 3, lg: 4, xl: 5 }} spacing={4}>
-            {players.map((player) => (
-              <PlayerCard
-                key={player.id}
-                player={player}
-                isSelected={selectedPlayers.some((p) => p.id === player.id)}
-                onClick={() => togglePlayer(player)}
-                size="lg"
-              />
-            ))}
-          </SimpleGrid>
-        </Box>
-
-        {/* Generate Button */}
-        <Box textAlign="center" py={4}>
-          <Button
-            size="lg"
-            variant="primary"
-            isDisabled={!canGenerate}
-            isLoading={balanceTeamsMutation.isPending}
-            loadingText="Analyzing combinations..."
-            onClick={generateTeams}
-            leftIcon={balanceTeamsMutation.isPending ? <Spinner size="sm" /> : undefined}
-            px={12}
-            py={6}
-            fontSize="xl"
-          >
-            Generate Teams
-          </Button>
-
-          {!canGenerate && selectedPlayers.length > 0 && (
-            <Text color="gray.500" mt={2} fontSize="sm">
-              {needMorePlayers
-                ? `Select at least ${minPlayers - selectedPlayers.length} more players`
-                : 'Select one more player for even teams'}
-            </Text>
-          )}
-        </Box>
-
-        {/* Team Results Section */}
-        {balanceTeamsMutation.isPending && (
-          <VStack spacing={4}>
-            <TeamResultSkeleton />
-            <TeamResultSkeleton />
-            <TeamResultSkeleton />
-          </VStack>
-        )}
-
-        {teamSuggestions.length > 0 && !balanceTeamsMutation.isPending && (
-          <Box>
-            <Heading size="md" mb={4}>
-              Team Suggestions
+      <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
+        <VStack spacing={8} align="stretch">
+          {/* Tactical Header */}
+          <Box textAlign="center" py={6}>
+            <Heading
+              size="3xl"
+              fontFamily="heading"
+              fontWeight="black"
+              textTransform="uppercase"
+              letterSpacing="wider"
+              mb={2}
+              color="brand.400"
+              textShadow="0 0 40px rgba(0, 212, 255, 0.6)"
+              position="relative"
+            >
+              <Box
+                as="span"
+                display="inline-block"
+                position="relative"
+                _before={{
+                  content: '"◢"',
+                  position: 'absolute',
+                  left: '-50px',
+                  color: 'brand.500',
+                  fontSize: '2xl',
+                }}
+                _after={{
+                  content: '"◣"',
+                  position: 'absolute',
+                  right: '-50px',
+                  color: 'brand.500',
+                  fontSize: '2xl',
+                }}
+              >
+                TACTICAL DEPLOYMENT
+              </Box>
             </Heading>
-
-            <VStack spacing={4} align="stretch">
-              {teamSuggestions.map((suggestion, index) => (
-                <TeamSuggestionCard
-                  key={index}
-                  suggestion={suggestion}
-                  index={index}
-                  isRecommended={index === 0}
-                  onExport={handleExport}
-                />
-              ))}
-            </VStack>
+            <Text
+              fontSize="lg"
+              color="gray.400"
+              fontFamily="heading"
+              letterSpacing="wide"
+              textTransform="uppercase"
+            >
+              [ BALANCED TEAM GENERATION SYSTEM ]
+            </Text>
           </Box>
-        )}
-      </VStack>
-    </Container>
+
+          {/* Player Selection Section */}
+          <Box>
+            <TacticalCard variant="command" glowColor="rgba(0, 212, 255, 0.5)">
+              <Box p={6}>
+                <HStack justify="space-between" mb={6}>
+                  <VStack align="start" spacing={2}>
+                    <HStack>
+                      <Icon as={FiUsers} color="brand.400" boxSize={6} />
+                      <Heading
+                        size="md"
+                        fontFamily="heading"
+                        textTransform="uppercase"
+                        letterSpacing="wider"
+                        color="brand.300"
+                      >
+                        OPERATIVE SELECTION
+                      </Heading>
+                    </HStack>
+                    <HStack spacing={3} flexWrap="wrap">
+                      <Badge
+                        colorScheme={canGenerate ? 'green' : 'orange'}
+                        fontSize="lg"
+                        px={3}
+                        py={1}
+                        fontFamily="heading"
+                      >
+                        {selectedPlayers.length} SELECTED
+                      </Badge>
+                      {selectedPlayers.length >= minPlayers && (
+                        <Badge
+                          colorScheme={hasOddPlayers ? 'yellow' : 'blue'}
+                          fontSize="lg"
+                          px={3}
+                          py={1}
+                          fontFamily="heading"
+                        >
+                          {getGameMode(selectedPlayers.length)}
+                        </Badge>
+                      )}
+                      {needMorePlayers && (
+                        <Text fontSize="sm" color="gray.500" fontFamily="heading">
+                          (MIN {minPlayers} REQUIRED)
+                        </Text>
+                      )}
+                      {hasOddPlayers && selectedPlayers.length >= minPlayers && (
+                        <Badge
+                          colorScheme="purple"
+                          fontSize="sm"
+                          px={2}
+                          py={1}
+                          fontFamily="heading"
+                        >
+                          💡 UNEVEN TEAMS - CONSIDER AI PLAYER
+                        </Badge>
+                      )}
+                    </HStack>
+                  </VStack>
+
+                  <HStack>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearSelection}
+                      fontFamily="heading"
+                      textTransform="uppercase"
+                      leftIcon={<FiX />}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={selectAll}
+                      fontFamily="heading"
+                      textTransform="uppercase"
+                      leftIcon={<FiCheck />}
+                    >
+                      Select All
+                    </Button>
+                  </HStack>
+                </HStack>
+
+                <SimpleGrid columns={{ base: 2, md: 3, lg: 4, xl: 5 }} spacing={4}>
+                  {players.map((player) => (
+                    <PlayerCard
+                      key={player.id}
+                      player={player}
+                      isSelected={selectedPlayers.some((p) => p.id === player.id)}
+                      onClick={() => togglePlayer(player)}
+                      size="lg"
+                    />
+                  ))}
+                </SimpleGrid>
+              </Box>
+            </TacticalCard>
+          </Box>
+
+          {/* Generate Button */}
+          <Box textAlign="center" py={6}>
+            <Button
+              size="lg"
+              variant="accent"
+              isDisabled={!canGenerate}
+              isLoading={balanceTeamsMutation.isPending}
+              loadingText="ANALYZING COMBINATIONS..."
+              onClick={generateTeams}
+              leftIcon={<FiZap />}
+              px={16}
+              py={8}
+              fontSize="2xl"
+              fontFamily="heading"
+              textTransform="uppercase"
+              letterSpacing="wider"
+              position="relative"
+              overflow="visible"
+              _before={{
+                content: '""',
+                position: 'absolute',
+                top: -2,
+                left: -2,
+                right: -2,
+                bottom: -2,
+                background: 'linear-gradient(45deg, transparent, rgba(255, 179, 0, 0.3), transparent)',
+                animation: canGenerate ? 'shimmer 2s ease-in-out infinite' : 'none',
+                borderRadius: 'md',
+                zIndex: -1,
+              }}
+              sx={{
+                '@keyframes shimmer': {
+                  '0%, 100%': { opacity: 0.5 },
+                  '50%': { opacity: 1 },
+                },
+              }}
+            >
+              ⚡ GENERATE TEAMS
+            </Button>
+
+            {!canGenerate && selectedPlayers.length > 0 && (
+              <Text
+                color="gray.500"
+                mt={4}
+                fontSize="sm"
+                fontFamily="heading"
+                textTransform="uppercase"
+              >
+                SELECT {minPlayers - selectedPlayers.length} MORE OPERATIVE{minPlayers - selectedPlayers.length !== 1 ? 'S' : ''}
+              </Text>
+            )}
+
+            {canGenerate && hasOddPlayers && (
+              <VStack spacing={2} mt={4}>
+                <Text
+                  color="purple.400"
+                  fontSize="sm"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                >
+                  ⚠️ UNEVEN TEAMS DETECTED
+                </Text>
+                <Text
+                  color="gray.500"
+                  fontSize="xs"
+                  fontFamily="heading"
+                  textAlign="center"
+                  maxW="md"
+                >
+                  Teams will be unbalanced ({getGameMode(selectedPlayers.length)}).
+                  Consider adding 1 more player or adding an AI to balance.
+                </Text>
+              </VStack>
+            )}
+          </Box>
+
+          {/* Team Results Section */}
+          {balanceTeamsMutation.isPending && (
+            <VStack spacing={4}>
+              <Text
+                fontSize="xl"
+                fontFamily="heading"
+                textTransform="uppercase"
+                color="brand.400"
+                letterSpacing="wider"
+              >
+                ⚡ CALCULATING OPTIMAL CONFIGURATIONS...
+              </Text>
+              <TeamResultSkeleton />
+              <TeamResultSkeleton />
+              <TeamResultSkeleton />
+            </VStack>
+          )}
+
+          {teamSuggestions.length > 0 && !balanceTeamsMutation.isPending && (
+            <Box>
+              <Heading
+                size="lg"
+                mb={6}
+                fontFamily="heading"
+                textTransform="uppercase"
+                letterSpacing="wider"
+                color="brand.400"
+                textAlign="center"
+              >
+                ▸ DEPLOYMENT CONFIGURATIONS
+              </Heading>
+
+              <VStack spacing={6} align="stretch">
+                {teamSuggestions.map((suggestion, index) => (
+                  <TeamSuggestionCard
+                    key={index}
+                    suggestion={suggestion}
+                    index={index}
+                    isRecommended={index === 0}
+                    onExport={handleExport}
+                  />
+                ))}
+              </VStack>
+            </Box>
+          )}
+        </VStack>
+      </Container>
+    </Box>
   );
 };
 
 // Team Suggestion Card Component
 const TeamSuggestionCard = ({ suggestion, index, isRecommended, onExport }) => {
-  const bgColor = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.700');
-
-  const labels = ['Most Balanced', 'Best Synergies', 'Alternative'];
-  const label = labels[index] || `Option ${index + 1}`;
+  const labels = ['OPTIMAL BALANCE', 'TACTICAL SYNERGY', 'ALTERNATIVE CONFIG'];
+  const label = labels[index] || `CONFIG ${index + 1}`;
 
   const team1WinProb = (suggestion.win_probability_team_1 * 100).toFixed(1);
   const team2WinProb = (suggestion.win_probability_team_2 * 100).toFixed(1);
 
   return (
-    <Card
-      bg={bgColor}
-      borderWidth={2}
-      borderColor={isRecommended ? 'brand.500' : borderColor}
-      position="relative"
+    <TacticalCard
+      variant={isRecommended ? 'command' : index % 2 === 0 ? 'angled' : 'default'}
+      glowColor={isRecommended ? 'rgba(0, 255, 136, 0.6)' : 'rgba(0, 212, 255, 0.4)'}
     >
-      {isRecommended && (
-        <Badge
-          position="absolute"
-          top={-3}
-          right={4}
-          colorScheme="brand"
-          fontSize="sm"
-          px={3}
-          py={1}
-        >
-          ⭐ Recommended
-        </Badge>
-      )}
+      <Box p={6} position="relative">
+        {isRecommended && (
+          <Badge
+            position="absolute"
+            top={4}
+            right={4}
+            bg="shield.500"
+            color="gray.900"
+            fontSize="md"
+            px={4}
+            py={2}
+            fontFamily="heading"
+            textTransform="uppercase"
+            boxShadow="0 0 20px rgba(0, 255, 136, 0.5)"
+          >
+            ⭐ RECOMMENDED
+          </Badge>
+        )}
 
-      <CardHeader>
-        <VStack align="stretch" spacing={2}>
-          <Heading size="md">{label}</Heading>
+        <VStack align="stretch" spacing={6}>
+          {/* Header */}
+          <Box>
+            <Heading
+              size="lg"
+              fontFamily="heading"
+              textTransform="uppercase"
+              letterSpacing="wider"
+              color="brand.300"
+              mb={4}
+            >
+              {label}
+            </Heading>
 
-          {/* Win Probability */}
-          <HStack justify="space-between" fontSize="2xl" fontWeight="bold">
-            <Text color="blue.500">{team1WinProb}%</Text>
-            <Text color="gray.500">vs</Text>
-            <Text color="orange.500">{team2WinProb}%</Text>
+            {/* Win Probability Display */}
+            <HStack justify="space-between" mb={4}>
+              <VStack spacing={1} align="start">
+                <Text
+                  fontSize="xs"
+                  color="gray.500"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                >
+                  TEAM 1 WIN PROB
+                </Text>
+                <Text
+                  fontSize="4xl"
+                  fontWeight="black"
+                  fontFamily="heading"
+                  color="brand.400"
+                  textShadow="0 0 20px rgba(0, 212, 255, 0.5)"
+                >
+                  {team1WinProb}%
+                </Text>
+              </VStack>
+
+              <Box textAlign="center">
+                <Icon as={FiTarget} boxSize={12} color="accent.500" />
+                <Text
+                  fontSize="xs"
+                  color="gray.500"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                >
+                  VS
+                </Text>
+              </Box>
+
+              <VStack spacing={1} align="end">
+                <Text
+                  fontSize="xs"
+                  color="gray.500"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                >
+                  TEAM 2 WIN PROB
+                </Text>
+                <Text
+                  fontSize="4xl"
+                  fontWeight="black"
+                  fontFamily="heading"
+                  color="accent.400"
+                  textShadow="0 0 20px rgba(255, 179, 0, 0.5)"
+                >
+                  {team2WinProb}%
+                </Text>
+              </VStack>
+            </HStack>
+
+            {/* Balance Indicator */}
+            <Box>
+              <Progress
+                value={suggestion.win_probability_team_1 * 100}
+                size="lg"
+                colorScheme={
+                  Math.abs(suggestion.win_probability_team_1 - 0.5) < 0.05
+                    ? 'green'
+                    : Math.abs(suggestion.win_probability_team_1 - 0.5) < 0.1
+                    ? 'blue'
+                    : 'yellow'
+                }
+                borderRadius="md"
+                bg="whiteAlpha.100"
+                sx={{
+                  '& > div': {
+                    transition: 'all 0.3s',
+                  },
+                }}
+              />
+              <HStack justify="space-between" mt={3}>
+                <Badge
+                  colorScheme={getFairnessColor(suggestion.fairness_rating)}
+                  fontSize="md"
+                  px={3}
+                  py={1}
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                >
+                  {suggestion.fairness_rating}
+                </Badge>
+                <Text
+                  fontSize="sm"
+                  color="gray.400"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                >
+                  MMR DIFF: {formatMMR(suggestion.mmr_difference)}
+                </Text>
+              </HStack>
+            </Box>
+          </Box>
+
+          <Divider borderColor="whiteAlpha.200" />
+
+          {/* Teams Display */}
+          <HStack spacing={6} align="start">
+            {/* Team 1 */}
+            <VStack flex={1} align="stretch" spacing={4}>
+              <Box
+                bg="brand.500"
+                px={4}
+                py={2}
+                clipPath="polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%)"
+              >
+                <Heading
+                  size="md"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                  color="gray.900"
+                  letterSpacing="wider"
+                >
+                  ◢ TEAM 1
+                </Heading>
+              </Box>
+              <VStack spacing={2} align="stretch">
+                {suggestion.team_1.players.map((player) => (
+                  <PlayerCard key={player.id} player={player} size="sm" />
+                ))}
+              </VStack>
+              <Box
+                bg="whiteAlpha.50"
+                p={3}
+                borderRadius="md"
+                border="1px solid"
+                borderColor="brand.400"
+                textAlign="center"
+              >
+                <Text
+                  fontSize="xs"
+                  color="gray.500"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                  mb={1}
+                >
+                  Average MMR
+                </Text>
+                <Text
+                  fontSize="2xl"
+                  fontWeight="black"
+                  fontFamily="heading"
+                  color="brand.400"
+                >
+                  {formatMMR(suggestion.team_1.avg_mmr)}
+                </Text>
+              </Box>
+            </VStack>
+
+            {/* Team 2 */}
+            <VStack flex={1} align="stretch" spacing={4}>
+              <Box
+                bg="accent.500"
+                px={4}
+                py={2}
+                clipPath="polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px)"
+              >
+                <Heading
+                  size="md"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                  color="gray.900"
+                  letterSpacing="wider"
+                >
+                  TEAM 2 ◣
+                </Heading>
+              </Box>
+              <VStack spacing={2} align="stretch">
+                {suggestion.team_2.players.map((player) => (
+                  <PlayerCard key={player.id} player={player} size="sm" />
+                ))}
+              </VStack>
+              <Box
+                bg="whiteAlpha.50"
+                p={3}
+                borderRadius="md"
+                border="1px solid"
+                borderColor="accent.400"
+                textAlign="center"
+              >
+                <Text
+                  fontSize="xs"
+                  color="gray.500"
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                  mb={1}
+                >
+                  Average MMR
+                </Text>
+                <Text
+                  fontSize="2xl"
+                  fontWeight="black"
+                  fontFamily="heading"
+                  color="accent.400"
+                >
+                  {formatMMR(suggestion.team_2.avg_mmr)}
+                </Text>
+              </Box>
+            </VStack>
           </HStack>
 
-          {/* Balance Indicator */}
-          <Box>
-            <Progress
-              value={suggestion.win_probability_team_1 * 100}
-              size="sm"
-              colorScheme={
-                Math.abs(suggestion.win_probability_team_1 - 0.5) < 0.05
-                  ? 'green'
-                  : Math.abs(suggestion.win_probability_team_1 - 0.5) < 0.1
-                  ? 'blue'
-                  : 'yellow'
-              }
-              borderRadius="full"
-            />
-            <HStack justify="space-between" mt={1}>
-              <Badge colorScheme={getFairnessColor(suggestion.fairness_rating)}>
-                {suggestion.fairness_rating}
-              </Badge>
-              <Text fontSize="xs" color="gray.500">
-                MMR Diff: {formatMMR(suggestion.mmr_difference)}
-              </Text>
-            </HStack>
-          </Box>
+          {/* Export Actions */}
+          <HStack justify="center" pt={4}>
+            <Menu>
+              <MenuButton
+                as={Button}
+                rightIcon={<FiChevronDown />}
+                leftIcon={<FiShare2 />}
+                variant="outline"
+                size="md"
+                fontFamily="heading"
+                textTransform="uppercase"
+                borderColor="brand.400"
+                _hover={{
+                  bg: 'whiteAlpha.100',
+                  borderColor: 'brand.300',
+                }}
+              >
+                Share Config
+              </MenuButton>
+              <MenuList bg="gray.800" borderColor="brand.500">
+                <MenuItem
+                  icon={<FiCopy />}
+                  onClick={() => onExport(suggestion, 'text')}
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                  fontSize="sm"
+                  _hover={{ bg: 'whiteAlpha.100' }}
+                >
+                  Copy as Text
+                </MenuItem>
+                <MenuItem
+                  icon={<FiDownload />}
+                  onClick={() => onExport(suggestion, 'download')}
+                  fontFamily="heading"
+                  textTransform="uppercase"
+                  fontSize="sm"
+                  _hover={{ bg: 'whiteAlpha.100' }}
+                >
+                  Download File
+                </MenuItem>
+              </MenuList>
+            </Menu>
+          </HStack>
         </VStack>
-      </CardHeader>
-
-      <CardBody>
-        <HStack spacing={4} align="start">
-          {/* Team 1 */}
-          <VStack flex={1} align="stretch" spacing={2}>
-            <Heading size="sm" color="blue.500">
-              Team 1
-            </Heading>
-            <Divider />
-            {suggestion.team_1.players.map((player) => (
-              <PlayerCard key={player.id} player={player} size="sm" />
-            ))}
-            <Text fontSize="sm" color="gray.500" textAlign="center">
-              Avg MMR: {formatMMR(suggestion.team_1.avg_mmr)}
-            </Text>
-          </VStack>
-
-          {/* Team 2 */}
-          <VStack flex={1} align="stretch" spacing={2}>
-            <Heading size="sm" color="orange.500">
-              Team 2
-            </Heading>
-            <Divider />
-            {suggestion.team_2.players.map((player) => (
-              <PlayerCard key={player.id} player={player} size="sm" />
-            ))}
-            <Text fontSize="sm" color="gray.500" textAlign="center">
-              Avg MMR: {formatMMR(suggestion.team_2.avg_mmr)}
-            </Text>
-          </VStack>
-        </HStack>
-
-        {/* Export Actions */}
-        <HStack justify="center" mt={6}>
-          <Menu>
-            <MenuButton
-              as={Button}
-              rightIcon={<FiChevronDown />}
-              leftIcon={<FiShare2 />}
-              variant="outline"
-              size="sm"
-            >
-              Share
-            </MenuButton>
-            <MenuList>
-              <MenuItem icon={<FiCopy />} onClick={() => onExport(suggestion, 'text')}>
-                Copy as Text
-              </MenuItem>
-              <MenuItem icon={<FiDownload />} onClick={() => onExport(suggestion, 'download')}>
-                Download as File
-              </MenuItem>
-            </MenuList>
-          </Menu>
-        </HStack>
-      </CardBody>
-    </Card>
+      </Box>
+    </TacticalCard>
   );
 };
 

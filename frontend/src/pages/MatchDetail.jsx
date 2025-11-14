@@ -41,7 +41,7 @@ import {
 } from '@chakra-ui/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { FiArrowLeft, FiTrophy, FiTarget, FiTrendingUp, FiUsers, FiZap, FiAward } from 'react-icons/fi';
+import { FiArrowLeft, FiTarget, FiTrendingUp, FiUsers, FiZap, FiAward } from 'react-icons/fi';
 import { replaysApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
 import { formatDuration, formatWinRate } from '../utils/formatting';
@@ -164,7 +164,7 @@ const MatchDetail = () => {
                     <Heading size="md">Team 1</Heading>
                     {team1Won && (
                       <Badge colorScheme="green" fontSize="md">
-                        <Icon as={FiTrophy} mr={1} />
+                        <Icon as={FiAward} mr={1} />
                         Victory
                       </Badge>
                     )}
@@ -219,7 +219,7 @@ const MatchDetail = () => {
                     <Heading size="md">Team 2</Heading>
                     {!team1Won && (
                       <Badge colorScheme="green" fontSize="md">
-                        <Icon as={FiTrophy} mr={1} />
+                        <Icon as={FiAward} mr={1} />
                         Victory
                       </Badge>
                     )}

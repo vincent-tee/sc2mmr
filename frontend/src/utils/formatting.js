@@ -72,12 +72,37 @@ export const getRaceEmoji = (race) => {
  */
 export const getRaceColor = (race) => {
   const colorMap = {
-    Terran: 'blue',
-    Protoss: 'yellow',
-    Zerg: 'purple',
+    Terran: 'terran',
+    Protoss: 'protoss',
+    Zerg: 'zerg',
     Random: 'gray'
   };
   return colorMap[race] || 'gray';
+};
+
+/**
+ * Get all races a player has played
+ * Returns array of race objects with game counts
+ */
+export const getPlayerRaces = (player) => {
+  const races = [];
+  if (player.terran_games > 0) {
+    races.push({ name: 'Terran', games: player.terran_games, emoji: '⚔️' });
+  }
+  if (player.protoss_games > 0) {
+    races.push({ name: 'Protoss', games: player.protoss_games, emoji: '🛡️' });
+  }
+  if (player.zerg_games > 0) {
+    races.push({ name: 'Zerg', games: player.zerg_games, emoji: '🦗' });
+  }
+  if (player.random_games > 0) {
+    races.push({ name: 'Random', games: player.random_games, emoji: '🎲' });
+  }
+
+  // Sort by most played
+  races.sort((a, b) => b.games - a.games);
+
+  return races;
 };
 
 /**
@@ -177,10 +202,20 @@ export const parseErrorMessage = (error) => {
   if (error.response?.data?.detail) {
     const detail = error.response.data.detail;
 
-    // Translate common backend errors to friendly messages
-    if (detail.includes('Parse error')) {
-      return 'Failed to parse replay file - it may be corrupted or an unsupported version';
+    // Check for Winner Determination errors FIRST (before Parse error check)
+    // Backend sends: "Winner determination failed: {message}"
+    if (detail.startsWith('Winner determination failed:')) {
+      // Return the full message from backend - it contains detailed diagnostics
+      return detail.replace('Winner determination failed: ', 'Winner determination failed: ');
     }
+
+    // Then check for Parse errors
+    // Backend sends: "Parse error: {message}"
+    if (detail.startsWith('Parse error:')) {
+      return detail; // Return full backend message
+    }
+
+    // Translate other common backend errors to friendly messages
     if (detail.includes('Validation failed')) {
       return detail.replace('Validation failed: ', '');
     }
@@ -192,9 +227,6 @@ export const parseErrorMessage = (error) => {
     }
     if (detail.includes('Missing players')) {
       return "Couldn't identify all players in this match";
-    }
-    if (detail.includes('Unable to determine game winner')) {
-      return 'Cannot determine winner - replay may be incomplete or ended abnormally';
     }
 
     return detail;

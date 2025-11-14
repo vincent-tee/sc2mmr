@@ -13,9 +13,12 @@ from dataclasses import dataclass
 from datetime import timedelta
 import sc2reader
 from sc2reader.events import TrackerEvent
+import logging
 
-from .replay_parser import parse_replay, ReplayData, ReplayParseError
+from .replay_parser import parse_replay, ReplayData, ReplayParseError, WinnerDeterminationError
 from .damage_timeline import DamageTimelineExtractor, DamageTimeline
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -51,6 +54,7 @@ class PlayerMetrics:
     # Timing metrics (in game seconds)
     first_expansion_timing: Optional[int] = None
     first_army_timing: Optional[int] = None  # When 8+ army supply
+    first_damage_timing: Optional[int] = None  # When first damage was dealt
     bases_created: int = 0
 
     # Mechanics
@@ -64,6 +68,20 @@ class PlayerMetrics:
     combat_score: float = 0.0
     efficiency_score: float = 0.0
     overall_impact: float = 0.0
+
+    # Team game metrics
+    team_fight_participation: float = 0.0  # % of team fights participated in (0-1)
+    team_fight_damage: int = 0  # Damage dealt in multi-player engagements
+    team_fight_damage_ratio: float = 0.0  # Team fight damage / total damage
+
+    # Game phase damage (for timeline analysis)
+    early_game_damage: int = 0  # Damage in first 5 minutes
+    mid_game_damage: int = 0    # Damage 5-15 minutes
+    late_game_damage: int = 0   # Damage 15+ minutes
+
+    # Player style metrics
+    aggression_score: float = 0.0  # How aggressive the player is (0-100)
+    player_archetype: Optional[str] = None  # e.g., 'Rusher', 'Macro', 'Harasser'
 
     # Damage timeline (second-by-second)
     damage_timeline: Optional[DamageTimeline] = None
@@ -129,22 +147,25 @@ def get_unit_cost(unit_name: str) -> int:
     return UNIT_COSTS.get(unit_name, 100)  # Default 100 for unknown units
 
 
-def parse_replay_advanced(file_path: str) -> AdvancedReplayData:
+def parse_replay_advanced(file_path: str, manual_winner_team: Optional[int] = None) -> AdvancedReplayData:
     """
     Parse replay and extract advanced player metrics.
 
     Args:
         file_path: Path to .SC2Replay file
+        manual_winner_team: Optional manual winner determination (1 or 2).
+                           If provided, skips automatic winner determination.
 
     Returns:
         AdvancedReplayData with detailed metrics
 
     Raises:
         ReplayParseError: If parsing fails
+        WinnerDeterminationError: If winner cannot be determined automatically
     """
     try:
         # Get basic replay data
-        basic_data = parse_replay(file_path)
+        basic_data = parse_replay(file_path, manual_winner_team=manual_winner_team)
 
         # Load replay with full detail level
         replay = sc2reader.load_replay(file_path, load_level=4)
@@ -205,6 +226,25 @@ def parse_replay_advanced(file_path: str) -> AdvancedReplayData:
             if first_damage is not None:
                 metrics.first_damage_timing = first_damage
 
+            # Calculate game phase damage
+            metrics.early_game_damage = damage_timeline.get_window_damage(0, 300)  # 0-5 minutes
+            metrics.mid_game_damage = damage_timeline.get_window_damage(300, 900)  # 5-15 minutes
+            metrics.late_game_damage = damage_timeline.get_window_damage(900, 99999)  # 15+ minutes
+
+            # Calculate aggression score based on early damage
+            total_damage = metrics.damage_dealt
+            if total_damage > 0:
+                early_damage_ratio = metrics.early_game_damage / total_damage
+                metrics.aggression_score = min(100, early_damage_ratio * 200)  # Scale to 0-100
+
+        # Detect team engagements (where 3+ players are fighting)
+        player_metrics_list = list(player_metrics_dict.values())
+        team_engagements = _detect_team_engagements(player_metrics_list)
+
+        # Calculate team fight metrics for each player
+        for metrics in player_metrics_list:
+            _calculate_team_fight_metrics(metrics, team_engagements)
+
         # Calculate impact scores
         for metrics in player_metrics_dict.values():
             _calculate_impact_scores(metrics)
@@ -228,9 +268,15 @@ def parse_replay_advanced(file_path: str) -> AdvancedReplayData:
             team_2_total_resources=team_2_resources
         )
 
-    except ReplayParseError:
+    except (ReplayParseError, WinnerDeterminationError):
+        # Re-raise these exceptions without wrapping
         raise
     except Exception as e:
+        # Wrap all other exceptions as ReplayParseError
+        # Log the full traceback to see where the error actually occurred
+        import traceback
+        logger.error(f"❌ Exception during advanced replay parsing: {str(e)}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
         raise ReplayParseError(f"Failed to parse advanced replay data: {str(e)}") from e
 
 
@@ -243,6 +289,15 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         player_metrics: Dictionary of player metrics to update
         game_duration: Game duration in seconds
     """
+    # Log sc2reader version and event overview for debugging
+    logger.info(f"🔍 Processing {len(events)} tracker events. sc2reader version: {sc2reader.__version__ if hasattr(sc2reader, '__version__') else 'unknown'}")
+
+    # Count event types for diagnostic purposes
+    event_types = {}
+    for event in events:
+        event_types[event.name] = event_types.get(event.name, 0) + 1
+    logger.info(f"🔍 Event type distribution: {event_types}")
+
     unit_born_count = {}
     unit_died_count = {}
     unit_compositions = {}
@@ -253,7 +308,25 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         if event.name == 'UnitBornEvent':
             pid = event.control_pid
             if pid in player_metrics:
-                unit_name = event.unit_type_name
+                # Try to get unit type name from various possible attributes
+                try:
+                    unit_name = getattr(event, 'unit_type_name', None) or \
+                               getattr(event, 'unit_type', None) or \
+                               getattr(getattr(event, 'unit', None), 'name', None) or \
+                               'Unknown'
+                except AttributeError as e:
+                    logger.warning(f"⚠️ AttributeError getting unit type from UnitBornEvent: {e}")
+                    unit_name = 'Unknown'
+
+                if unit_name == 'Unknown':
+                    # Debug logging: show what attributes are actually available
+                    logger.info(f"🔍 UnitBornEvent with unknown unit type. Available attributes: {dir(event)}")
+                    logger.info(f"  event.__dict__: {event.__dict__ if hasattr(event, '__dict__') else 'N/A'}")
+                    if hasattr(event, 'unit'):
+                        logger.info(f"  event.unit type: {type(event.unit)}")
+                        logger.info(f"  event.unit.__dict__: {event.unit.__dict__ if hasattr(event.unit, '__dict__') else 'N/A'}")
+                    # Skip if we can't determine the unit type
+                    continue
 
                 # Track unit composition
                 if pid not in unit_compositions:
@@ -272,11 +345,30 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
 
         # Unit died events
         elif event.name == 'UnitDiedEvent':
+            # Try to get unit type name from various possible attributes
+            try:
+                unit_name = getattr(event, 'unit_type_name', None) or \
+                           getattr(event, 'unit_type', None) or \
+                           getattr(getattr(event, 'unit', None), 'name', None) or \
+                           'Unknown'
+            except AttributeError as e:
+                logger.warning(f"⚠️ AttributeError getting unit type from UnitDiedEvent: {e}")
+                unit_name = 'Unknown'
+
+            if unit_name == 'Unknown':
+                # Debug logging: show what attributes are actually available
+                logger.info(f"🔍 UnitDiedEvent with unknown unit type. Available attributes: {dir(event)}")
+                logger.info(f"  event.__dict__: {event.__dict__ if hasattr(event, '__dict__') else 'N/A'}")
+                if hasattr(event, 'unit'):
+                    logger.info(f"  event.unit type: {type(event.unit)}")
+                    logger.info(f"  event.unit.__dict__: {event.unit.__dict__ if hasattr(event.unit, '__dict__') else 'N/A'}")
+                # Skip if we can't determine the unit type
+                continue
+
+            unit_cost = get_unit_cost(unit_name)
+
             if hasattr(event, 'killer_pid') and event.killer_pid in player_metrics:
                 killer_pid = event.killer_pid
-                unit_name = event.unit_type_name
-                unit_cost = get_unit_cost(unit_name)
-
                 # Killer gains credit
                 player_metrics[killer_pid].army_value_killed += unit_cost
                 player_metrics[killer_pid].units_killed += 1
@@ -284,9 +376,6 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
             # Unit owner loses value
             if hasattr(event, 'unit_pid') and event.unit_pid in player_metrics:
                 owner_pid = event.unit_pid
-                unit_name = event.unit_type_name
-                unit_cost = get_unit_cost(unit_name)
-
                 player_metrics[owner_pid].army_value_lost += unit_cost
                 player_metrics[owner_pid].units_lost += 1
 
@@ -319,6 +408,149 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
             metrics.spending_efficiency = min(1.0, estimated_spending / metrics.total_resources_collected)
 
 
+@dataclass
+class TeamEngagement:
+    """Represents a team fight where multiple players are active."""
+    start_second: int
+    end_second: int
+    players_involved: List[str]  # Player names
+    total_damage: int
+
+
+def _detect_team_engagements(
+    all_player_metrics: List[PlayerMetrics],
+    damage_threshold: int = 1000,  # Min damage to count as engagement
+    time_window: int = 10  # Seconds for grouping damage
+) -> List[TeamEngagement]:
+    """
+    Detect team engagements where multiple players (3+) are dealing damage.
+
+    Args:
+        all_player_metrics: All players' metrics with damage timelines
+        damage_threshold: Minimum total damage to consider an engagement
+        time_window: Window in seconds for grouping damage events
+
+    Returns:
+        List of detected team engagements
+    """
+    engagements = []
+
+    # Get all damage timelines
+    timelines = {
+        m.player_name: m.damage_timeline
+        for m in all_player_metrics
+        if m.damage_timeline
+    }
+
+    if len(timelines) < 3:
+        return []  # Need at least 3 players for team fights
+
+    # Find all seconds where damage occurred
+    all_seconds = set()
+    for timeline in timelines.values():
+        all_seconds.update(timeline.damage_events.keys())
+
+    # Group consecutive seconds into engagement windows
+    sorted_seconds = sorted(all_seconds)
+    current_engagement = []
+
+    for i, second in enumerate(sorted_seconds):
+        if not current_engagement or second - current_engagement[-1] <= time_window:
+            current_engagement.append(second)
+        else:
+            # Process current engagement
+            if len(current_engagement) >= 3:  # At least 3 seconds of fighting
+                _process_engagement_window(
+                    current_engagement,
+                    timelines,
+                    engagements,
+                    damage_threshold
+                )
+            current_engagement = [second]
+
+    # Process final engagement
+    if len(current_engagement) >= 3:
+        _process_engagement_window(
+            current_engagement,
+            timelines,
+            engagements,
+            damage_threshold
+        )
+
+    return engagements
+
+
+def _process_engagement_window(
+    seconds: List[int],
+    timelines: Dict[str, 'DamageTimeline'],
+    engagements: List[TeamEngagement],
+    damage_threshold: int
+):
+    """Process a window of seconds to detect team engagement."""
+    start_second = seconds[0]
+    end_second = seconds[-1]
+
+    # Count players who dealt damage in this window
+    players_active = []
+    total_damage = 0
+
+    for player_name, timeline in timelines.items():
+        player_damage = timeline.get_window_damage(start_second, end_second + 1)
+        if player_damage > 0:
+            players_active.append(player_name)
+            total_damage += player_damage
+
+    # Team fight requires 3+ players and minimum damage
+    if len(players_active) >= 3 and total_damage >= damage_threshold:
+        engagements.append(TeamEngagement(
+            start_second=start_second,
+            end_second=end_second,
+            players_involved=players_active,
+            total_damage=total_damage
+        ))
+
+
+def _calculate_team_fight_metrics(
+    metrics: PlayerMetrics,
+    engagements: List[TeamEngagement]
+):
+    """
+    Calculate team fight participation metrics for a player.
+
+    Args:
+        metrics: PlayerMetrics to update
+        engagements: List of detected team engagements
+    """
+    if not engagements or not metrics.damage_timeline:
+        metrics.team_fight_participation = 0.0
+        metrics.team_fight_damage = 0
+        metrics.team_fight_damage_ratio = 0.0
+        return
+
+    # Calculate participation
+    fights_participated = 0
+    total_team_fight_damage = 0
+
+    for engagement in engagements:
+        player_damage = metrics.damage_timeline.get_window_damage(
+            engagement.start_second,
+            engagement.end_second + 1
+        )
+
+        if player_damage > 0:
+            fights_participated += 1
+            total_team_fight_damage += player_damage
+
+    # Update metrics
+    metrics.team_fight_participation = fights_participated / len(engagements) if engagements else 0.0
+    metrics.team_fight_damage = total_team_fight_damage
+    metrics.team_fight_damage_ratio = (
+        total_team_fight_damage / metrics.damage_dealt
+        if metrics.damage_dealt > 0
+        else 0.0
+    )
+
+
 def _calculate_impact_scores(metrics: PlayerMetrics):
     """
     Calculate impact scores for a player.
@@ -327,6 +559,7 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
     - Economic: resource collection, workers, spending
     - Combat: damage dealt, efficiency, kills
     - Efficiency: ratios and per-minute metrics
+    - Team contribution: engagement participation, team fight damage
 
     Args:
         metrics: PlayerMetrics to calculate scores for
@@ -357,12 +590,20 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
 
     metrics.efficiency_score = sum(efficiency_components) / len(efficiency_components)
 
-    # Overall impact (weighted average)
-    # Combat is most important for team contribution
+    # Team contribution score (0-100)
+    # Based on showing up to team fights and being effective in them
+    participation_score = metrics.team_fight_participation * 100
+    team_fight_effectiveness_score = metrics.team_fight_damage_ratio * 100
+    team_contribution_score = (participation_score + team_fight_effectiveness_score) / 2
+
+    # Overall impact (weighted average optimized for team games)
+    # Team contribution is critical for casual team games
+    # Combat/economy matter but less than being there for your team
     metrics.overall_impact = (
-        metrics.economic_score * 0.3 +
-        metrics.combat_score * 0.5 +
-        metrics.efficiency_score * 0.2
+        metrics.combat_score * 0.40 +           # Direct combat still important
+        metrics.economic_score * 0.20 +         # Economy matters but less
+        team_contribution_score * 0.30 +        # NEW: Team fight participation critical
+        metrics.efficiency_score * 0.10         # Efficiency less critical in casual
     )
 
 

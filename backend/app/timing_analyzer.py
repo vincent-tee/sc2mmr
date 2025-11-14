@@ -151,7 +151,19 @@ class TimingAnalyzer:
                 if event.name == 'UnitDiedEvent':
                     if hasattr(event, 'killer_pid') and event.killer_pid == player_id:
                         # This player got a kill
-                        unit_cost = _get_unit_value(event.unit_type_name)
+                        # Try to get unit type name from various possible attributes
+                        try:
+                            unit_name = getattr(event, 'unit_type_name', None) or \
+                                       getattr(event, 'unit_type', None) or \
+                                       getattr(getattr(event, 'unit', None), 'name', None) or \
+                                       'Unknown'
+                        except AttributeError:
+                            unit_name = 'Unknown'
+
+                        if unit_name == 'Unknown':
+                            continue  # Skip if we can't determine the unit type
+
+                        unit_cost = _get_unit_value(unit_name)
 
                         # Track first damage
                         if first_damage_timing is None:
@@ -171,7 +183,18 @@ class TimingAnalyzer:
                 # Unit born events (for expansions and army builds)
                 elif event.name == 'UnitBornEvent':
                     if event.control_pid == player_id:
-                        unit_name = event.unit_type_name
+                        # Try to get unit type name from various possible attributes
+                        try:
+                            unit_name = getattr(event, 'unit_type_name', None) or \
+                                       getattr(event, 'unit_type', None) or \
+                                       getattr(getattr(event, 'unit', None), 'name', None) or \
+                                       'Unknown'
+                        except AttributeError:
+                            unit_name = 'Unknown'
+
+                        if unit_name == 'Unknown':
+                            continue  # Skip if we can't determine the unit type
+
                         unit_cost = _get_unit_value(unit_name)
 
                         # Track expansions

@@ -136,6 +136,10 @@ class TeamBalancer:
         """
         Generate balanced team suggestions.
 
+        Supports both even and uneven player counts:
+        - Even: Splits players equally (e.g., 6 → 3v3)
+        - Odd: Creates uneven teams (e.g., 5 → 3v2, 7 → 4v3)
+
         Args:
             players: List of available players
             top_n: Number of top suggestions to return
@@ -145,18 +149,24 @@ class TeamBalancer:
         """
         num_players = len(players)
 
-        # Validate even number of players
-        if num_players % 2 != 0:
-            raise ValueError(f"Need even number of players, got {num_players}")
+        # Validate minimum players
+        if num_players < 2:
+            raise ValueError(f"Need at least 2 players, got {num_players}")
 
-        team_size = num_players // 2
+        # Determine team sizes
+        if num_players % 2 == 0:
+            # Even number: equal teams
+            team_1_size = num_players // 2
+        else:
+            # Odd number: larger team gets the extra player
+            team_1_size = (num_players // 2) + 1
 
         # Generate all possible team combinations
         suggestions = []
 
-        # Get all combinations of team_size players for team 1
+        # Get all combinations of team_1_size players for team 1
         # Team 2 is automatically the remaining players
-        for team_1_indices in combinations(range(num_players), team_size):
+        for team_1_indices in combinations(range(num_players), team_1_size):
             team_1 = [players[i] for i in team_1_indices]
             team_2 = [players[i] for i in range(num_players) if i not in team_1_indices]
 

@@ -97,10 +97,23 @@ class Player(Base):
 
 class GameMode(str, enum.Enum):
     """Enum for different game modes."""
+    # Even team modes
     TWO_V_TWO = "2v2"
     THREE_V_THREE = "3v3"
     FOUR_V_FOUR = "4v4"
     FIVE_V_FIVE = "5v5"
+
+    # Uneven team modes
+    TWO_V_ONE = "2v1"
+    THREE_V_ONE = "3v1"
+    THREE_V_TWO = "3v2"
+    FOUR_V_ONE = "4v1"
+    FOUR_V_TWO = "4v2"
+    FOUR_V_THREE = "4v3"
+    FIVE_V_ONE = "5v1"
+    FIVE_V_TWO = "5v2"
+    FIVE_V_THREE = "5v3"
+    FIVE_V_FOUR = "5v4"
 
 
 class Race(str, enum.Enum):
@@ -221,6 +234,11 @@ class PlayerMatchMetrics(Base):
     efficiency_score = Column(Float, default=0.0)
     overall_impact = Column(Float, default=0.0)
 
+    # Team game metrics
+    team_fight_participation = Column(Float, default=0.0)  # % of team fights participated in (0-1)
+    team_fight_damage = Column(Integer, default=0)  # Damage dealt in multi-player engagements
+    team_fight_damage_ratio = Column(Float, default=0.0)  # Team fight damage / total damage
+
     # Timing analysis
     first_damage_timing = Column(Integer, nullable=True)  # Game seconds
     early_game_damage = Column(Integer, default=0)  # 0-5min
@@ -295,6 +313,7 @@ class FailedUpload(Base):
     filename = Column(String, nullable=False)
     file_size_bytes = Column(Integer, nullable=True)
     replay_hash = Column(String, nullable=True, index=True)
+    replay_file_path = Column(String, nullable=True)  # Saved file path for manual review
 
     # Error details
     error_type = Column(SQLEnum(UploadErrorType), nullable=False, index=True)

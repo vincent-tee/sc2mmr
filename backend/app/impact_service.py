@@ -66,6 +66,9 @@ class ImpactService:
             combat_score=metrics.combat_score,
             efficiency_score=metrics.efficiency_score,
             overall_impact=metrics.overall_impact,
+            team_fight_participation=metrics.team_fight_participation,
+            team_fight_damage=metrics.team_fight_damage,
+            team_fight_damage_ratio=metrics.team_fight_damage_ratio,
             first_damage_timing=metrics.first_damage_timing,
             early_game_damage=metrics.early_game_damage,
             mid_game_damage=metrics.mid_game_damage,
@@ -182,7 +185,10 @@ class ImpactService:
                 if not synergy:
                     synergy = PlayerSynergy(
                         player1_id=player1_id,
-                        player2_id=player2_id
+                        player2_id=player2_id,
+                        games_together=0,
+                        wins_together=0,
+                        losses_together=0
                     )
                     db.add(synergy)
 

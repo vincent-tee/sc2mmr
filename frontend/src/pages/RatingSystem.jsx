@@ -520,6 +520,138 @@ const RatingSystem = () => {
                             </VStack>
                           </AccordionPanel>
                         </AccordionItem>
+
+                        <AccordionItem>
+                          <h2>
+                            <AccordionButton>
+                              <Box flex="1" textAlign="left" fontWeight="semibold">
+                                <HStack>
+                                  <FiActivity />
+                                  <Text>Performance-Based Adjustments</Text>
+                                </HStack>
+                              </Box>
+                              <AccordionIcon />
+                            </AccordionButton>
+                          </h2>
+                          <AccordionPanel>
+                            <VStack spacing={4} align="stretch">
+                              <Alert status="info" borderRadius="md">
+                                <AlertIcon />
+                                <Box>
+                                  <AlertTitle>Individual Performance Matters</AlertTitle>
+                                  <AlertDescription fontSize="sm">
+                                    Your MMR change is multiplied based on your individual performance compared to teammates and opponents.
+                                  </AlertDescription>
+                                </Box>
+                              </Alert>
+
+                              <Box>
+                                <Text fontWeight="bold" mb={2}>How It Works:</Text>
+                                <Text mb={3}>
+                                  After TrueSkill calculates your base MMR change, a <Text as="span" fontWeight="bold">performance multiplier</Text> is applied
+                                  based on your gameplay metrics (combat score, economic score, etc.).
+                                </Text>
+                                <Text fontSize="sm" color="gray.600">
+                                  Multiplier range: <Code>0.5×</Code> to <Code>1.5×</Code> (50% reduction to 50% boost)
+                                </Text>
+                              </Box>
+
+                              <Box>
+                                <Text fontWeight="bold" mb={2}>Performance Calculation:</Text>
+                                <VStack align="stretch" spacing={2} fontSize="sm">
+                                  <Text>
+                                    <Text as="span" fontWeight="semibold">Your Performance Score</Text> =
+                                    (60% vs teammates) + (40% vs opponents)
+                                  </Text>
+                                  <Text color="gray.600">
+                                    Based on your <Code>overall_impact</Code> metric, which combines combat effectiveness,
+                                    economy, and unit production from the replay
+                                  </Text>
+                                </VStack>
+                              </Box>
+
+                              <Box>
+                                <Text fontWeight="bold" mb={2}>When You Get Boosted MMR:</Text>
+                                <Table variant="simple" size="sm">
+                                  <Thead>
+                                    <Tr>
+                                      <Th>Result</Th>
+                                      <Th>Performance</Th>
+                                      <Th>Effect</Th>
+                                    </Tr>
+                                  </Thead>
+                                  <Tbody>
+                                    <Tr bg="green.50" _dark={{ bg: 'green.900' }}>
+                                      <Td><Badge colorScheme="green">Win</Badge></Td>
+                                      <Td>Carried team (high impact)</Td>
+                                      <Td>
+                                        <Text color="green.600" fontWeight="bold">+50% more MMR</Text>
+                                      </Td>
+                                    </Tr>
+                                    <Tr bg="red.50" _dark={{ bg: 'red.900' }}>
+                                      <Td><Badge colorScheme="red">Loss</Badge></Td>
+                                      <Td>Played well despite loss</Td>
+                                      <Td>
+                                        <Text color="orange.600" fontWeight="bold">-50% less MMR loss</Text>
+                                      </Td>
+                                    </Tr>
+                                  </Tbody>
+                                </Table>
+                              </Box>
+
+                              <Box>
+                                <Text fontWeight="bold" mb={2}>When You Get Reduced MMR:</Text>
+                                <Table variant="simple" size="sm">
+                                  <Thead>
+                                    <Tr>
+                                      <Th>Result</Th>
+                                      <Th>Performance</Th>
+                                      <Th>Effect</Th>
+                                    </Tr>
+                                  </Thead>
+                                  <Tbody>
+                                    <Tr bg="yellow.50" _dark={{ bg: 'yellow.900' }}>
+                                      <Td><Badge colorScheme="green">Win</Badge></Td>
+                                      <Td>Got carried (low impact)</Td>
+                                      <Td>
+                                        <Text color="orange.600" fontWeight="bold">-50% less MMR gain</Text>
+                                      </Td>
+                                    </Tr>
+                                    <Tr bg="red.50" _dark={{ bg: 'red.900' }}>
+                                      <Td><Badge colorScheme="red">Loss</Badge></Td>
+                                      <Td>Underperformed (low impact)</Td>
+                                      <Td>
+                                        <Text color="red.600" fontWeight="bold">-50% more MMR loss</Text>
+                                      </Td>
+                                    </Tr>
+                                  </Tbody>
+                                </Table>
+                              </Box>
+
+                              <Box>
+                                <Text fontWeight="bold" mb={2}>Example:</Text>
+                                <Box bg={codeBg} p={3} borderRadius="md" fontSize="sm" fontFamily="mono">
+                                  <Text>Base MMR change: +30 points (from TrueSkill)</Text>
+                                  <Text>Your performance: 1.4× team average</Text>
+                                  <Text>Multiplier applied: 1.14× (14% boost)</Text>
+                                  <Text color="green.600" fontWeight="bold">Final MMR change: +34 points</Text>
+                                </Box>
+                              </Box>
+
+                              <Alert status="success" borderRadius="md" variant="left-accent">
+                                <AlertIcon />
+                                <Box fontSize="sm">
+                                  <AlertTitle>Impact on Team Balancing</AlertTitle>
+                                  <AlertDescription>
+                                    Team balancing uses your <Text as="span" fontWeight="bold">MMR only</Text>, not performance scores.
+                                    This ensures fair team compositions regardless of playstyle. Performance adjustments only affect
+                                    how much your MMR changes after matches.
+                                  </AlertDescription>
+                                </Box>
+                              </Alert>
+                            </VStack>
+                          </AccordionPanel>
+                        </AccordionItem>
                       </Accordion>
                     </VStack>
                   </CardBody>
