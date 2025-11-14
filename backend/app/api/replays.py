@@ -974,13 +974,28 @@ def set_manual_winner(
         ).first()
 
         if existing_match:
-            logger.warning(f"⚠️ Duplicate replay detected: existing match_id={existing_match.id}")
-            # Delete the failed upload record since we're reprocessing
+            logger.info(f"✓ Replay already processed as match_id={existing_match.id}")
+            # Delete the failed upload record since it's already processed
             db.delete(failed_upload)
             db.commit()
-            raise HTTPException(
-                status_code=409,
-                detail=f"Replay already processed. Match ID: {existing_match.id}"
+            logger.info(f"✓ Failed upload record deleted (already processed)")
+
+            # Return success response with existing match info
+            return ReplayUploadResponse(
+                match_id=existing_match.id,
+                map_name=existing_match.map_name,
+                game_mode=existing_match.game_mode.value,
+                played_at=existing_match.played_at,
+                duration_seconds=existing_match.duration_seconds,
+                num_players=len(replay_data.players),
+                message=f"Replay was already successfully processed as Match #{existing_match.id}",
+                processing_stats=ProcessingStats(
+                    parse_time_ms=round(parse_time_ms, 2),
+                    validation_time_ms=round(validation_time_ms, 2),
+                    duplicate_check_time_ms=round((time.time() - duplicate_start) * 1000, 2),
+                    rating_update_time_ms=0.0,
+                    total_time_ms=round((time.time() - start_time) * 1000, 2)
+                )
             )
         duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
         logger.info(f"✓ No duplicate found in {duplicate_check_time_ms:.2f}ms")
