@@ -12,6 +12,12 @@ from .models import GameMode, Race
 
 logger = logging.getLogger(__name__)
 
+# Constants for winner determination thresholds
+SUPPLY_ADVANTAGE_THRESHOLD = 1.5  # Supply advantage to determine winner
+RESOURCES_ADVANTAGE_THRESHOLD = 1.3  # Resource advantage to determine winner
+EARLY_QUIT_THRESHOLD_MINUTES = 10  # Minutes to consider an early quit
+CRASH_THRESHOLD_MINUTES = 3  # Minutes to consider a crash or test game
+
 
 @dataclass
 class PlayerData:
@@ -206,19 +212,24 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
             return 2, stats
 
         # Method 2: Compare army value / supply at end of game
-        if stats['team_1']['supply'] > stats['team_2']['supply'] * 1.5:
+        if stats['team_1']['supply'] > stats['team_2']['supply'] * SUPPLY_ADVANTAGE_THRESHOLD:
+            logger.info(f"Winner determined by supply advantage: Team 1 ({stats['team_1']['supply']} vs {stats['team_2']['supply']})")
             return 1, stats
-        elif stats['team_2']['supply'] > stats['team_1']['supply'] * 1.5:
+        elif stats['team_2']['supply'] > stats['team_1']['supply'] * SUPPLY_ADVANTAGE_THRESHOLD:
+            logger.info(f"Winner determined by supply advantage: Team 2 ({stats['team_2']['supply']} vs {stats['team_1']['supply']})")
             return 2, stats
 
         # Method 3: Check resources collected (more resources = likely winning)
-        if stats['team_1']['resources'] > stats['team_2']['resources'] * 1.3:
+        if stats['team_1']['resources'] > stats['team_2']['resources'] * RESOURCES_ADVANTAGE_THRESHOLD:
+            logger.info(f"Winner determined by resource advantage: Team 1 ({stats['team_1']['resources']:,} vs {stats['team_2']['resources']:,})")
             return 1, stats
-        elif stats['team_2']['resources'] > stats['team_1']['resources'] * 1.3:
+        elif stats['team_2']['resources'] > stats['team_1']['resources'] * RESOURCES_ADVANTAGE_THRESHOLD:
+            logger.info(f"Winner determined by resource advantage: Team 2 ({stats['team_2']['resources']:,} vs {stats['team_1']['resources']:,})")
             return 2, stats
 
-    except Exception:
-        # If stats analysis fails, return None with empty stats
+    except Exception as e:
+        # Log the exception and return None with empty stats
+        logger.error(f"Error during winner determination from stats: {e}", exc_info=True)
         pass
 
     return None, stats
@@ -240,6 +251,12 @@ def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> Re
         ReplayParseError: If replay cannot be parsed or is invalid
         WinnerDeterminationError: If winner cannot be determined automatically
     """
+    logger.info(f"Parsing replay file: {file_path}")
+
+    # Validate manual_winner_team if provided
+    if manual_winner_team is not None and manual_winner_team not in (1, 2):
+        raise ValueError(f"manual_winner_team must be 1 or 2, got: {manual_winner_team}")
+
     try:
         # Load the replay with detailed stats
         replay = sc2reader.load_replay(file_path, load_level=4)
@@ -305,7 +322,7 @@ def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> Re
         if team_1_won == team_2_won:
             # Use manual winner if provided, otherwise determine from stats
             if manual_winner_team is not None:
-                logger.info(f"✅ Using manual winner determination: Team {manual_winner_team}")
+                logger.info(f"Using manual winner determination: Team {manual_winner_team}")
                 winning_team = manual_winner_team
                 team_stats = None  # Stats not needed for manual determination
             else:
@@ -317,26 +334,29 @@ def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> Re
                 game_duration_minutes = duration_seconds / 60
                 quit_players = [p.name for p in human_players if hasattr(p, 'recorder_finished') and p.recorder_finished]
 
-                # Format team stats for error message
-                stats_msg = "\n\nTeam Stats Comparison:"
-                stats_msg += f"\n  Team 1:"
-                stats_msg += f"\n    Players still in: {team_stats['team_1']['players_still_in']}"
-                stats_msg += f"\n    Total supply: {team_stats['team_1']['supply']}"
-                stats_msg += f"\n    Total resources: {team_stats['team_1']['resources']:,}"
+                # Format team stats for error message using list and join (efficient)
+                stats_msg_lines = ["\n\nTeam Stats Comparison:", "  Team 1:"]
+                stats_msg_lines.append(f"    Players still in: {team_stats['team_1']['players_still_in']}")
+                stats_msg_lines.append(f"    Total supply: {team_stats['team_1']['supply']}")
+                stats_msg_lines.append(f"    Total resources: {team_stats['team_1']['resources']:,}")
                 for player in team_stats['team_1']['players']:
-                    stats_msg += f"\n      - {player['name']}: {'IN GAME' if player['still_in'] else 'QUIT'} | Supply: {player['supply']} | Resources: {player['resources']:,}"
+                    status = 'IN GAME' if player['still_in'] else 'QUIT'
+                    stats_msg_lines.append(f"      - {player['name']}: {status} | Supply: {player['supply']} | Resources: {player['resources']:,}")
 
-                stats_msg += f"\n  Team 2:"
-                stats_msg += f"\n    Players still in: {team_stats['team_2']['players_still_in']}"
-                stats_msg += f"\n    Total supply: {team_stats['team_2']['supply']}"
-                stats_msg += f"\n    Total resources: {team_stats['team_2']['resources']:,}"
+                stats_msg_lines.append("  Team 2:")
+                stats_msg_lines.append(f"    Players still in: {team_stats['team_2']['players_still_in']}")
+                stats_msg_lines.append(f"    Total supply: {team_stats['team_2']['supply']}")
+                stats_msg_lines.append(f"    Total resources: {team_stats['team_2']['resources']:,}")
                 for player in team_stats['team_2']['players']:
-                    stats_msg += f"\n      - {player['name']}: {'IN GAME' if player['still_in'] else 'QUIT'} | Supply: {player['supply']} | Resources: {player['resources']:,}"
+                    status = 'IN GAME' if player['still_in'] else 'QUIT'
+                    stats_msg_lines.append(f"      - {player['name']}: {status} | Supply: {player['supply']} | Resources: {player['resources']:,}")
 
-                if game_duration_minutes < 10 and quit_players:
+                stats_msg = '\n'.join(stats_msg_lines)
+
+                if game_duration_minutes < EARLY_QUIT_THRESHOLD_MINUTES and quit_players:
                     # Likely someone quit in early/mid game
                     logger.warning(
-                        f"🔍 RAISING WinnerDeterminationError: Player(s) quit at {game_duration_minutes:.1f} minutes. "
+                        f"WinnerDeterminationError: Player(s) quit at {game_duration_minutes:.1f} minutes. "
                         f"Quitters: {', '.join(quit_players)}"
                     )
                     raise WinnerDeterminationError(
@@ -346,10 +366,10 @@ def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> Re
                         f"Suggestion: Manually verify which team should have won based on the stats above.",
                         team_stats=team_stats
                     )
-                elif not quit_players and game_duration_minutes < 3:
+                elif not quit_players and game_duration_minutes < CRASH_THRESHOLD_MINUTES:
                     # Very short game, might be a crash or test
                     logger.warning(
-                        f"🔍 RAISING WinnerDeterminationError: Game too short ({game_duration_minutes:.1f} minutes) with no clear winner"
+                        f"WinnerDeterminationError: Game too short ({game_duration_minutes:.1f} minutes) with no clear winner"
                     )
                     raise WinnerDeterminationError(
                         f"Game too short ({game_duration_minutes:.1f} minutes) with no clear winner. "
@@ -359,7 +379,7 @@ def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> Re
                 else:
                     # Other ambiguous scenario
                     logger.warning(
-                        f"🔍 RAISING WinnerDeterminationError: Unable to determine winner from {game_duration_minutes:.1f} minute game. "
+                        f"WinnerDeterminationError: Unable to determine winner from {game_duration_minutes:.1f} minute game. "
                         f"Ambiguous results."
                     )
                     raise WinnerDeterminationError(
@@ -370,7 +390,7 @@ def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> Re
                     )
 
             # Update player won status based on determined winner
-            print(f"✓ Determined winner from game stats: Team {winning_team} (ambiguous quit scenario)")
+            logger.info(f"Determined winner from game stats: Team {winning_team} (ambiguous quit scenario)")
             for i, player in enumerate(players):
                 players[i] = PlayerData(
                     name=player.name,

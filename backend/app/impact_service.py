@@ -97,40 +97,31 @@ class ImpactService:
         if not player:
             return
 
-        # Get all match metrics for this player
-        match_players = db.query(MatchPlayer).filter(
+        # Get all match metrics for this player using JOIN to avoid N+1 queries
+        # This is much more efficient than querying each PlayerMatchMetrics individually
+        metrics_list = db.query(PlayerMatchMetrics).join(
+            MatchPlayer,
+            PlayerMatchMetrics.match_player_id == MatchPlayer.id
+        ).filter(
             MatchPlayer.player_id == player_id
         ).all()
 
-        if not match_players:
+        if not metrics_list:
             return
 
-        # Get metrics for each match
-        total_econ = 0.0
-        total_combat = 0.0
-        total_efficiency = 0.0
-        total_impact = 0.0
-        count = 0
+        # Calculate averages
+        count = len(metrics_list)
+        total_econ = sum(m.economic_score for m in metrics_list)
+        total_combat = sum(m.combat_score for m in metrics_list)
+        total_efficiency = sum(m.efficiency_score for m in metrics_list)
+        total_impact = sum(m.overall_impact for m in metrics_list)
 
-        for mp in match_players:
-            metrics = db.query(PlayerMatchMetrics).filter(
-                PlayerMatchMetrics.match_player_id == mp.id
-            ).first()
+        player.avg_economic_score = total_econ / count
+        player.avg_combat_score = total_combat / count
+        player.avg_efficiency_score = total_efficiency / count
+        player.avg_overall_impact = total_impact / count
 
-            if metrics:
-                total_econ += metrics.economic_score
-                total_combat += metrics.combat_score
-                total_efficiency += metrics.efficiency_score
-                total_impact += metrics.overall_impact
-                count += 1
-
-        if count > 0:
-            player.avg_economic_score = total_econ / count
-            player.avg_combat_score = total_combat / count
-            player.avg_efficiency_score = total_efficiency / count
-            player.avg_overall_impact = total_impact / count
-
-            db.commit()
+        db.commit()
 
     @staticmethod
     def update_synergies(db: Session, match_id: int):

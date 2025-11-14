@@ -5,6 +5,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Box } from '@chakra-ui/react';
 import Navigation from './components/Navigation';
+import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 import TeamGenerator from './pages/TeamGenerator';
 import UploadReplays from './pages/UploadReplays';
@@ -21,18 +22,20 @@ function App() {
     <Router>
       <Box minH="100vh" position="relative" zIndex={1}>
         <Navigation />
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/balance" element={<TeamGenerator />} />
-          <Route path="/upload" element={<UploadReplays />} />
-          <Route path="/failed-uploads" element={<FailedUploads />} />
-          <Route path="/players" element={<Players />} />
-          <Route path="/players/:playerId" element={<PlayerDetail />} />
-          <Route path="/history" element={<MatchHistory />} />
-          <Route path="/history/:matchId" element={<MatchDetail />} />
-          <Route path="/rating-system" element={<RatingSystem />} />
-          <Route path="/adaptive-model" element={<AdaptiveModel />} />
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/balance" element={<TeamGenerator />} />
+            <Route path="/upload" element={<UploadReplays />} />
+            <Route path="/failed-uploads" element={<FailedUploads />} />
+            <Route path="/players" element={<Players />} />
+            <Route path="/players/:playerId" element={<PlayerDetail />} />
+            <Route path="/history" element={<MatchHistory />} />
+            <Route path="/history/:matchId" element={<MatchDetail />} />
+            <Route path="/rating-system" element={<RatingSystem />} />
+            <Route path="/adaptive-model" element={<AdaptiveModel />} />
+          </Routes>
+        </ErrorBoundary>
       </Box>
     </Router>
   );

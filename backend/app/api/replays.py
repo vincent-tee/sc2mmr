@@ -93,8 +93,9 @@ def _log_failed_upload(
             )
             db.add(failed_upload)
             db.commit()
-    except Exception:
+    except Exception as e:
         # Don't let logging failures break the main flow
+        logger.error(f"Failed to log failed upload: {e}", exc_info=True)
         db.rollback()
 
 
@@ -177,7 +178,7 @@ async def upload_replay(
     Raises:
         HTTPException: If replay parsing fails or is duplicate
     """
-    logger.info(f"📥 Starting replay upload: '{file.filename}'")
+    logger.info(f"Starting replay upload: filename='{file.filename}'")
 
     # Validate file extension
     if not file.filename.endswith('.SC2Replay'):
@@ -258,8 +259,8 @@ async def upload_replay(
 
     except WinnerDeterminationError as e:
         # Winner cannot be determined automatically - save replay for manual review
-        logger.error(
-            f"✅ CAUGHT WinnerDeterminationError for file '{file.filename}': {str(e)[:200]}...",
+        logger.warning(
+            f"WinnerDeterminationError for file '{file.filename}': {str(e)[:200]}...",
             exc_info=False
         )
         # Try to extract basic metadata from replay
@@ -304,15 +305,13 @@ async def upload_replay(
             num_players=num_players,
             replay_file_path=saved_path
         )
-        logger.info(
-            f"📤 Returning HTTPException 400: 'Winner determination failed: {str(e)[:100]}...'"
-        )
+        logger.info(f"Returning HTTP 400: Winner determination failed: {str(e)[:100]}...")
         raise HTTPException(status_code=400, detail=f"Winner determination failed: {str(e)}")
 
     except ReplayParseError as e:
         # Log failed upload
         logger.error(
-            f"⚠️ CAUGHT ReplayParseError for file '{file.filename}': {str(e)[:200]}...",
+            f"ReplayParseError for file '{file.filename}': {str(e)[:200]}...",
             exc_info=False
         )
         _log_failed_upload(
@@ -323,9 +322,7 @@ async def upload_replay(
             error_message=str(e),
             error_detail=traceback.format_exc()
         )
-        logger.info(
-            f"📤 Returning HTTPException 400: 'Parse error: {str(e)[:100]}...'"
-        )
+        logger.info(f"Returning HTTP 400: Parse error: {str(e)[:100]}...")
         raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
     except HTTPException as http_ex:
         # Log validation and other HTTP errors (except duplicates and already-logged winner determination)
@@ -439,18 +436,23 @@ def get_match_details(
     Raises:
         HTTPException: If match not found
     """
+    logger.info(f"Fetching match details for match_id={match_id}")
+
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
+        logger.warning(f"Match not found: match_id={match_id}")
         raise HTTPException(status_code=404, detail="Match not found")
 
-    # Get all participants
-    match_players = db.query(MatchPlayer).filter(
+    # Get all participants with JOIN to Player to avoid N+1 queries
+    match_players_with_player = db.query(MatchPlayer, Player).join(
+        Player,
+        MatchPlayer.player_id == Player.id
+    ).filter(
         MatchPlayer.match_id == match_id
     ).all()
 
     players_data = []
-    for mp in match_players:
-        player = db.query(Player).filter(Player.id == mp.player_id).first()
+    for mp, player in match_players_with_player:
         # Use consistent MMR formula: MMR = 1000 + 40*mu - 120*sigma
         mmr_before = 1000 + (40 * mp.mu_before) - (120 * mp.sigma_before)
         mmr_after = 1000 + (40 * mp.mu_after) - (120 * mp.sigma_after)
@@ -464,6 +466,8 @@ def get_match_details(
             mmr_after=mmr_after,
             mmr_change=mmr_after - mmr_before
         ))
+
+    logger.info(f"Returning match details for match_id={match_id} with {len(players_data)} players")
 
     return MatchDetailResponse(
         match=MatchResponse(
@@ -628,7 +632,7 @@ async def upload_replay_advanced(
     except ReplayParseError as e:
         # Log failed upload
         logger.error(
-            f"⚠️ CAUGHT ReplayParseError for file '{file.filename}': {str(e)[:200]}...",
+            f"ReplayParseError for file '{file.filename}': {str(e)[:200]}...",
             exc_info=False
         )
         _log_failed_upload(
@@ -639,9 +643,7 @@ async def upload_replay_advanced(
             error_message=str(e),
             error_detail=traceback.format_exc()
         )
-        logger.info(
-            f"📤 Returning HTTPException 400: 'Parse error: {str(e)[:100]}...'"
-        )
+        logger.info(f"Returning HTTP 400: Parse error: {str(e)[:100]}...")
         raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
     except HTTPException as http_ex:
         # Log validation and other HTTP errors (except duplicates and already-logged winner determination)
