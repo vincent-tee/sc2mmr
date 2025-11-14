@@ -110,6 +110,37 @@ def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/version")
+def version_check():
+    """
+    Version check endpoint - verify backend is running latest code.
+    """
+    # Check if WinnerDeterminationError is available
+    has_winner_determination_error = False
+    try:
+        from .replay_parser import WinnerDeterminationError
+        has_winner_determination_error = True
+    except ImportError:
+        pass
+
+    # Check if uneven team support exists
+    has_uneven_team_support = False
+    try:
+        from .models import GameMode
+        has_uneven_team_support = hasattr(GameMode, 'FOUR_V_THREE')
+    except:
+        pass
+
+    return {
+        "version": "2.1.0",
+        "features": {
+            "winner_determination_error_handling": has_winner_determination_error,
+            "uneven_team_support": has_uneven_team_support
+        },
+        "status": "up-to-date" if (has_winner_determination_error and has_uneven_team_support) else "outdated"
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
