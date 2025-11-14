@@ -71,7 +71,29 @@ The system **automatically recalculates ratings** as you upload replays:
 | **Win/Loss Stats** | After each match | Incremental - counts updated |
 | **Race Stats** | After each match | Incremental - race-specific games tracked |
 | **Player Synergies** | After each match | Incremental - team performance tracked |
-| **Adaptive Model** | On-demand | Click "Refresh Analysis" to recalculate from all matches |
+| **PlayerMatchMetrics** | After each match | Saved to database (combat, economy, efficiency, etc.) |
+| **Adaptive Model** | ⚠️ **On-demand only** | **Manual**: Click "Refresh Analysis" button after uploads |
+
+### ⚠️ Important: Adaptive Model Requires Manual Refresh
+
+The Adaptive Model is **NOT automatic**:
+
+**After reset + re-upload:**
+1. Upload all replays → PlayerMatchMetrics saved to database ✅
+2. Visit Adaptive Model page in UI
+3. Click "Refresh Analysis" button → Model analyzes all matches ✅
+4. See updated suggestions based on new data ✅
+
+**Why manual?**
+- Expensive scipy optimization (gradient descent)
+- Analyzes 100s-1000s of matches at once
+- Takes 5-10 seconds to complete
+- No point running after every single upload
+
+**Requirements:**
+- Minimum 50 matches with PlayerMatchMetrics
+- Must use `uploadAdvanced` endpoint (saves metrics)
+- Basic `upload` endpoint does NOT save metrics
 
 ### Important: Match Order Matters
 
@@ -123,7 +145,24 @@ After all uploads complete:
 - Check Players page - ratings should be distributed
 - Look at Match History - verify all matches saved
 - Review Failed Uploads - fix any errors
-- Check Adaptive Model - should have sufficient data after 50+ matches
+
+### 5. Recalculate Adaptive Model
+The Adaptive Model does NOT recalculate during uploads - it's on-demand:
+
+```bash
+# After uploading replays:
+# 1. Visit Adaptive Model page in the UI
+# 2. Click "Refresh Analysis" button
+# 3. Model will analyze all newly uploaded matches
+# 4. Wait for "Analysis refreshed" toast notification
+# 5. Should show suggestions after 50+ matches with metrics
+```
+
+**Why manual?**
+- Computationally expensive (scipy optimization)
+- Processes hundreds of matches at once
+- Takes several seconds to complete
+- No need to run after every single upload
 
 ---
 
