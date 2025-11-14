@@ -221,6 +221,11 @@ class PlayerMatchMetrics(Base):
     efficiency_score = Column(Float, default=0.0)
     overall_impact = Column(Float, default=0.0)
 
+    # Team game metrics
+    team_fight_participation = Column(Float, default=0.0)  # % of team fights participated in (0-1)
+    team_fight_damage = Column(Integer, default=0)  # Damage dealt in multi-player engagements
+    team_fight_damage_ratio = Column(Float, default=0.0)  # Team fight damage / total damage
+
     # Timing analysis
     first_damage_timing = Column(Integer, nullable=True)  # Game seconds
     early_game_damage = Column(Integer, default=0)  # 0-5min

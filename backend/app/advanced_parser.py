@@ -65,6 +65,11 @@ class PlayerMetrics:
     efficiency_score: float = 0.0
     overall_impact: float = 0.0
 
+    # Team game metrics
+    team_fight_participation: float = 0.0  # % of team fights participated in (0-1)
+    team_fight_damage: int = 0  # Damage dealt in multi-player engagements
+    team_fight_damage_ratio: float = 0.0  # Team fight damage / total damage
+
     # Damage timeline (second-by-second)
     damage_timeline: Optional[DamageTimeline] = None
 
@@ -205,6 +210,14 @@ def parse_replay_advanced(file_path: str) -> AdvancedReplayData:
             if first_damage is not None:
                 metrics.first_damage_timing = first_damage
 
+        # Detect team engagements (where 3+ players are fighting)
+        player_metrics_list = list(player_metrics_dict.values())
+        team_engagements = _detect_team_engagements(player_metrics_list)
+
+        # Calculate team fight metrics for each player
+        for metrics in player_metrics_list:
+            _calculate_team_fight_metrics(metrics, team_engagements)
+
         # Calculate impact scores
         for metrics in player_metrics_dict.values():
             _calculate_impact_scores(metrics)
@@ -319,6 +332,149 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
             metrics.spending_efficiency = min(1.0, estimated_spending / metrics.total_resources_collected)
 
 
+@dataclass
+class TeamEngagement:
+    """Represents a team fight where multiple players are active."""
+    start_second: int
+    end_second: int
+    players_involved: List[str]  # Player names
+    total_damage: int
+
+
+def _detect_team_engagements(
+    all_player_metrics: List[PlayerMetrics],
+    damage_threshold: int = 1000,  # Min damage to count as engagement
+    time_window: int = 10  # Seconds for grouping damage
+) -> List[TeamEngagement]:
+    """
+    Detect team engagements where multiple players (3+) are dealing damage.
+
+    Args:
+        all_player_metrics: All players' metrics with damage timelines
+        damage_threshold: Minimum total damage to consider an engagement
+        time_window: Window in seconds for grouping damage events
+
+    Returns:
+        List of detected team engagements
+    """
+    engagements = []
+
+    # Get all damage timelines
+    timelines = {
+        m.player_name: m.damage_timeline
+        for m in all_player_metrics
+        if m.damage_timeline
+    }
+
+    if len(timelines) < 3:
+        return []  # Need at least 3 players for team fights
+
+    # Find all seconds where damage occurred
+    all_seconds = set()
+    for timeline in timelines.values():
+        all_seconds.update(timeline.damage_events.keys())
+
+    # Group consecutive seconds into engagement windows
+    sorted_seconds = sorted(all_seconds)
+    current_engagement = []
+
+    for i, second in enumerate(sorted_seconds):
+        if not current_engagement or second - current_engagement[-1] <= time_window:
+            current_engagement.append(second)
+        else:
+            # Process current engagement
+            if len(current_engagement) >= 3:  # At least 3 seconds of fighting
+                _process_engagement_window(
+                    current_engagement,
+                    timelines,
+                    engagements,
+                    damage_threshold
+                )
+            current_engagement = [second]
+
+    # Process final engagement
+    if len(current_engagement) >= 3:
+        _process_engagement_window(
+            current_engagement,
+            timelines,
+            engagements,
+            damage_threshold
+        )
+
+    return engagements
+
+
+def _process_engagement_window(
+    seconds: List[int],
+    timelines: Dict[str, 'DamageTimeline'],
+    engagements: List[TeamEngagement],
+    damage_threshold: int
+):
+    """Process a window of seconds to detect team engagement."""
+    start_second = seconds[0]
+    end_second = seconds[-1]
+
+    # Count players who dealt damage in this window
+    players_active = []
+    total_damage = 0
+
+    for player_name, timeline in timelines.items():
+        player_damage = timeline.get_window_damage(start_second, end_second + 1)
+        if player_damage > 0:
+            players_active.append(player_name)
+            total_damage += player_damage
+
+    # Team fight requires 3+ players and minimum damage
+    if len(players_active) >= 3 and total_damage >= damage_threshold:
+        engagements.append(TeamEngagement(
+            start_second=start_second,
+            end_second=end_second,
+            players_involved=players_active,
+            total_damage=total_damage
+        ))
+
+
+def _calculate_team_fight_metrics(
+    metrics: PlayerMetrics,
+    engagements: List[TeamEngagement]
+):
+    """
+    Calculate team fight participation metrics for a player.
+
+    Args:
+        metrics: PlayerMetrics to update
+        engagements: List of detected team engagements
+    """
+    if not engagements or not metrics.damage_timeline:
+        metrics.team_fight_participation = 0.0
+        metrics.team_fight_damage = 0
+        metrics.team_fight_damage_ratio = 0.0
+        return
+
+    # Calculate participation
+    fights_participated = 0
+    total_team_fight_damage = 0
+
+    for engagement in engagements:
+        player_damage = metrics.damage_timeline.get_window_damage(
+            engagement.start_second,
+            engagement.end_second + 1
+        )
+
+        if player_damage > 0:
+            fights_participated += 1
+            total_team_fight_damage += player_damage
+
+    # Update metrics
+    metrics.team_fight_participation = fights_participated / len(engagements) if engagements else 0.0
+    metrics.team_fight_damage = total_team_fight_damage
+    metrics.team_fight_damage_ratio = (
+        total_team_fight_damage / metrics.damage_dealt
+        if metrics.damage_dealt > 0
+        else 0.0
+    )
+
+
 def _calculate_impact_scores(metrics: PlayerMetrics):
     """
     Calculate impact scores for a player.
@@ -327,6 +483,7 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
     - Economic: resource collection, workers, spending
     - Combat: damage dealt, efficiency, kills
     - Efficiency: ratios and per-minute metrics
+    - Team contribution: engagement participation, team fight damage
 
     Args:
         metrics: PlayerMetrics to calculate scores for
@@ -357,12 +514,20 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
 
     metrics.efficiency_score = sum(efficiency_components) / len(efficiency_components)
 
-    # Overall impact (weighted average)
-    # Combat is most important for team contribution
+    # Team contribution score (0-100)
+    # Based on showing up to team fights and being effective in them
+    participation_score = metrics.team_fight_participation * 100
+    team_fight_effectiveness_score = metrics.team_fight_damage_ratio * 100
+    team_contribution_score = (participation_score + team_fight_effectiveness_score) / 2
+
+    # Overall impact (weighted average optimized for team games)
+    # Team contribution is critical for casual team games
+    # Combat/economy matter but less than being there for your team
     metrics.overall_impact = (
-        metrics.economic_score * 0.3 +
-        metrics.combat_score * 0.5 +
-        metrics.efficiency_score * 0.2
+        metrics.combat_score * 0.40 +           # Direct combat still important
+        metrics.economic_score * 0.20 +         # Economy matters but less
+        team_contribution_score * 0.30 +        # NEW: Team fight participation critical
+        metrics.efficiency_score * 0.10         # Efficiency less critical in casual
     )
 
 
