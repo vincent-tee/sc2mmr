@@ -451,8 +451,9 @@ def get_match_details(
     players_data = []
     for mp in match_players:
         player = db.query(Player).filter(Player.id == mp.player_id).first()
-        mmr_before = mp.mu_before - (3 * mp.sigma_before)
-        mmr_after = mp.mu_after - (3 * mp.sigma_after)
+        # Use consistent MMR formula: MMR = 1000 + 40*mu - 120*sigma
+        mmr_before = 1000 + (40 * mp.mu_before) - (120 * mp.sigma_before)
+        mmr_after = 1000 + (40 * mp.mu_after) - (120 * mp.sigma_after)
 
         players_data.append(MatchPlayerResponse(
             player_name=player.name,
