@@ -3,7 +3,7 @@ API endpoints for replay upload and management.
 """
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 import os
 import tempfile
