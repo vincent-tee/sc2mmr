@@ -256,11 +256,33 @@ def parse_replay(file_path: str) -> ReplayData:
 
             if winning_team is None:
                 # Unable to determine winner even with stats
-                raise ReplayParseError(
-                    "Unable to determine game winner. This may be an incomplete or corrupted replay."
-                )
+                # Check if this looks like someone quit
+                game_duration_minutes = duration_seconds / 60
+                quit_players = [p.name for p in human_players if hasattr(p, 'recorder_finished') and p.recorder_finished]
+
+                if game_duration_minutes < 10 and quit_players:
+                    # Likely someone quit in early/mid game
+                    raise ReplayParseError(
+                        f"Cannot determine winner - player(s) quit at {game_duration_minutes:.1f} minutes. "
+                        f"Quitters: {', '.join(quit_players)}. "
+                        "This replay was not played to completion and has ambiguous results."
+                    )
+                elif not quit_players and game_duration_minutes < 3:
+                    # Very short game, might be a crash or test
+                    raise ReplayParseError(
+                        f"Game too short ({game_duration_minutes:.1f} minutes) with no clear winner. "
+                        "This may be a test game, crash, or incomplete replay."
+                    )
+                else:
+                    # Other ambiguous scenario
+                    raise ReplayParseError(
+                        f"Unable to determine game winner from {game_duration_minutes:.1f} minute game. "
+                        "Game may have ended abnormally (disconnection, draw, or corrupted replay data). "
+                        f"Teams showed equal results and stats were inconclusive."
+                    )
 
             # Update player won status based on determined winner
+            print(f"✓ Determined winner from game stats: Team {winning_team} (ambiguous quit scenario)")
             for i, player in enumerate(players):
                 players[i] = PlayerData(
                     name=player.name,
