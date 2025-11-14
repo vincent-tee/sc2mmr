@@ -349,6 +349,134 @@ def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[i
     return None, stats
 
 
+def determine_winner_from_tracker_events(replay, human_players: List) -> Tuple[Optional[int], Dict]:
+    """
+    Attempt to determine the winning team from tracker events.
+    This is more reliable than player.stats for newer SC2 versions.
+
+    Args:
+        replay: sc2reader replay object
+        human_players: List of human players from the replay
+
+    Returns:
+        Tuple of (winning_team_number or None, stats_dict)
+    """
+    # Initialize stats structure
+    stats = {
+        'team_1': {'players': [], 'players_still_in': 0, 'supply': 0, 'resources': 0},
+        'team_2': {'players': [], 'players_still_in': 0, 'supply': 0, 'resources': 0}
+    }
+
+    try:
+        # Group players by team
+        team_1_players = [p for p in human_players if p.team_id == 1]
+        team_2_players = [p for p in human_players if p.team_id == 2]
+
+        # Initialize player stats dictionary indexed by player id
+        player_stats = {}
+        for p in human_players:
+            player_stats[p.pid] = {
+                'name': p.name,
+                'team': p.team_id,
+                'supply': 0,
+                'minerals': 0,
+                'vespene': 0,
+            }
+
+        # Extract stats from tracker events
+        if hasattr(replay, 'tracker_events'):
+            for event in replay.tracker_events:
+                if event.name == 'PlayerStatsEvent':
+                    pid = event.pid
+                    if pid in player_stats:
+                        # Update with latest values from this event
+                        if hasattr(event, 'food_used'):
+                            player_stats[pid]['supply'] = event.food_used
+                        if hasattr(event, 'minerals_current'):
+                            player_stats[pid]['minerals'] = event.minerals_current
+                        if hasattr(event, 'vespene_current'):
+                            player_stats[pid]['vespene'] = event.vespene_current
+
+        # Count how many players had data extracted
+        players_with_data = sum(1 for ps in player_stats.values() if ps['supply'] > 0 or ps['minerals'] > 0 or ps['vespene'] > 0)
+        logger.info(f"Extracted stats from tracker events for {players_with_data} players")
+
+        # Process team 1
+        for p in team_1_players:
+            if p.pid in player_stats:
+                ps = player_stats[p.pid]
+                resources = ps['minerals'] + ps['vespene']
+
+                logger.info(f"Player {p.name} (Team 1): minerals={ps['minerals']}, vespene={ps['vespene']}, supply={ps['supply']}, total_resources={resources}")
+
+                player_info = {
+                    'name': p.name,
+                    'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
+                    'supply': ps['supply'],
+                    'resources': resources
+                }
+                stats['team_1']['players'].append(player_info)
+
+                if player_info['still_in']:
+                    stats['team_1']['players_still_in'] += 1
+                stats['team_1']['supply'] += player_info['supply']
+                stats['team_1']['resources'] += player_info['resources']
+
+        # Process team 2
+        for p in team_2_players:
+            if p.pid in player_stats:
+                ps = player_stats[p.pid]
+                resources = ps['minerals'] + ps['vespene']
+
+                logger.info(f"Player {p.name} (Team 2): minerals={ps['minerals']}, vespene={ps['vespene']}, supply={ps['supply']}, total_resources={resources}")
+
+                player_info = {
+                    'name': p.name,
+                    'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
+                    'supply': ps['supply'],
+                    'resources': resources
+                }
+                stats['team_2']['players'].append(player_info)
+
+                if player_info['still_in']:
+                    stats['team_2']['players_still_in'] += 1
+                stats['team_2']['supply'] += player_info['supply']
+                stats['team_2']['resources'] += player_info['resources']
+
+        # Log team totals for debugging
+        logger.info(f"Team stats extracted - Team 1: {stats['team_1']['players_still_in']} still in, {stats['team_1']['supply']} supply, {stats['team_1']['resources']:,} resources")
+        logger.info(f"Team stats extracted - Team 2: {stats['team_2']['players_still_in']} still in, {stats['team_2']['supply']} supply, {stats['team_2']['resources']:,} resources")
+
+        # Method 1: Check who stayed in the game longest
+        if stats['team_1']['players_still_in'] > stats['team_2']['players_still_in']:
+            return 1, stats
+        elif stats['team_2']['players_still_in'] > stats['team_1']['players_still_in']:
+            return 2, stats
+
+        # Method 2: Compare army value / supply at end of game
+        if stats['team_1']['supply'] > stats['team_2']['supply'] * SUPPLY_ADVANTAGE_THRESHOLD:
+            logger.info(f"Winner determined by supply advantage: Team 1 ({stats['team_1']['supply']} vs {stats['team_2']['supply']})")
+            return 1, stats
+        elif stats['team_2']['supply'] > stats['team_1']['supply'] * SUPPLY_ADVANTAGE_THRESHOLD:
+            logger.info(f"Winner determined by supply advantage: Team 2 ({stats['team_2']['supply']} vs {stats['team_1']['supply']})")
+            return 2, stats
+
+        # Method 3: Check resources collected (more resources = likely winning)
+        if stats['team_1']['resources'] > stats['team_2']['resources'] * RESOURCES_ADVANTAGE_THRESHOLD:
+            logger.info(f"Winner determined by resource advantage: Team 1 ({stats['team_1']['resources']:,} vs {stats['team_2']['resources']:,})")
+            return 1, stats
+        elif stats['team_2']['resources'] > stats['team_1']['resources'] * RESOURCES_ADVANTAGE_THRESHOLD:
+            logger.info(f"Winner determined by resource advantage: Team 2 ({stats['team_2']['resources']:,} vs {stats['team_1']['resources']:,})")
+            return 2, stats
+
+    except Exception as e:
+        # Log the exception and return None with empty stats
+        logger.error(f"Error during winner determination from tracker events: {e}", exc_info=True)
+        pass
+
+    return None, stats
+
+
 def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> ReplayData:
     """
     Parse a StarCraft 2 replay file and extract relevant information.
