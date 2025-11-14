@@ -45,11 +45,11 @@ git log --oneline -5
 
 **Expected output:**
 ```
+467c1c3 Complete AEST timezone implementation across all pages
 2775a36 Add AEST timezone support for all dates
 1a45cdd Add pagination to player match history
 5ba8752 Fix multiple UI issues and improve user experience
 acf0ad9 Add comprehensive guide for merging duplicate players
-5e5f21b Add player merge and rating recalculation utilities
 ```
 
 ### Step 3: Backend Deployment
@@ -224,7 +224,7 @@ curl http://localhost:3000
 # 3. Check latest commit
 cd /home/user/sc2mmr
 git log --oneline -1
-# Should show: 2775a36 Add AEST timezone support for all dates
+# Should show: 467c1c3 Complete AEST timezone implementation across all pages
 ```
 
 ### Check Backend Logs for Issues:
@@ -315,7 +315,7 @@ If something doesn't work:
 1. Check the specific test in the Testing Checklist
 2. Look at Common Issues & Solutions
 3. Check backend logs for errors
-4. Verify you pulled the latest code (`2775a36` or later)
+4. Verify you pulled the latest code (`467c1c3` or later)
 5. Try clearing browser cache completely
 
 All features are tested and working - the most common issue is browser cache!
