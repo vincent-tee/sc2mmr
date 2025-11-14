@@ -24,6 +24,20 @@ Team 2: Total supply: 0, Total resources: 0
   2. Very old SC2 version (pre-stats era)
   3. Replay ended too early (no stats recorded)
   4. Backend not restarted after deploying fix
+  5. **SC2 version incompatibility** - newer SC2 versions (5.0.14+) may have unknown abilities that prevent stats extraction
+
+## Important: Tracker Events vs Player Stats
+
+**The final fix uses TWO methods:**
+
+1. **Primary: Tracker Events** - Extracts stats from `PlayerStatsEvent` in tracker_events
+   - More reliable across all SC2 versions
+   - Works even when player.stats is None
+   - This is what should work for SC2 version 5.0.14.94137+
+
+2. **Fallback: Player Stats** - Uses player.stats.food_used[-1] if tracker events fail
+   - Works for older replays
+   - May fail silently on newer SC2 versions with unknown abilities
 
 ## How to Check: Frontend vs Backend
 
@@ -31,18 +45,29 @@ Team 2: Total supply: 0, Total resources: 0
 
 After deploying the fix, look for these log messages when uploading a new replay:
 
-**Good (working):**
+**Good (working with tracker events):**
 ```
+INFO Attempting winner determination from tracker events
+INFO Extracted stats from tracker events for 8 players
 INFO Player ChrisO (Team 1): minerals=15,000, vespene=8,000, supply=150, total_resources=23,000
 INFO Player Tingmore (Team 1): minerals=12,000, vespene=6,000, supply=120, total_resources=18,000
 INFO Team stats extracted - Team 1: 4 still in, 450 supply, 85,000 resources
 INFO Team stats extracted - Team 2: 2 still in, 80 supply, 15,000 resources
 ```
 
+**Good (working with player.stats fallback):**
+```
+INFO Attempting winner determination from tracker events
+INFO Tracker events had no data, falling back to player.stats method
+INFO Player ChrisO (Team 1): minerals=15,000, vespene=8,000, supply=150, total_resources=23,000
+INFO Team stats extracted - Team 1: 4 still in, 450 supply, 85,000 resources
+```
+
 **Bad (not working):**
 ```
-WARNING Player ChrisO: No stats object available
-WARNING Player Tingmore: No stats object available
+INFO Attempting winner determination from tracker events
+INFO Tracker events had no data, falling back to player.stats method
+INFO Player ChrisO: NO stats object available!
 INFO Team stats extracted - Team 1: 4 still in, 0 supply, 0 resources
 INFO Team stats extracted - Team 2: 4 still in, 0 supply, 0 resources
 ```
@@ -90,7 +115,7 @@ Has stats: False
 
 ### Step 3: Check if Backend is Running Updated Code
 
-The fix was committed in commit `07e440d`. Check your backend is running this version:
+The tracker events fix was committed in commit `54ef378`. Check your backend is running this version:
 
 ```bash
 cd /home/user/sc2mmr
@@ -99,9 +124,11 @@ git log --oneline -5
 
 Should show:
 ```
+54ef378 Add tracker events fallback for stats extraction
+1700d4a Change diagnostic logging from DEBUG/WARNING to INFO level
+ebf5686 Add diagnostic guide for zero stats issue
 8520d7b Add comprehensive debug logging for stats extraction
-07e440d Fix critical replay stats extraction bug
-...
+07e440d Fix critical replay stats extraction bug - all zeros issue
 ```
 
 **Then restart your backend**:
@@ -199,13 +226,19 @@ With actual stats, you can:
 
 ## TL;DR Checklist
 
-- [ ] Backend code updated to commit `8520d7b` or later
+- [ ] Backend code updated to commit `54ef378` (tracker events fix) or later
 - [ ] Backend restarted after updating
 - [ ] Test with a NEW replay upload (not an old failed one)
-- [ ] Check backend logs for "Player X (Team Y): minerals=..., vespene=..., supply=..."
+- [ ] Check backend logs for:
+  - [ ] "Attempting winner determination from tracker events"
+  - [ ] "Extracted stats from tracker events for X players"
+  - [ ] "Player X (Team Y): minerals=..., vespene=..., supply=..."
 - [ ] If still zeros, run `debug_replay_stats.py` on the replay file
 - [ ] If replay has no stats, file is corrupted/incomplete/too old
 
 ---
 
-**Most likely issue**: The error you're seeing is from an OLD failed upload that was processed BEFORE the fix was deployed. Re-upload that replay to see the fixed stats extraction!
+**Most likely issues:**
+1. **OLD failed upload** - Error from BEFORE the fix was deployed → Re-upload the replay
+2. **SC2 version 5.0.14+** - Newer versions need tracker events fix (commit `54ef378`)
+3. **Backend not restarted** - Old code still running → Restart backend after pulling latest code

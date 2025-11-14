@@ -12,33 +12,66 @@ This made it impossible to determine winners, even for games where one team clea
 
 ## Root Cause
 
-The replay parser was accessing stats incorrectly. SC2Reader stores stats as **time-series arrays**, not single values:
+**Two-part problem discovered:**
+
+### Part 1: Incorrect Stats Access (Initial Discovery)
+The replay parser was accessing stats incorrectly. SC2Reader stores stats as **time-series arrays**, not single values.
+
+### Part 2: Missing Stats Object (Root Cause)
+For certain SC2 versions (like 5.0.14.94137), the `player.stats` object **never gets populated** due to unknown abilities in the replay file. sc2reader fails silently, leaving `player.stats = None`.
+
+## Final Solution: Tracker Events
+
+Instead of relying on `player.stats`, we now extract stats from **tracker events** (PlayerStatsEvent), which are more reliable across all SC2 versions:
 
 ```python
-# WRONG (always returns 0)
-supply = p.supply  # Doesn't exist
-resources = p.stats.resources_collected  # Doesn't exist
+# PRIMARY METHOD: Extract from tracker events
+for event in replay.tracker_events:
+    if event.name == 'PlayerStatsEvent':
+        supply = event.food_used
+        minerals = event.minerals_current
+        vespene = event.vespene_current
 
-# RIGHT (gets final value from array)
-supply = p.stats.food_used[-1]  # Last value in time series
-minerals = p.stats.minerals_collection_rate[-1]  # Last value
-vespene = p.stats.vespene_collection_rate[-1]  # Last value
-resources = minerals + vespene
+# FALLBACK: Use player.stats if tracker events fail
+if hasattr(p.stats, 'food_used') and p.stats.food_used:
+    supply = p.stats.food_used[-1]  # Last value in time series
+    minerals = p.stats.minerals_collection_rate[-1]
+    vespene = p.stats.vespene_collection_rate[-1]
 ```
+
+### Why Tracker Events?
+
+**The Problem with player.stats:**
+- SC2 version 5.0.14.94137 introduced new abilities (133E, 5840, 58C0) unknown to sc2reader
+- When sc2reader encounters unknown abilities, it fails silently
+- Result: `player.stats` object is **never created** (remains None)
+- This affects newer SC2 replays
+
+**Tracker Events Are More Reliable:**
+- `PlayerStatsEvent` is in the tracker_events stream
+- Doesn't depend on sc2reader understanding all abilities
+- Works across all SC2 versions tested
+- Contains the same data: food_used, minerals_current, vespene_current
 
 ## What Changed
 
-### 1. Proper Stats Extraction
-- ✅ Extract final supply from `food_used` time series
+### 1. Tracker Events Primary Source
+- ✅ Extract stats from `PlayerStatsEvent` in tracker_events
+- ✅ More reliable across different SC2 versions
+- ✅ Works even when player.stats is None
+
+### 2. Player Stats Fallback
+- ✅ Use player.stats.food_used[-1] if tracker events have no data
 - ✅ Calculate total resources from minerals + vespene collection rates
 - ✅ Handle both list and single value formats safely
 
-### 2. Better Debugging
+### 3. Better Debugging
 - ✅ Per-player debug logging: `Player ChrisO: minerals=15000, vespene=8000, supply=150`
 - ✅ Team totals logging: `Team 1: 4 still in, 450 supply, 85,000 resources`
 - ✅ Winner determination method logging
+- ✅ Logs show which method was used (tracker events vs player.stats)
 
-### 3. Example Output (After Fix)
+### 4. Example Output (After Fix)
 
 **Old Error Message** (useless):
 ```
@@ -105,9 +138,14 @@ Now you can:
 ## Troubleshooting
 
 If stats still show zeros after this fix:
-- Check logs for `Player X: minerals=X, vespene=X, supply=X`
-- If you see `minerals=0, vespene=0`, the replay might be corrupted
-- Try opening the replay in SC2 to verify it's valid
+- **Check backend logs** for these messages:
+  - `Attempting winner determination from tracker events`
+  - `Extracted stats from tracker events for X players`
+  - If you see `Tracker events had no data, falling back to player.stats`, tracker events didn't work
+  - If you see `Player X: minerals=0, vespene=0, supply=0`, the replay might be corrupted
+- **Verify the replay file** is valid by opening it in SC2
+- **Check sc2reader load level** is set to 4 in the code
+- **Run debug script** on the replay file: `python3 backend/debug_replay_stats.py /path/to/replay.SC2Replay`
 
 ## Core Player vs Outsider
 
