@@ -13,9 +13,12 @@ from dataclasses import dataclass
 from datetime import timedelta
 import sc2reader
 from sc2reader.events import TrackerEvent
+import logging
 
 from .replay_parser import parse_replay, ReplayData, ReplayParseError, WinnerDeterminationError
 from .damage_timeline import DamageTimelineExtractor, DamageTimeline
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -261,6 +264,15 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         player_metrics: Dictionary of player metrics to update
         game_duration: Game duration in seconds
     """
+    # Log sc2reader version and event overview for debugging
+    logger.info(f"🔍 Processing {len(events)} tracker events. sc2reader version: {sc2reader.__version__ if hasattr(sc2reader, '__version__') else 'unknown'}")
+
+    # Count event types for diagnostic purposes
+    event_types = {}
+    for event in events:
+        event_types[event.name] = event_types.get(event.name, 0) + 1
+    logger.info(f"🔍 Event type distribution: {event_types}")
+
     unit_born_count = {}
     unit_died_count = {}
     unit_compositions = {}
@@ -278,6 +290,12 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
                            'Unknown'
 
                 if unit_name == 'Unknown':
+                    # Debug logging: show what attributes are actually available
+                    logger.info(f"🔍 UnitBornEvent with unknown unit type. Available attributes: {dir(event)}")
+                    logger.info(f"  event.__dict__: {event.__dict__ if hasattr(event, '__dict__') else 'N/A'}")
+                    if hasattr(event, 'unit'):
+                        logger.info(f"  event.unit type: {type(event.unit)}")
+                        logger.info(f"  event.unit.__dict__: {event.unit.__dict__ if hasattr(event.unit, '__dict__') else 'N/A'}")
                     # Skip if we can't determine the unit type
                     continue
 
@@ -305,6 +323,12 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
                        'Unknown'
 
             if unit_name == 'Unknown':
+                # Debug logging: show what attributes are actually available
+                logger.info(f"🔍 UnitDiedEvent with unknown unit type. Available attributes: {dir(event)}")
+                logger.info(f"  event.__dict__: {event.__dict__ if hasattr(event, '__dict__') else 'N/A'}")
+                if hasattr(event, 'unit'):
+                    logger.info(f"  event.unit type: {type(event.unit)}")
+                    logger.info(f"  event.unit.__dict__: {event.unit.__dict__ if hasattr(event.unit, '__dict__') else 'N/A'}")
                 # Skip if we can't determine the unit type
                 continue
 
