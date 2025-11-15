@@ -24,8 +24,14 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
+  Switch,
+  Slider,
+  SliderTrack,
+  SliderFilledTrack,
+  SliderThumb,
+  Tooltip,
 } from '@chakra-ui/react';
-import { FiChevronDown, FiCopy, FiDownload, FiShare2, FiZap, FiUsers, FiCheck, FiX, FiTarget } from 'react-icons/fi';
+import { FiChevronDown, FiCopy, FiDownload, FiShare2, FiZap, FiUsers, FiCheck, FiX, FiTarget, FiActivity } from 'react-icons/fi';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { playersApi, teamsApi } from '../api/endpoints';
 import PlayerCard from '../components/PlayerCard';
@@ -38,6 +44,8 @@ import { formatMMR, generateTeamText, copyToClipboard, getFairnessColor } from '
 const TeamGenerator = () => {
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [teamSuggestions, setTeamSuggestions] = useState([]);
+  const [useImpactBalance, setUseImpactBalance] = useState(false);
+  const [impactWeight, setImpactWeight] = useState(0.5);
   const toast = useToast();
 
   const bgColor = useColorModeValue('white', 'gray.800');
@@ -57,8 +65,13 @@ const TeamGenerator = () => {
   // Balance teams mutation
   const balanceTeamsMutation = useMutation({
     mutationFn: async (playerIds) => {
-      const response = await teamsApi.balance(playerIds, 3); // Get top 3 suggestions
-      return response.data;
+      if (useImpactBalance) {
+        const response = await teamsApi.balanceWithImpact(playerIds, 3, impactWeight);
+        return response.data;
+      } else {
+        const response = await teamsApi.balance(playerIds, 3); // Get top 3 suggestions
+        return response.data;
+      }
     },
     onSuccess: (data) => {
       setTeamSuggestions(data);
@@ -342,6 +355,95 @@ const TeamGenerator = () => {
               </Box>
             </TacticalCard>
           </Box>
+
+          {/* Impact Balancing Controls */}
+          <TacticalCard variant="angled" glowColor="rgba(138, 43, 226, 0.4)">
+            <Box p={6}>
+              <VStack spacing={6} align="stretch">
+                <HStack justify="space-between">
+                  <HStack>
+                    <Icon as={FiActivity} color="purple.400" boxSize={5} />
+                    <Heading
+                      size="md"
+                      fontFamily="heading"
+                      textTransform="uppercase"
+                      letterSpacing="wider"
+                      color="purple.300"
+                    >
+                      IMPACT-AWARE BALANCING
+                    </Heading>
+                  </HStack>
+                  <Switch
+                    isChecked={useImpactBalance}
+                    onChange={(e) => setUseImpactBalance(e.target.checked)}
+                    size="lg"
+                    colorScheme="purple"
+                  />
+                </HStack>
+
+                <Text fontSize="sm" color="gray.400" fontFamily="heading">
+                  Distribute high-impact players (shot callers, strong players) and low-impact players (learning, weaker) evenly across teams.
+                </Text>
+
+                <Collapse in={useImpactBalance} animateOpacity>
+                  <VStack spacing={4} align="stretch">
+                    <Divider borderColor="whiteAlpha.200" />
+                    <Box>
+                      <HStack justify="space-between" mb={3}>
+                        <Text
+                          fontSize="sm"
+                          color="gray.400"
+                          fontFamily="heading"
+                          textTransform="uppercase"
+                        >
+                          Impact Weight
+                        </Text>
+                        <Badge
+                          colorScheme="purple"
+                          fontSize="md"
+                          px={3}
+                          py={1}
+                          fontFamily="heading"
+                        >
+                          {(impactWeight * 100).toFixed(0)}%
+                        </Badge>
+                      </HStack>
+                      <Slider
+                        value={impactWeight}
+                        onChange={setImpactWeight}
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        colorScheme="purple"
+                      >
+                        <SliderTrack bg="whiteAlpha.200">
+                          <SliderFilledTrack bg="purple.500" />
+                        </SliderTrack>
+                        <Tooltip
+                          label={`${(impactWeight * 100).toFixed(0)}%`}
+                          placement="top"
+                          isOpen={false}
+                        >
+                          <SliderThumb boxSize={6} bg="purple.400" />
+                        </Tooltip>
+                      </Slider>
+                      <HStack justify="space-between" mt={2}>
+                        <Text fontSize="xs" color="gray.500" fontFamily="heading">
+                          Pure MMR Balance
+                        </Text>
+                        <Text fontSize="xs" color="purple.400" fontWeight="bold" fontFamily="heading">
+                          {impactWeight === 0.5 ? 'BALANCED ⚖️' : ''}
+                        </Text>
+                        <Text fontSize="xs" color="gray.500" fontFamily="heading">
+                          Pure Impact Balance
+                        </Text>
+                      </HStack>
+                    </Box>
+                  </VStack>
+                </Collapse>
+              </VStack>
+            </Box>
+          </TacticalCard>
 
           {/* Generate Button */}
           <Box textAlign="center" py={6}>
@@ -641,32 +743,65 @@ const TeamSuggestionCard = ({ suggestion, index, isRecommended, onExport }) => {
                   <PlayerCard key={player.id} player={player} size="sm" />
                 ))}
               </VStack>
-              <Box
-                bg="whiteAlpha.50"
-                p={3}
-                borderRadius="md"
-                border="1px solid"
-                borderColor="brand.400"
-                textAlign="center"
-              >
-                <Text
-                  fontSize="xs"
-                  color="gray.500"
-                  fontFamily="heading"
-                  textTransform="uppercase"
-                  mb={1}
+              <VStack spacing={2} align="stretch">
+                <Box
+                  bg="whiteAlpha.50"
+                  p={3}
+                  borderRadius="md"
+                  border="1px solid"
+                  borderColor="brand.400"
+                  textAlign="center"
                 >
-                  Average MMR
-                </Text>
-                <Text
-                  fontSize="2xl"
-                  fontWeight="black"
-                  fontFamily="heading"
-                  color="brand.400"
-                >
-                  {formatMMR(suggestion.team_1.avg_mmr)}
-                </Text>
-              </Box>
+                  <Text
+                    fontSize="xs"
+                    color="gray.500"
+                    fontFamily="heading"
+                    textTransform="uppercase"
+                    mb={1}
+                  >
+                    Average MMR
+                  </Text>
+                  <Text
+                    fontSize="2xl"
+                    fontWeight="black"
+                    fontFamily="heading"
+                    color="brand.400"
+                  >
+                    {formatMMR(suggestion.team_1.avg_mmr)}
+                  </Text>
+                </Box>
+                {suggestion.team_1_avg_impact > 0 && (
+                  <Box
+                    bg="whiteAlpha.50"
+                    p={2}
+                    borderRadius="md"
+                    border="1px solid"
+                    borderColor="purple.400"
+                    textAlign="center"
+                  >
+                    <Text
+                      fontSize="xs"
+                      color="gray.500"
+                      fontFamily="heading"
+                      textTransform="uppercase"
+                      mb={1}
+                    >
+                      Avg Impact
+                    </Text>
+                    <HStack justify="center" spacing={1}>
+                      <Icon as={FiActivity} color="purple.400" boxSize={4} />
+                      <Text
+                        fontSize="lg"
+                        fontWeight="bold"
+                        fontFamily="heading"
+                        color="purple.400"
+                      >
+                        {suggestion.team_1_avg_impact.toFixed(1)}
+                      </Text>
+                    </HStack>
+                  </Box>
+                )}
+              </VStack>
             </VStack>
 
             {/* Team 2 */}
@@ -692,34 +827,113 @@ const TeamSuggestionCard = ({ suggestion, index, isRecommended, onExport }) => {
                   <PlayerCard key={player.id} player={player} size="sm" />
                 ))}
               </VStack>
-              <Box
-                bg="whiteAlpha.50"
-                p={3}
-                borderRadius="md"
-                border="1px solid"
-                borderColor="accent.400"
-                textAlign="center"
-              >
-                <Text
-                  fontSize="xs"
-                  color="gray.500"
-                  fontFamily="heading"
-                  textTransform="uppercase"
-                  mb={1}
+              <VStack spacing={2} align="stretch">
+                <Box
+                  bg="whiteAlpha.50"
+                  p={3}
+                  borderRadius="md"
+                  border="1px solid"
+                  borderColor="accent.400"
+                  textAlign="center"
                 >
-                  Average MMR
-                </Text>
-                <Text
-                  fontSize="2xl"
-                  fontWeight="black"
-                  fontFamily="heading"
-                  color="accent.400"
-                >
-                  {formatMMR(suggestion.team_2.avg_mmr)}
-                </Text>
-              </Box>
+                  <Text
+                    fontSize="xs"
+                    color="gray.500"
+                    fontFamily="heading"
+                    textTransform="uppercase"
+                    mb={1}
+                  >
+                    Average MMR
+                  </Text>
+                  <Text
+                    fontSize="2xl"
+                    fontWeight="black"
+                    fontFamily="heading"
+                    color="accent.400"
+                  >
+                    {formatMMR(suggestion.team_2.avg_mmr)}
+                  </Text>
+                </Box>
+                {suggestion.team_2_avg_impact > 0 && (
+                  <Box
+                    bg="whiteAlpha.50"
+                    p={2}
+                    borderRadius="md"
+                    border="1px solid"
+                    borderColor="purple.400"
+                    textAlign="center"
+                  >
+                    <Text
+                      fontSize="xs"
+                      color="gray.500"
+                      fontFamily="heading"
+                      textTransform="uppercase"
+                      mb={1}
+                    >
+                      Avg Impact
+                    </Text>
+                    <HStack justify="center" spacing={1}>
+                      <Icon as={FiActivity} color="purple.400" boxSize={4} />
+                      <Text
+                        fontSize="lg"
+                        fontWeight="bold"
+                        fontFamily="heading"
+                        color="purple.400"
+                      >
+                        {suggestion.team_2_avg_impact.toFixed(1)}
+                      </Text>
+                    </HStack>
+                  </Box>
+                )}
+              </VStack>
             </VStack>
           </HStack>
+
+          {/* Impact Balance Score */}
+          {suggestion.impact_balance_score !== undefined && suggestion.impact_balance_score < 1 && (
+            <Box mt={4}>
+              <VStack spacing={2} align="stretch">
+                <HStack justify="space-between">
+                  <Text
+                    fontSize="sm"
+                    color="gray.400"
+                    fontFamily="heading"
+                    textTransform="uppercase"
+                  >
+                    Impact Distribution
+                  </Text>
+                  <Badge
+                    colorScheme={
+                      suggestion.impact_balance_score >= 0.95 ? 'green' :
+                      suggestion.impact_balance_score >= 0.85 ? 'blue' :
+                      suggestion.impact_balance_score >= 0.75 ? 'yellow' : 'orange'
+                    }
+                    fontSize="md"
+                    px={3}
+                    py={1}
+                    fontFamily="heading"
+                  >
+                    {(suggestion.impact_balance_score * 100).toFixed(0)}% BALANCED
+                  </Badge>
+                </HStack>
+                <Progress
+                  value={suggestion.impact_balance_score * 100}
+                  size="md"
+                  colorScheme={
+                    suggestion.impact_balance_score >= 0.95 ? 'green' :
+                    suggestion.impact_balance_score >= 0.85 ? 'blue' :
+                    suggestion.impact_balance_score >= 0.75 ? 'yellow' : 'orange'
+                  }
+                  borderRadius="md"
+                  bg="whiteAlpha.100"
+                />
+                <Text fontSize="xs" color="gray.500" fontFamily="heading">
+                  Impact Difference: {suggestion.impact_difference?.toFixed(1) || 'N/A'} •
+                  Each team has {suggestion.impact_balance_score >= 0.95 ? 'an excellent' : suggestion.impact_balance_score >= 0.85 ? 'a good' : 'an uneven'} mix of high and low impact players
+                </Text>
+              </VStack>
+            </Box>
+          )}
 
           {/* Export Actions */}
           <HStack justify="center" pt={4}>

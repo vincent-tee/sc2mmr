@@ -47,6 +47,10 @@ class PerformanceRatingAdjuster:
         if not player_metrics:
             return 1.0
 
+        # Guard against empty metrics lists
+        if not team_metrics or not opponent_metrics:
+            return 1.0
+
         # Calculate relative performance vs team
         team_avg_impact = sum(m.overall_impact for m in team_metrics) / len(team_metrics)
         relative_to_team = player_metrics.overall_impact / team_avg_impact if team_avg_impact > 0 else 1.0
@@ -152,19 +156,20 @@ class PerformanceRatingAdjuster:
             db: Database session
             match_id: Match ID to process
         """
-        # Get all players in match
+        # Get all players in match with their metrics in a single query (avoid N+1)
+        from sqlalchemy.orm import joinedload
         match_players = db.query(MatchPlayer).filter(
             MatchPlayer.match_id == match_id
         ).all()
 
-        # Get metrics for each player
-        player_metrics_map = {}
-        for mp in match_players:
-            metrics = db.query(PlayerMatchMetrics).filter(
-                PlayerMatchMetrics.match_player_id == mp.id
-            ).first()
-            if metrics:
-                player_metrics_map[mp.id] = metrics
+        # Get all metrics for this match in a single query
+        match_player_ids = [mp.id for mp in match_players]
+        metrics_list = db.query(PlayerMatchMetrics).filter(
+            PlayerMatchMetrics.match_player_id.in_(match_player_ids)
+        ).all()
+
+        # Create mapping
+        player_metrics_map = {m.match_player_id: m for m in metrics_list}
 
         # Group by team
         team_1 = [mp for mp in match_players if mp.team_number == 1]

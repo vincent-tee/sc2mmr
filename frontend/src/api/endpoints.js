@@ -66,6 +66,15 @@ export const teamsApi = {
     });
   },
 
+  // Balance with impact consideration
+  balanceWithImpact: (playerIds, topN = 10, impactWeight = 0.5) => {
+    return apiClient.post('/teams/balance-with-impact', {
+      player_ids: playerIds,
+      top_n: topN,
+      impact_weight: impactWeight
+    });
+  },
+
   // Balance with specific model
   balanceWithModel: (playerIds, model = 'trueskill') => {
     return apiClient.post('/teams/balance-with-model', {

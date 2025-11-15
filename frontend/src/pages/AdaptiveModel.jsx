@@ -370,26 +370,60 @@ const AdaptiveModel = () => {
                 {/* Win Prediction Accuracy */}
                 <Box>
                   <Stat>
-                    <StatLabel>Win Prediction Accuracy</StatLabel>
+                    <StatLabel>Match Prediction Accuracy</StatLabel>
                     <StatNumber fontSize="5xl" color="green.400">
                       {formatPercentage(performance?.win_prediction_accuracy || 0)}
                     </StatNumber>
                     <StatHelpText>
-                      <StatArrow type="increase" />
-                      Based on {performance?.sample_size || 0} matches
+                      {(performance?.win_prediction_accuracy || 0) > 0.5 ? (
+                        <StatArrow type="increase" />
+                      ) : (
+                        <StatArrow type="decrease" />
+                      )}
+                      Correctly predicted winner in {performance?.sample_size || 0} matches
                     </StatHelpText>
                   </Stat>
                   <Progress
                     value={(performance?.win_prediction_accuracy || 0) * 100}
-                    colorScheme="green"
+                    colorScheme={(performance?.win_prediction_accuracy || 0) >= 0.5 ? "green" : "orange"}
                     size="sm"
                     borderRadius="md"
                     mt={2}
                   />
                   <Text fontSize="xs" color="gray.500" mt={1}>
-                    Target: 75% (4 more percentage points)
+                    {(performance?.win_prediction_accuracy || 0) >= 0.5
+                      ? `${formatPercentage((performance?.win_prediction_accuracy || 0) - 0.5)} better than random (50%)`
+                      : `${formatPercentage(0.5 - (performance?.win_prediction_accuracy || 0))} below random (50%)`
+                    }
+                  </Text>
+                  <Text fontSize="xs" color="gray.400" mt={2} fontStyle="italic">
+                    Performance metrics predict which team wins based on combat, economy, and teamwork
                   </Text>
                 </Box>
+
+                <Divider />
+
+                {/* Correlation Strength */}
+                {performance?.correlation_strength > 0 && (
+                  <Box>
+                    <Heading size="sm" mb={2}>Player Performance Correlation</Heading>
+                    <HStack spacing={4}>
+                      <Progress
+                        value={(performance?.correlation_strength || 0) * 100}
+                        colorScheme="cyan"
+                        size="md"
+                        borderRadius="md"
+                        flex={1}
+                      />
+                      <Text fontWeight="bold" color="cyan.400">
+                        {formatPercentage(performance?.correlation_strength || 0)}
+                      </Text>
+                    </HStack>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      How strongly individual performance correlates with winning
+                    </Text>
+                  </Box>
+                )}
 
                 <Divider />
 

@@ -48,6 +48,10 @@ class TeamSuggestionResponse(BaseModel):
     win_probability_team_1: float
     win_probability_team_2: float
     fairness_rating: str
+    team_1_avg_impact: float = 0.0
+    team_2_avg_impact: float = 0.0
+    impact_balance_score: float = 1.0
+    impact_difference: float = 0.0
 
 
 @router.post("/balance", response_model=List[TeamSuggestionResponse])
@@ -161,7 +165,11 @@ def balance_teams(
                 match_quality=analysis['balance']['match_quality'],
                 win_probability_team_1=analysis['balance']['win_probability_team_1'],
                 win_probability_team_2=analysis['balance']['win_probability_team_2'],
-                fairness_rating=analysis['balance']['fairness_rating']
+                fairness_rating=analysis['balance']['fairness_rating'],
+                team_1_avg_impact=analysis['balance']['team_1_avg_impact'],
+                team_2_avg_impact=analysis['balance']['team_2_avg_impact'],
+                impact_balance_score=analysis['balance']['impact_balance_score'],
+                impact_difference=analysis['balance']['impact_difference']
             ))
 
         return responses
@@ -198,6 +206,131 @@ def quick_balance(
         raise HTTPException(status_code=500, detail="Failed to generate team suggestions")
 
     return suggestions[0]
+
+
+class BalanceWithImpactRequest(BaseModel):
+    """Request to balance teams with impact consideration."""
+    player_ids: List[int]
+    top_n: int = 10
+    impact_weight: float = 0.5  # 0-1: how much to prioritize impact balance
+
+
+@router.post("/balance-with-impact", response_model=List[TeamSuggestionResponse])
+def balance_teams_with_impact(
+    request: BalanceWithImpactRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Balance teams with consideration for high-impact vs low-impact player distribution.
+
+    This ensures each team gets a mix of:
+    - Strong players (high MMR, high impact, shot callers)
+    - Weaker players (lower MMR, lower impact, learning players)
+
+    Args:
+        request: BalanceWithImpactRequest with player IDs and impact weight
+        db: Database session
+
+    Returns:
+        List of TeamSuggestionResponse objects, sorted by balanced score
+
+    Impact Weight:
+        - 0.0 = Pure MMR balance (ignores impact scores)
+        - 0.5 = Equal weight to MMR and impact distribution (recommended)
+        - 1.0 = Pure impact balance (ignores MMR, only balances impact)
+
+    Raises:
+        HTTPException: If invalid number of players or players not found
+    """
+    # Validate minimum players
+    num_players = len(request.player_ids)
+    if num_players < 2:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need at least 2 players, got {num_players}"
+        )
+
+    if num_players > 20:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many players: {num_players}. Maximum is 20 players (10v10)"
+        )
+
+    # Validate impact_weight
+    if not (0 <= request.impact_weight <= 1):
+        raise HTTPException(
+            status_code=400,
+            detail=f"impact_weight must be between 0 and 1, got {request.impact_weight}"
+        )
+
+    try:
+        # Generate impact-aware team suggestions
+        suggestions = TeamBalancer.balance_with_impact_priority(
+            db,
+            request.player_ids,
+            top_n=request.top_n,
+            impact_weight=request.impact_weight
+        )
+
+        # Convert to response format (same as balance_teams endpoint)
+        responses = []
+        for suggestion in suggestions:
+            analysis = BalancerStats.analyze_suggestion(suggestion)
+
+            team_1_players = [
+                PlayerInfo(
+                    id=player.id,
+                    name=player.name,
+                    mmr=player.mmr,
+                    mu=player.mu,
+                    sigma=player.sigma
+                )
+                for player in suggestion.team_1
+            ]
+
+            team_1_info = TeamInfo(
+                players=team_1_players,
+                total_mmr=analysis['team_1']['total_mmr'],
+                avg_mmr=analysis['team_1']['avg_mmr']
+            )
+
+            team_2_players = [
+                PlayerInfo(
+                    id=player.id,
+                    name=player.name,
+                    mmr=player.mmr,
+                    mu=player.mu,
+                    sigma=player.sigma
+                )
+                for player in suggestion.team_2
+            ]
+
+            team_2_info = TeamInfo(
+                players=team_2_players,
+                total_mmr=analysis['team_2']['total_mmr'],
+                avg_mmr=analysis['team_2']['avg_mmr']
+            )
+
+            responses.append(TeamSuggestionResponse(
+                team_1=team_1_info,
+                team_2=team_2_info,
+                mmr_difference=analysis['balance']['mmr_difference'],
+                match_quality=analysis['balance']['match_quality'],
+                win_probability_team_1=analysis['balance']['win_probability_team_1'],
+                win_probability_team_2=analysis['balance']['win_probability_team_2'],
+                fairness_rating=analysis['balance']['fairness_rating'],
+                team_1_avg_impact=analysis['balance']['team_1_avg_impact'],
+                team_2_avg_impact=analysis['balance']['team_2_avg_impact'],
+                impact_balance_score=analysis['balance']['impact_balance_score'],
+                impact_difference=analysis['balance']['impact_difference']
+            ))
+
+        return responses
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 # Multi-Model Balancing Endpoints
