@@ -22,10 +22,13 @@ import {
   StatNumber,
   StatHelpText,
   Grid,
+  IconButton,
+  ButtonGroup,
 } from '@chakra-ui/react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { FiTarget, FiTrendingUp, FiZap, FiActivity, FiAlertTriangle } from 'react-icons/fi';
+import { FiTarget, FiTrendingUp, FiZap, FiActivity, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight } from 'react-icons/fi';
 import { replaysApi } from '../api/endpoints';
 import EmptyState from '../components/EmptyState';
 import LoadingState, { MatchCardSkeleton } from '../components/LoadingState';
@@ -36,17 +39,28 @@ const MatchHistory = () => {
   const cardBg = useColorModeValue('white', 'rgba(17, 25, 40, 0.7)');
   const borderColor = useColorModeValue('gray.200', 'rgba(0, 212, 255, 0.2)');
 
-  // Fetch matches
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const matchesPerPage = 20;
+
+  // Fetch matches with pagination
   const { data: matchesData, isLoading } = useQuery({
-    queryKey: ['matches'],
+    queryKey: ['matches', currentPage],
     queryFn: async () => {
-      const response = await replaysApi.getMatches(50);
+      const offset = (currentPage - 1) * matchesPerPage;
+      const response = await replaysApi.getMatches(matchesPerPage, offset);
       return response.data;
     },
   });
 
   const matches = matchesData?.matches || [];
   const totalMatches = matchesData?.total_count || 0;
+  const totalPages = Math.ceil(totalMatches / matchesPerPage);
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (isLoading) {
     return (
@@ -121,7 +135,7 @@ const MatchHistory = () => {
                   fontSize="sm"
                   textTransform="uppercase"
                 >
-                  [ {totalMatches} OPERATIONS RECORDED ]
+                  [ {totalMatches} OPERATIONS RECORDED{totalPages > 1 ? ` • PAGE ${currentPage}/${totalPages}` : ''} ]
                 </Text>
               </VStack>
 
@@ -331,6 +345,101 @@ const MatchHistory = () => {
               );
             })}
           </VStack>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <Box mt={8}>
+              <VStack spacing={4}>
+                {/* Page info */}
+                <Text
+                  color="gray.500"
+                  fontFamily="heading"
+                  fontSize="sm"
+                  textTransform="uppercase"
+                  letterSpacing="wide"
+                >
+                  Page {currentPage} of {totalPages} • Showing {matches.length} of {totalMatches} matches
+                </Text>
+
+                {/* Pagination buttons */}
+                <HStack spacing={2}>
+                  <IconButton
+                    icon={<FiChevronsLeft />}
+                    onClick={() => handlePageChange(1)}
+                    isDisabled={currentPage === 1}
+                    aria-label="First page"
+                    variant="ghost"
+                    colorScheme="cyan"
+                    size="lg"
+                  />
+                  <IconButton
+                    icon={<FiChevronLeft />}
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    isDisabled={currentPage === 1}
+                    aria-label="Previous page"
+                    variant="ghost"
+                    colorScheme="cyan"
+                    size="lg"
+                  />
+
+                  {/* Page number buttons */}
+                  <ButtonGroup spacing={2}>
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      // Show pages around current page
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+
+                      return (
+                        <Button
+                          key={pageNum}
+                          onClick={() => handlePageChange(pageNum)}
+                          variant={currentPage === pageNum ? 'solid' : 'ghost'}
+                          colorScheme="cyan"
+                          size="lg"
+                          fontFamily="heading"
+                          minW="50px"
+                          bg={currentPage === pageNum ? 'brand.500' : undefined}
+                          color={currentPage === pageNum ? 'gray.900' : undefined}
+                          _hover={{
+                            bg: currentPage === pageNum ? 'brand.400' : 'whiteAlpha.200',
+                          }}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </ButtonGroup>
+
+                  <IconButton
+                    icon={<FiChevronRight />}
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    isDisabled={currentPage === totalPages}
+                    aria-label="Next page"
+                    variant="ghost"
+                    colorScheme="cyan"
+                    size="lg"
+                  />
+                  <IconButton
+                    icon={<FiChevronsRight />}
+                    onClick={() => handlePageChange(totalPages)}
+                    isDisabled={currentPage === totalPages}
+                    aria-label="Last page"
+                    variant="ghost"
+                    colorScheme="cyan"
+                    size="lg"
+                  />
+                </HStack>
+              </VStack>
+            </Box>
+          )}
         </VStack>
       </Container>
     </Box>
