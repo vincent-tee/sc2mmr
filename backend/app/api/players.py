@@ -367,14 +367,15 @@ def recalculate_all_ratings(
     db: Session = Depends(get_db)
 ):
     """
-    Recalculate all player ratings from scratch.
+    Recalculate all player ratings from scratch using TrueSkill + Performance Adjustments.
 
     This endpoint:
     1. Resets all player ratings to default values (mu=25, sigma=8.333)
     2. Resets all player statistics (wins, losses, games)
     3. Gets all matches ordered chronologically
-    4. Re-processes each match with current TrueSkill algorithm
-    5. Updates MatchPlayer records with new ratings
+    4. Re-processes each match with TrueSkill algorithm
+    5. Applies performance-based rating adjustments (living model)
+    6. Updates MatchPlayer records with new ratings
 
     This is useful for:
     - After merging players
@@ -388,6 +389,7 @@ def recalculate_all_ratings(
         RecalculationStats with processing information
     """
     import trueskill
+    from ..performance_rating import PerformanceRatingAdjuster
 
     start_time = time.time()
 
@@ -439,7 +441,7 @@ def recalculate_all_ratings(
         # Determine winner (check team 1's first player)
         team_1_won = team_1_mps[0].won == 1
 
-        # Calculate new ratings
+        # Calculate new TrueSkill ratings
         if team_1_won:
             new_team_1_ratings, new_team_2_ratings = trueskill.rate(
                 [team_1_ratings, team_2_ratings],
@@ -451,7 +453,7 @@ def recalculate_all_ratings(
                 ranks=[1, 0]  # Team 2 won
             )
 
-        # Update match_player records and player ratings
+        # Update match_player records with TrueSkill ratings
         for i, mp in enumerate(team_1_mps):
             old_rating = player_ratings[mp.player_id]
             new_rating = new_team_1_ratings[i]
@@ -462,8 +464,6 @@ def recalculate_all_ratings(
             mp.mu_after = new_rating.mu
             mp.sigma_after = new_rating.sigma
 
-            # Update in-memory rating
-            player_ratings[mp.player_id] = new_rating
             players_updated.add(mp.player_id)
 
         for i, mp in enumerate(team_2_mps):
@@ -475,8 +475,57 @@ def recalculate_all_ratings(
             mp.mu_after = new_rating.mu
             mp.sigma_after = new_rating.sigma
 
-            player_ratings[mp.player_id] = new_rating
             players_updated.add(mp.player_id)
+
+        # Apply performance-based adjustments (living model)
+        # Fetch all metrics for this match in one query
+        match_player_ids = [mp.id for mp in match_players]
+        metrics_list = db.query(PlayerMatchMetrics).filter(
+            PlayerMatchMetrics.match_player_id.in_(match_player_ids)
+        ).all()
+
+        # Create mapping: match_player_id -> metrics
+        player_metrics_map = {m.match_player_id: m for m in metrics_list}
+
+        # Get metrics for each team
+        team_1_metrics = [player_metrics_map[mp.id] for mp in team_1_mps if mp.id in player_metrics_map]
+        team_2_metrics = [player_metrics_map[mp.id] for mp in team_2_mps if mp.id in player_metrics_map]
+
+        # Apply performance adjustments to each player
+        for mp in match_players:
+            if mp.id not in player_metrics_map:
+                # No metrics for this player, use TrueSkill rating as-is
+                player_ratings[mp.player_id] = trueskill.Rating(mu=mp.mu_after, sigma=mp.sigma_after)
+                continue
+
+            metrics = player_metrics_map[mp.id]
+
+            # Determine team and opponent metrics
+            if mp.team_number == 1:
+                team_metrics = team_1_metrics
+                opponent_metrics = team_2_metrics
+            else:
+                team_metrics = team_2_metrics
+                opponent_metrics = team_1_metrics
+
+            # Calculate performance multiplier
+            multiplier = PerformanceRatingAdjuster.calculate_performance_multiplier(
+                metrics,
+                team_metrics,
+                opponent_metrics,
+                bool(mp.won)
+            )
+
+            # Apply multiplier to the rating change (not the final value)
+            base_mu_change = mp.mu_after - mp.mu_before
+            adjusted_mu_change = base_mu_change * multiplier
+            adjusted_mu_after = mp.mu_before + adjusted_mu_change
+
+            # Update the match_player record with adjusted rating
+            mp.mu_after = adjusted_mu_after
+
+            # Update in-memory rating with adjusted value
+            player_ratings[mp.player_id] = trueskill.Rating(mu=adjusted_mu_after, sigma=mp.sigma_after)
 
         # Update player statistics
         for mp in match_players:
