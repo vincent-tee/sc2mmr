@@ -79,8 +79,7 @@ class ImpactService:
         )
 
         db.add(match_metrics)
-        db.commit()
-        db.refresh(match_metrics)
+        db.flush()  # Flush to get ID, but don't commit yet (let caller commit)
 
         return match_metrics
 
@@ -193,7 +192,8 @@ class ImpactService:
                 synergy.avg_win_rate = (synergy.wins_together / synergy.games_together) * 100
                 synergy.updated_at = datetime.utcnow()
 
-                db.commit()
+        # Commit all synergy updates at once (more efficient than per-pair commits)
+        db.commit()
 
         # Recalculate synergy scores for all pairs in this team
         for i in range(len(team_players)):

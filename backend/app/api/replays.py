@@ -608,8 +608,12 @@ async def upload_replay_advanced(
 
                         # Update player averages
                         ImpactService.update_player_averages(db, player.id)
+
+            # Commit all metrics at once (more efficient than per-player commits)
+            db.commit()
         except Exception as e:
             logger.error(f"Failed to save impact metrics: {e}", exc_info=True)
+            db.rollback()  # Roll back failed metrics save
             # Continue - don't fail upload if metrics save fails
 
         # Update synergies
