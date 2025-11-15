@@ -171,6 +171,63 @@ export const replaysApi = {
 };
 
 /**
+ * Impact & Metrics API
+ */
+export const impactApi = {
+  // Get players by impact scores
+  getPlayersByImpact: (sortBy = 'overall', minGames = 5) => {
+    return apiClient.get('/impact/players', {
+      params: { sort_by: sortBy, min_games: minGames }
+    });
+  },
+
+  // Get detailed match metrics for a player
+  getPlayerMatchMetrics: (playerId, limit = 20) => {
+    return apiClient.get(`/impact/players/${playerId}/matches`, {
+      params: { limit }
+    });
+  },
+
+  // Get damage timeline for a specific match
+  getMatchDamageTimeline: (playerId, matchId) => {
+    return apiClient.get(`/impact/players/${playerId}/matches/${matchId}/timeline`);
+  },
+
+  // Get team coordination analysis for a match
+  getMatchCoordination: (matchId) => {
+    return apiClient.get(`/impact/matches/${matchId}/coordination`);
+  },
+
+  // Get player synergies
+  getPlayerSynergies: (playerId, minGames = 3) => {
+    return apiClient.get(`/impact/players/${playerId}/synergies`, {
+      params: { min_games: minGames }
+    });
+  },
+
+  // Get top synergies
+  getTopSynergies: (minGames = 5, limit = 10) => {
+    return apiClient.get('/impact/synergies/top', {
+      params: { min_games: minGames, limit }
+    });
+  },
+
+  // Get impact leaderboard
+  getLeaderboard: (category, minGames = 5, limit = 10) => {
+    return apiClient.get(`/impact/leaderboard/${category}`, {
+      params: { min_games: minGames, limit }
+    });
+  },
+
+  // Get player attack patterns
+  getPlayerAttackPatterns: (playerId, limit = 20) => {
+    return apiClient.get(`/impact/players/${playerId}/attack-patterns`, {
+      params: { limit }
+    });
+  }
+};
+
+/**
  * Health check
  */
 export const healthApi = {

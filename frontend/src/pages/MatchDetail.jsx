@@ -53,8 +53,12 @@ import {
   FiAlertTriangle,
   FiActivity,
 } from 'react-icons/fi';
-import { replaysApi } from '../api/endpoints';
+import { replaysApi, impactApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
+import DamageTimelineChart from '../components/charts/DamageTimelineChart';
+import ImpactScoreRadar from '../components/charts/ImpactScoreRadar';
+import DamageDistributionChart from '../components/charts/DamageDistributionChart';
+import PlayerMetricsComparison from '../components/charts/PlayerMetricsComparison';
 import {
   formatDuration,
   formatDateTime,
@@ -88,6 +92,70 @@ const MatchDetail = () => {
     queryFn: async () => {
       const response = await replaysApi.getMatchCommentary(matchId);
       return response.data;
+    },
+    enabled: !!matchData,
+  });
+
+  // Fetch metrics data for all players in the match
+  const { data: playerMetrics, isLoading: metricsLoading } = useQuery({
+    queryKey: ['match-metrics', matchId],
+    queryFn: async () => {
+      if (!matchData || !matchData.players) return null;
+
+      const metricsPromises = matchData.players.map(async (player) => {
+        try {
+          const response = await impactApi.getPlayerMatchMetrics(player.player_id, 100);
+          // Find the metrics for this specific match
+          const matchMetric = response.data.find((m) => m.match_id === parseInt(matchId));
+          return {
+            player_id: player.player_id,
+            player_name: player.player_name,
+            metrics: matchMetric,
+          };
+        } catch (error) {
+          console.error(`Error fetching metrics for player ${player.player_id}:`, error);
+          return null;
+        }
+      });
+
+      const results = await Promise.all(metricsPromises);
+
+      // Convert to object keyed by player_id for easy lookup
+      const metricsMap = {};
+      results.forEach((result) => {
+        if (result && result.metrics) {
+          metricsMap[result.player_id] = result.metrics;
+        }
+      });
+
+      return metricsMap;
+    },
+    enabled: !!matchData,
+  });
+
+  // Fetch damage timeline data for players
+  const { data: damageTimelines, isLoading: timelinesLoading } = useQuery({
+    queryKey: ['match-damage-timelines', matchId],
+    queryFn: async () => {
+      if (!matchData || !matchData.players) return null;
+
+      const timelinePromises = matchData.players.map(async (player) => {
+        try {
+          const response = await impactApi.getMatchDamageTimeline(player.player_id, matchId);
+          return {
+            player_id: player.player_id,
+            player_name: player.player_name,
+            team_number: player.team_number,
+            timeline: response.data,
+          };
+        } catch (error) {
+          // Timeline might not be available for all players
+          return null;
+        }
+      });
+
+      const results = await Promise.all(timelinePromises);
+      return results.filter((r) => r !== null);
     },
     enabled: !!matchData,
   });
@@ -439,6 +507,10 @@ const MatchDetail = () => {
               <Tab>
                 <Icon as={FiZap} mr={2} />
                 COMMENTARY
+              </Tab>
+              <Tab>
+                <Icon as={FiTarget} mr={2} />
+                ANALYTICS
               </Tab>
             </TabList>
 
@@ -829,6 +901,153 @@ const MatchDetail = () => {
                   <Alert status="info">
                     <AlertIcon />
                     Tactical commentary is only available for advanced replay uploads.
+                  </Alert>
+                )}
+              </TabPanel>
+
+              {/* Analytics Tab */}
+              <TabPanel px={0}>
+                {metricsLoading || timelinesLoading ? (
+                  <LoadingState message="Loading match analytics..." />
+                ) : playerMetrics && Object.keys(playerMetrics).length > 0 ? (
+                  <VStack spacing={6} align="stretch">
+                    {/* Player Comparison */}
+                    <PlayerMetricsComparison
+                      players={players}
+                      metricsData={playerMetrics}
+                    />
+
+                    {/* Individual Player Analytics - Team 1 */}
+                    <Box>
+                      <Heading
+                        size="lg"
+                        mb={4}
+                        fontFamily="heading"
+                        textTransform="uppercase"
+                        letterSpacing="wider"
+                      >
+                        Team 1 Analytics
+                      </Heading>
+                      <VStack spacing={4} align="stretch">
+                        {team1Players.map((player) => {
+                          const metrics = playerMetrics[player.player_id];
+                          const timeline = damageTimelines?.find(
+                            (t) => t.player_id === player.player_id
+                          );
+
+                          if (!metrics) return null;
+
+                          return (
+                            <Box key={player.player_id}>
+                              <Grid
+                                templateColumns={{ base: '1fr', lg: 'repeat(2, 1fr)' }}
+                                gap={4}
+                              >
+                                {/* Impact Score Radar */}
+                                <GridItem>
+                                  <ImpactScoreRadar
+                                    metrics={metrics}
+                                    playerName={player.player_name}
+                                  />
+                                </GridItem>
+
+                                {/* Damage Distribution */}
+                                <GridItem>
+                                  {timeline && timeline.timeline.damage_distribution && (
+                                    <DamageDistributionChart
+                                      damageDistribution={timeline.timeline.damage_distribution}
+                                      playerName={player.player_name}
+                                    />
+                                  )}
+                                </GridItem>
+                              </Grid>
+
+                              {/* Damage Timeline */}
+                              {timeline && (
+                                <Box mt={4}>
+                                  <DamageTimelineChart
+                                    timelineData={timeline.timeline}
+                                    playerName={player.player_name}
+                                  />
+                                </Box>
+                              )}
+
+                              <Divider my={6} borderColor="whiteAlpha.200" />
+                            </Box>
+                          );
+                        })}
+                      </VStack>
+                    </Box>
+
+                    {/* Individual Player Analytics - Team 2 */}
+                    <Box>
+                      <Heading
+                        size="lg"
+                        mb={4}
+                        fontFamily="heading"
+                        textTransform="uppercase"
+                        letterSpacing="wider"
+                      >
+                        Team 2 Analytics
+                      </Heading>
+                      <VStack spacing={4} align="stretch">
+                        {team2Players.map((player) => {
+                          const metrics = playerMetrics[player.player_id];
+                          const timeline = damageTimelines?.find(
+                            (t) => t.player_id === player.player_id
+                          );
+
+                          if (!metrics) return null;
+
+                          return (
+                            <Box key={player.player_id}>
+                              <Grid
+                                templateColumns={{ base: '1fr', lg: 'repeat(2, 1fr)' }}
+                                gap={4}
+                              >
+                                {/* Impact Score Radar */}
+                                <GridItem>
+                                  <ImpactScoreRadar
+                                    metrics={metrics}
+                                    playerName={player.player_name}
+                                  />
+                                </GridItem>
+
+                                {/* Damage Distribution */}
+                                <GridItem>
+                                  {timeline && timeline.timeline.damage_distribution && (
+                                    <DamageDistributionChart
+                                      damageDistribution={timeline.timeline.damage_distribution}
+                                      playerName={player.player_name}
+                                    />
+                                  )}
+                                </GridItem>
+                              </Grid>
+
+                              {/* Damage Timeline */}
+                              {timeline && (
+                                <Box mt={4}>
+                                  <DamageTimelineChart
+                                    timelineData={timeline.timeline}
+                                    playerName={player.player_name}
+                                  />
+                                </Box>
+                              )}
+
+                              {player !== team2Players[team2Players.length - 1] && (
+                                <Divider my={6} borderColor="whiteAlpha.200" />
+                              )}
+                            </Box>
+                          );
+                        })}
+                      </VStack>
+                    </Box>
+                  </VStack>
+                ) : (
+                  <Alert status="info">
+                    <AlertIcon />
+                    Advanced analytics are only available for matches with detailed metrics data.
+                    Upload replays using the "Advanced Upload" option to enable analytics.
                   </Alert>
                 )}
               </TabPanel>
