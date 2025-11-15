@@ -142,9 +142,9 @@ def get_model_performance(
     total_matches = db.query(func.count(Match.id)).scalar() or 0
 
     result = {
-        'win_prediction_accuracy': performance.win_prediction_accuracy,
-        'correlation_strength': performance.correlation_strength,
-        'sample_size': total_matches,  # Fixed: use actual match count
+        'win_prediction_accuracy': performance.win_prediction_accuracy,  # Real match prediction accuracy
+        'correlation_strength': performance.correlation_strength,         # Player performance correlation
+        'sample_size': total_matches,  # Total matches in database
         'confidence_score': performance.confidence_score,
         'current_weights': {
             'combat': current_weights.combat_weight,
@@ -152,7 +152,11 @@ def get_model_performance(
             'team_contribution': current_weights.team_contribution_weight,
             'efficiency': current_weights.efficiency_weight
         },
-        '_from_cache': False
+        '_from_cache': False,
+        '_metric_explanation': {
+            'win_prediction_accuracy': 'Percentage of matches where the team with better performance actually won',
+            'correlation_strength': 'How strongly individual player performance correlates with winning (0-1 scale)'
+        }
     }
 
     # Update cache

@@ -180,6 +180,102 @@ class AdaptiveModelTuner:
         return [(metrics, bool(won)) for metrics, won in results]
 
     @staticmethod
+    def calculate_match_prediction_accuracy(
+        db: Session,
+        weights: PerformanceWeights,
+        limit: int = 1000
+    ) -> Tuple[float, int, int]:
+        """
+        Calculate how accurately team performance predicts match winners.
+
+        For each match:
+        1. Calculate total performance for each team
+        2. Predict team with higher performance wins
+        3. Compare to actual winner
+
+        Args:
+            db: Database session
+            weights: Weights to use for performance calculation
+            limit: Max matches to evaluate
+
+        Returns:
+            Tuple of (accuracy, correct_predictions, total_matches)
+        """
+        # Get recent matches with metrics
+        matches = db.query(Match).order_by(
+            Match.played_at.desc()
+        ).limit(limit).all()
+
+        if not matches:
+            return 0.0, 0, 0
+
+        correct_predictions = 0
+        total_matches = 0
+
+        for match in matches:
+            # Get all players in this match
+            match_players = db.query(MatchPlayer).filter(
+                MatchPlayer.match_id == match.id
+            ).all()
+
+            if len(match_players) < 2:
+                continue
+
+            # Get metrics for all players
+            player_metrics = {}
+            for mp in match_players:
+                metrics = db.query(PlayerMatchMetrics).filter(
+                    PlayerMatchMetrics.match_player_id == mp.id
+                ).first()
+
+                if metrics:
+                    player_metrics[mp.id] = (
+                        AdaptiveModelTuner.calculate_overall_impact_custom(metrics, weights),
+                        mp.team_number,
+                        mp.won
+                    )
+
+            if not player_metrics:
+                continue
+
+            # Calculate team performance scores
+            team_scores = {}
+            team_won = {}
+            for mp_id, (impact, team_num, won) in player_metrics.items():
+                if team_num not in team_scores:
+                    team_scores[team_num] = []
+                    team_won[team_num] = won
+                team_scores[team_num].append(impact)
+
+            # Need at least 2 teams
+            if len(team_scores) < 2:
+                continue
+
+            # Calculate average team performance
+            team_avg_scores = {
+                team: sum(scores) / len(scores)
+                for team, scores in team_scores.items()
+            }
+
+            # Predict winner: team with highest average performance
+            predicted_winner = max(team_avg_scores, key=team_avg_scores.get)
+
+            # Get actual winner
+            actual_winner = None
+            for team, won in team_won.items():
+                if won:
+                    actual_winner = team
+                    break
+
+            if actual_winner is not None:
+                total_matches += 1
+                if predicted_winner == actual_winner:
+                    correct_predictions += 1
+
+        accuracy = correct_predictions / total_matches if total_matches > 0 else 0.0
+        return accuracy, correct_predictions, total_matches
+
+    @staticmethod
     def optimize_weights(
         db: Session,
         current_weights: Optional[PerformanceWeights] = None
@@ -200,11 +296,21 @@ class AdaptiveModelTuner:
         all_data = AdaptiveModelTuner.fetch_training_data(db)
 
         if len(all_data) < AdaptiveModelTuner.MIN_SAMPLES_FOR_TUNING:
-            # Not enough data, return current weights
+            # Not enough data to optimize, but still calculate accuracy with current weights
+            if current_weights is None:
+                current_weights = PerformanceWeights()
+
+            # Calculate accuracy even with limited data
+            match_accuracy, correct, total = AdaptiveModelTuner.calculate_match_prediction_accuracy(
+                db,
+                current_weights,
+                limit=1000
+            )
+
             return (
-                current_weights or PerformanceWeights(),
+                current_weights,
                 ModelPerformance(
-                    win_prediction_accuracy=0.0,
+                    win_prediction_accuracy=match_accuracy,
                     correlation_strength=0.0,
                     sample_size=len(all_data),
                     confidence_score=0.0
@@ -250,18 +356,25 @@ class AdaptiveModelTuner:
         # Get optimized weights
         optimized_weights = PerformanceWeights.from_array(result.x)
 
-        # Evaluate on validation set
+        # Evaluate on validation set (correlation)
         validation_score = -AdaptiveModelTuner.evaluate_weights(
             optimized_weights,
             validation_data
+        )
+
+        # Calculate REAL match prediction accuracy
+        match_accuracy, correct, total = AdaptiveModelTuner.calculate_match_prediction_accuracy(
+            db,
+            optimized_weights,
+            limit=1000
         )
 
         # Calculate confidence (based on sample size and correlation)
         confidence = min(1.0, (len(all_data) / 200) * validation_score)
 
         performance = ModelPerformance(
-            win_prediction_accuracy=validation_score,
-            correlation_strength=validation_score,
+            win_prediction_accuracy=match_accuracy,  # Real accuracy: % of correct match predictions
+            correlation_strength=validation_score,    # Correlation: player performance vs wins
             sample_size=len(all_data),
             confidence_score=confidence
         )
