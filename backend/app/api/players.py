@@ -360,6 +360,12 @@ class RecalculationStats(BaseModel):
     processing_time_ms: float
     players_updated: int
     matches_processed: int
+    matches_with_performance_adjustments: int
+    matches_without_metrics: int
+    avg_performance_multiplier: float
+    min_performance_multiplier: float
+    max_performance_multiplier: float
+    total_adjustments_applied: int
 
 
 @router.post("/recalculate-ratings", response_model=RecalculationStats)
@@ -375,7 +381,13 @@ def recalculate_all_ratings(
     3. Gets all matches ordered chronologically
     4. Re-processes each match with TrueSkill algorithm
     5. Applies performance-based rating adjustments (living model)
-    6. Updates MatchPlayer records with new ratings
+    6. Applies recency bias - recent matches have stronger performance impact
+    7. Updates MatchPlayer records with new ratings
+
+    Recency Bias:
+    - Oldest matches: 30% of performance adjustment strength
+    - Newest matches: 100% of performance adjustment strength
+    - This ensures recent performance has more impact on final ratings
 
     This is useful for:
     - After merging players
@@ -386,7 +398,7 @@ def recalculate_all_ratings(
         db: Database session
 
     Returns:
-        RecalculationStats with processing information
+        RecalculationStats with processing information and validation metrics
     """
     import trueskill
     from ..performance_rating import PerformanceRatingAdjuster
@@ -417,8 +429,17 @@ def recalculate_all_ratings(
     matches_processed = 0
     players_updated = set()
 
+    # Track performance adjustment statistics
+    matches_with_performance_adjustments = 0
+    matches_without_metrics = 0
+    all_multipliers = []
+    total_adjustments_applied = 0
+
+    # Calculate recency weights (recent matches have more impact)
+    total_matches_count = len(all_matches)
+
     # Re-process each match chronologically
-    for match in all_matches:
+    for match_index, match in enumerate(all_matches):
         # Get all match_players for this match
         match_players = db.query(MatchPlayer).filter(
             MatchPlayer.match_id == match.id
@@ -491,6 +512,13 @@ def recalculate_all_ratings(
         team_1_metrics = [player_metrics_map[mp.id] for mp in team_1_mps if mp.id in player_metrics_map]
         team_2_metrics = [player_metrics_map[mp.id] for mp in team_2_mps if mp.id in player_metrics_map]
 
+        # Track if this match has metrics
+        match_has_metrics = len(player_metrics_map) > 0
+        if match_has_metrics:
+            matches_with_performance_adjustments += 1
+        else:
+            matches_without_metrics += 1
+
         # Apply performance adjustments to each player
         for mp in match_players:
             if mp.id not in player_metrics_map:
@@ -509,17 +537,38 @@ def recalculate_all_ratings(
                 opponent_metrics = team_1_metrics
 
             # Calculate performance multiplier
-            multiplier = PerformanceRatingAdjuster.calculate_performance_multiplier(
+            base_multiplier = PerformanceRatingAdjuster.calculate_performance_multiplier(
                 metrics,
                 team_metrics,
                 opponent_metrics,
                 bool(mp.won)
             )
 
+            # Apply recency bias: recent matches have stronger performance adjustments
+            # Recency weight ranges from 0.3 (oldest match) to 1.0 (newest match)
+            recency_weight = 0.3 + 0.7 * (match_index / max(1, total_matches_count - 1))
+
+            # Blend multiplier toward 1.0 based on recency weight
+            # Old matches: multiplier closer to 1.0 (less performance impact)
+            # Recent matches: full multiplier effect
+            multiplier = 1.0 + (base_multiplier - 1.0) * recency_weight
+
+            # Track multiplier statistics (using final multiplier after recency)
+            all_multipliers.append(multiplier)
+            total_adjustments_applied += 1
+
             # Apply multiplier to the rating change (not the final value)
             base_mu_change = mp.mu_after - mp.mu_before
             adjusted_mu_change = base_mu_change * multiplier
             adjusted_mu_after = mp.mu_before + adjusted_mu_change
+
+            # Validation: Ensure multiplier is within expected bounds
+            if multiplier < 0.5 or multiplier > 1.5:
+                print(f"WARNING: Multiplier {multiplier} outside expected bounds for player {mp.player_id} in match {match.id}")
+
+            # Validation: Ensure rating change is reasonable
+            if abs(base_mu_change) > 10:  # TrueSkill changes should rarely exceed 10
+                print(f"INFO: Large TrueSkill change {base_mu_change:.2f} for player {mp.player_id} in match {match.id}")
 
             # Update the match_player record with adjusted rating
             mp.mu_after = adjusted_mu_after
@@ -568,12 +617,23 @@ def recalculate_all_ratings(
 
     processing_time_ms = (time.time() - start_time) * 1000
 
+    # Calculate statistics about performance adjustments
+    avg_multiplier = sum(all_multipliers) / len(all_multipliers) if all_multipliers else 1.0
+    min_multiplier = min(all_multipliers) if all_multipliers else 1.0
+    max_multiplier = max(all_multipliers) if all_multipliers else 1.0
+
     return RecalculationStats(
         total_players=len(all_players),
         total_matches=len(all_matches),
         processing_time_ms=round(processing_time_ms, 2),
         players_updated=len(players_updated),
-        matches_processed=matches_processed
+        matches_processed=matches_processed,
+        matches_with_performance_adjustments=matches_with_performance_adjustments,
+        matches_without_metrics=matches_without_metrics,
+        avg_performance_multiplier=round(avg_multiplier, 3),
+        min_performance_multiplier=round(min_multiplier, 3),
+        max_performance_multiplier=round(max_multiplier, 3),
+        total_adjustments_applied=total_adjustments_applied
     )
 
 
