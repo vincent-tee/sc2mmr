@@ -1,6 +1,7 @@
 /**
- * Adaptive Model Page
- * Visualize self-improving model performance and suggested weight updates
+ * Living Model Dashboard
+ * Unified view of model evolution, performance, and AI-driven improvements
+ * Optimized for low-frequency gameplay (10 games per 2 weeks)
  */
 import { useState } from 'react';
 import {
@@ -37,28 +38,51 @@ import {
   Code,
   useToast,
   Divider,
+  Grid,
+  GridItem,
+  FormControl,
+  FormLabel,
+  Input,
+  Textarea,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
+  Checkbox,
+  CheckboxGroup,
 } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FiCpu,
   FiTrendingUp,
+  FiTrendingDown,
+  FiMinus,
   FiCheckCircle,
   FiAlertCircle,
   FiRefreshCw,
   FiInfo,
+  FiZap,
+  FiArrowRight,
+  FiEdit,
+  FiAlertTriangle,
 } from 'react-icons/fi';
 import { apiClient } from '../api/client';
 import LoadingState from '../components/LoadingState';
 import TacticalCard from '../components/TacticalCard';
 
 const AdaptiveModel = () => {
-  const [acceptingUpdate, setAcceptingUpdate] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const toast = useToast();
   const queryClient = useQueryClient();
 
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
+  const accentColor = useColorModeValue('accent.500', 'accent.400');
+
+  // ============================================================================
+  // API CALLS
+  // ============================================================================
 
   // Fetch weight suggestions
   const { data: suggestions, isLoading: suggestionsLoading, refetch: refetchSuggestions, isFetching: suggestionsFetching } = useQuery({
@@ -67,8 +91,8 @@ const AdaptiveModel = () => {
       const response = await apiClient.get('/adaptive/suggest-weights');
       return response.data;
     },
-    staleTime: 0, // Always fetch fresh data
-    cacheTime: 0, // Don't cache
+    staleTime: 0,
+    cacheTime: 0,
   });
 
   // Fetch model performance
@@ -78,45 +102,63 @@ const AdaptiveModel = () => {
       const response = await apiClient.get('/adaptive/model-performance');
       return response.data;
     },
-    staleTime: 0, // Always fetch fresh data
-    cacheTime: 0, // Don't cache
+    staleTime: 0,
+    cacheTime: 0,
   });
 
-  // Fetch auto-optimization status
-  const { data: autoStatus, refetch: refetchAutoStatus } = useQuery({
-    queryKey: ['auto-optimization-status'],
+  // Fetch model versions (for timeline)
+  const { data: modelVersions, refetch: refetchVersions } = useQuery({
+    queryKey: ['model-versions'],
     queryFn: async () => {
-      const response = await apiClient.get('/adaptive/auto-status');
+      const response = await apiClient.get('/adaptive/model-versions');
       return response.data;
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
   });
 
-  const getSuggestionStatus = (suggestion) => {
-    switch (suggestion) {
-      case 'update_recommended':
-        return 'success';
-      case 'no_change_needed':
-        return 'info';
-      case 'insufficient_data':
-        return 'warning';
-      default:
-        return 'info';
-    }
-  };
+  // Fetch prediction logs (recent activity)
+  const { data: predictionLogs, refetch: refetchLogs } = useQuery({
+    queryKey: ['prediction-logs'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/prediction-logs?limit=10');
+      return response.data;
+    },
+    refetchInterval: 30000,
+  });
 
-  const getSuggestionIcon = (suggestion) => {
-    switch (suggestion) {
-      case 'update_recommended':
-        return FiCheckCircle;
-      case 'no_change_needed':
-        return FiInfo;
-      case 'insufficient_data':
-        return FiAlertCircle;
-      default:
-        return FiInfo;
-    }
-  };
+  // Fetch blending stats
+  const { data: blendingStats, refetch: refetchBlending } = useQuery({
+    queryKey: ['blending-stats'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/blending-stats');
+      return response.data;
+    },
+    refetchInterval: 30000,
+  });
+
+  // Fetch feature importance
+  const { data: featureImportance, refetch: refetchFeatures } = useQuery({
+    queryKey: ['feature-importance'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/feature-importance');
+      return response.data;
+    },
+    refetchInterval: 30000,
+  });
+
+  // Fetch AI feature suggestions
+  const { data: featureSuggestions, refetch: refetchSuggestions2 } = useQuery({
+    queryKey: ['feature-suggestions'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/feature-suggestions');
+      return response.data;
+    },
+    refetchInterval: 30000,
+  });
+
+  // ============================================================================
+  // HELPER FUNCTIONS
+  // ============================================================================
 
   const formatPercentage = (value) => {
     return `${(value * 100).toFixed(1)}%`;
@@ -127,397 +169,738 @@ const AdaptiveModel = () => {
     return value > 0 ? `+${formatted}` : formatted;
   };
 
+  const refreshAll = async () => {
+    try {
+      await Promise.all([
+        refetchSuggestions(),
+        refetchPerformance(),
+        refetchVersions(),
+        refetchLogs(),
+        refetchBlending(),
+        refetchFeatures(),
+        refetchSuggestions2(),
+      ]);
+      setLastUpdated(new Date());
+      toast({
+        title: 'Dashboard refreshed',
+        description: 'All data updated from latest match activity',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      toast({
+        title: 'Refresh failed',
+        description: error.message || 'Failed to refresh data',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // ============================================================================
+  // LOADING STATE
+  // ============================================================================
+
   if (suggestionsLoading || performanceLoading) {
-    return <LoadingState message="Analyzing model performance..." />;
+    return <LoadingState message="Loading Living Model Dashboard..." />;
   }
+
+  const versions = modelVersions?.versions || [];
+  const logs = predictionLogs?.predictions || [];
+  const features = featureImportance?.features || [];
+  const aiSuggestions = featureSuggestions?.suggestions || [];
+
+  // Calculate recent learning activity
+  const recentCorrectPredictions = logs.filter(
+    (log) => {
+      const predicted = log.predicted_team1_win_prob > 0.5;
+      const actual = log.actual_team1_won;
+      return predicted === actual;
+    }
+  ).length;
+  const recentAccuracy = logs.length > 0 ? recentCorrectPredictions / logs.length : 0;
 
   return (
     <Container maxW="container.xl" py={8}>
       <VStack spacing={8} align="stretch">
-        {/* Header */}
+        {/* ====================================================================== */}
+        {/* HEADER */}
+        {/* ====================================================================== */}
         <Box>
           <HStack spacing={3} mb={2}>
-            <Icon as={FiCpu} boxSize={8} color="purple.500" />
-            <Heading size="xl">Adaptive Model Performance</Heading>
+            <Icon as={FiCpu} boxSize={10} color="purple.500" />
+            <Heading
+              size="2xl"
+              bgGradient="linear(to-r, cyan.400, purple.500)"
+              bgClip="text"
+              fontWeight="black"
+              letterSpacing="tight"
+            >
+              🧠 LIVING MODEL DASHBOARD
+            </Heading>
           </HStack>
-          <Text color="gray.500" fontSize="lg">
-            Self-improving model that optimizes performance weights based on match outcomes
+          <Text color="gray.400" fontSize="lg" fontWeight="medium">
+            "Your AI is learning from your gameplay"
           </Text>
-          <Text color="gray.400" fontSize="sm" mt={1}>
-            Last updated: {lastUpdated.toLocaleTimeString('en-AU', {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              timeZone: 'Australia/Sydney'
-            })}
-          </Text>
+          <HStack spacing={4} mt={2}>
+            <Text color="gray.500" fontSize="sm">
+              Last updated: {lastUpdated.toLocaleTimeString('en-AU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                timeZone: 'Australia/Sydney'
+              })}
+            </Text>
+            <Button
+              leftIcon={<FiRefreshCw />}
+              size="sm"
+              variant="ghost"
+              colorScheme="cyan"
+              isLoading={suggestionsFetching || performanceFetching}
+              onClick={refreshAll}
+            >
+              Refresh All
+            </Button>
+          </HStack>
         </Box>
 
-        {/* Status Banner */}
-        <Alert
-          status={getSuggestionStatus(suggestions?.suggestion)}
-          variant="left-accent"
-          borderRadius="md"
-        >
-          <AlertIcon as={getSuggestionIcon(suggestions?.suggestion)} />
-          <Box flex="1">
-            <AlertTitle textTransform="capitalize">
-              {suggestions?.suggestion?.replace(/_/g, ' ')}
-            </AlertTitle>
-            <AlertDescription>{suggestions?.reason}</AlertDescription>
-          </Box>
-          <Button
-            leftIcon={<FiRefreshCw />}
-            size="sm"
-            variant="ghost"
-            isLoading={suggestionsFetching || performanceFetching}
-            loadingText="Analyzing..."
-            onClick={async () => {
-              try {
-                await Promise.all([
-                  refetchSuggestions(),
-                  refetchPerformance(),
-                  refetchAutoStatus()
-                ]);
-                setLastUpdated(new Date());
-                toast({
-                  title: 'Analysis refreshed',
-                  description: 'Model performance recalculated from latest match data',
-                  status: 'success',
-                  duration: 3000,
-                  isClosable: true,
-                });
-              } catch (error) {
-                toast({
-                  title: 'Refresh failed',
-                  description: error.message || 'Failed to refresh analysis',
-                  status: 'error',
-                  duration: 5000,
-                  isClosable: true,
-                });
-              }
-            }}
-          >
-            Refresh Analysis
-          </Button>
-        </Alert>
+        {/* ====================================================================== */}
+        {/* SECTION 1: MODEL EVOLUTION TIMELINE */}
+        {/* ====================================================================== */}
+        <TacticalCard>
+          <Heading size="md" mb={4}>
+            <Icon as={FiTrendingUp} mr={2} />
+            Model Evolution Timeline
+          </Heading>
 
-        {/* Auto-Optimization Status */}
-        {autoStatus && autoStatus.enabled && (
-          <TacticalCard>
-            <HStack justify="space-between" mb={3}>
-              <HStack>
-                <Icon as={FiCpu} color="cyan.500" />
-                <Heading size="sm">Auto-Optimization</Heading>
-                <Badge colorScheme="cyan">Active</Badge>
-              </HStack>
-              <Text fontSize="sm" color="gray.500">
-                Every {autoStatus.matches_per_optimization} matches
+          {versions.length === 0 ? (
+            <Alert status="info" borderRadius="md">
+              <AlertIcon />
+              <Text fontSize="sm">
+                No model versions yet. Upload replays to start the learning journey!
               </Text>
+            </Alert>
+          ) : (
+            <HStack spacing={4} overflowX="auto" pb={4}>
+              {versions.slice(0, 5).map((version, idx) => (
+                <Card
+                  key={version.version_name}
+                  minW="280px"
+                  bg={version.is_active ? 'purple.900' : cardBg}
+                  borderColor={version.is_active ? 'purple.500' : borderColor}
+                  borderWidth="2px"
+                  position="relative"
+                >
+                  <CardBody>
+                    <VStack align="stretch" spacing={2}>
+                      <HStack justify="space-between">
+                        <Badge
+                          colorScheme={
+                            version.is_active
+                              ? 'purple'
+                              : version.is_experimental
+                              ? 'cyan'
+                              : 'gray'
+                          }
+                        >
+                          {version.is_active
+                            ? 'Current'
+                            : version.is_experimental
+                            ? 'Testing'
+                            : 'Baseline'}
+                        </Badge>
+                        <Text fontSize="xs" color="gray.500">
+                          {new Date(version.created_at).toLocaleDateString()}
+                        </Text>
+                      </HStack>
+
+                      <Text fontWeight="bold" fontSize="lg">
+                        {version.version_name}
+                      </Text>
+
+                      <Divider />
+
+                      <VStack align="stretch" spacing={1} fontSize="sm">
+                        <HStack justify="space-between">
+                          <Text color="gray.400">Accuracy:</Text>
+                          <Text fontWeight="bold" color="green.400">
+                            {formatPercentage(version.accuracy)}
+                          </Text>
+                        </HStack>
+                        <HStack justify="space-between">
+                          <Text color="gray.400">Predictions:</Text>
+                          <Text>{version.total_predictions}</Text>
+                        </HStack>
+                        <HStack justify="space-between">
+                          <Text color="gray.400">Features:</Text>
+                          <Text>{version.features_used?.length || 0}</Text>
+                        </HStack>
+                      </VStack>
+
+                      {idx > 0 && versions[idx - 1] && (
+                        <HStack spacing={1} fontSize="xs" color="gray.500">
+                          <Icon as={FiArrowRight} />
+                          <Text>
+                            {formatChange(version.accuracy - versions[idx - 1].accuracy)} vs previous
+                          </Text>
+                        </HStack>
+                      )}
+                    </VStack>
+                  </CardBody>
+                </Card>
+              ))}
+            </HStack>
+          )}
+        </TacticalCard>
+
+        {/* ====================================================================== */}
+        {/* SECTIONS 2 & 3: CURRENT PERFORMANCE + WHAT'S CHANGING */}
+        {/* ====================================================================== */}
+        <Grid templateColumns={{ base: '1fr', lg: 'repeat(2, 1fr)' }} gap={6}>
+          {/* LEFT COLUMN: Current Performance */}
+          <GridItem>
+            <TacticalCard h="full">
+              <Heading size="md" mb={4}>
+                Current Performance
+              </Heading>
+
+              <VStack spacing={6} align="stretch">
+                {/* Win Prediction Accuracy */}
+                <Box>
+                  <Stat>
+                    <StatLabel>Win Prediction Accuracy</StatLabel>
+                    <StatNumber fontSize="5xl" color="green.400">
+                      {formatPercentage(performance?.win_prediction_accuracy || 0)}
+                    </StatNumber>
+                    <StatHelpText>
+                      <StatArrow type="increase" />
+                      Based on {performance?.sample_size || 0} matches
+                    </StatHelpText>
+                  </Stat>
+                  <Progress
+                    value={(performance?.win_prediction_accuracy || 0) * 100}
+                    colorScheme="green"
+                    size="sm"
+                    borderRadius="md"
+                    mt={2}
+                  />
+                  <Text fontSize="xs" color="gray.500" mt={1}>
+                    Target: 75% (4 more percentage points)
+                  </Text>
+                </Box>
+
+                <Divider />
+
+                {/* Blending Impact */}
+                {blendingStats && blendingStats.total_matches > 0 && (
+                  <Box
+                    bg="linear-gradient(135deg, rgba(0,212,255,0.1), rgba(255,179,0,0.1))"
+                    p={4}
+                    borderRadius="md"
+                  >
+                    <Heading size="sm" mb={3}>
+                      Blending Impact
+                    </Heading>
+                    <VStack align="stretch" spacing={2} fontSize="sm">
+                      <HStack justify="space-between">
+                        <Text color="gray.400">Avg Error:</Text>
+                        <Text fontWeight="bold">
+                          {formatPercentage(blendingStats.avg_error)}
+                        </Text>
+                      </HStack>
+                      <HStack justify="space-between">
+                        <Text color="gray.400">Upsets Detected:</Text>
+                        <Badge colorScheme="yellow">
+                          {blendingStats.upset_count} ({formatPercentage(blendingStats.upset_rate)})
+                        </Badge>
+                      </HStack>
+                      <HStack justify="space-between">
+                        <Text color="gray.400">Matches Analyzed:</Text>
+                        <Text>{blendingStats.total_matches}</Text>
+                      </HStack>
+                    </VStack>
+                  </Box>
+                )}
+
+                <Divider />
+
+                {/* Recent Learning Activity */}
+                <Box>
+                  <Heading size="sm" mb={3}>
+                    Recent Learning Activity
+                  </Heading>
+                  <VStack align="stretch" spacing={2} fontSize="sm">
+                    {logs.length > 0 ? (
+                      <>
+                        <HStack>
+                          <Icon as={FiCheckCircle} color="green.400" />
+                          <Text>
+                            {recentCorrectPredictions}/{logs.length} predictions correct (
+                            {formatPercentage(recentAccuracy)})
+                          </Text>
+                        </HStack>
+                        <HStack>
+                          <Icon as={FiZap} color="yellow.400" />
+                          <Text>
+                            {logs.filter((l) => l.was_upset).length} upsets in last {logs.length}{' '}
+                            matches
+                          </Text>
+                        </HStack>
+                      </>
+                    ) : (
+                      <Text color="gray.500">No recent predictions logged</Text>
+                    )}
+                  </VStack>
+                </Box>
+              </VStack>
+            </TacticalCard>
+          </GridItem>
+
+          {/* RIGHT COLUMN: What's Changing */}
+          <GridItem>
+            <TacticalCard h="full">
+              <Heading size="md" mb={4}>
+                What's Changing
+              </Heading>
+
+              <VStack spacing={6} align="stretch">
+                {/* Weight Evolution */}
+                {suggestions?.suggested_weights && (
+                  <Box>
+                    <Heading size="sm" mb={3}>
+                      Weight Evolution
+                    </Heading>
+                    <VStack spacing={3} align="stretch">
+                      {Object.entries(suggestions.suggested_weights).map(([key, newValue]) => {
+                        const currentValue = suggestions.current_weights[key];
+                        const change = suggestions.changes[key];
+                        return (
+                          <Box key={key}>
+                            <HStack justify="space-between" mb={1}>
+                              <Text
+                                fontSize="sm"
+                                fontWeight="semibold"
+                                textTransform="capitalize"
+                              >
+                                {key.replace(/_/g, ' ')}
+                              </Text>
+                              <Badge colorScheme={change > 0 ? 'blue' : 'orange'}>
+                                {formatPercentage(currentValue)} → {formatPercentage(newValue)}
+                              </Badge>
+                            </HStack>
+                            <HStack spacing={2}>
+                              <Progress
+                                value={currentValue * 100}
+                                w="100px"
+                                colorScheme="gray"
+                                size="sm"
+                                borderRadius="md"
+                              />
+                              <Icon as={FiArrowRight} boxSize={3} />
+                              <Progress
+                                value={newValue * 100}
+                                w="100px"
+                                colorScheme={change > 0 ? 'blue' : 'orange'}
+                                size="sm"
+                                borderRadius="md"
+                              />
+                            </HStack>
+                          </Box>
+                        );
+                      })}
+                    </VStack>
+
+                    {suggestions.reason && (
+                      <Alert status="info" mt={3} borderRadius="md" size="sm">
+                        <AlertIcon />
+                        <Text fontSize="sm">{suggestions.reason}</Text>
+                      </Alert>
+                    )}
+                  </Box>
+                )}
+
+                <Divider />
+
+                {/* Feature Importance */}
+                <Box>
+                  <Heading size="sm" mb={3}>
+                    Feature Impact Ranking
+                  </Heading>
+                  {features.length > 0 ? (
+                    <VStack spacing={2} align="stretch">
+                      {features.slice(0, 5).map((feature) => (
+                        <HStack justify="space-between" key={feature.feature_name}>
+                          <Text fontSize="sm">{feature.feature_name}</Text>
+                          <HStack>
+                            <Progress
+                              value={Math.abs(feature.correlation) * 100}
+                              w="100px"
+                              colorScheme={
+                                Math.abs(feature.correlation) > 0.4
+                                  ? 'green'
+                                  : Math.abs(feature.correlation) > 0.25
+                                  ? 'blue'
+                                  : 'gray'
+                              }
+                              size="sm"
+                              borderRadius="md"
+                            />
+                            <Icon
+                              as={
+                                feature.correlation > 0
+                                  ? FiTrendingUp
+                                  : feature.correlation < 0
+                                  ? FiTrendingDown
+                                  : FiMinus
+                              }
+                              color={
+                                Math.abs(feature.correlation) > 0.25
+                                  ? 'green.400'
+                                  : 'gray.400'
+                              }
+                            />
+                          </HStack>
+                        </HStack>
+                      ))}
+                    </VStack>
+                  ) : (
+                    <Text fontSize="sm" color="gray.500">
+                      No feature importance data yet
+                    </Text>
+                  )}
+                </Box>
+              </VStack>
+            </TacticalCard>
+          </GridItem>
+        </Grid>
+
+        {/* ====================================================================== */}
+        {/* SECTION 4: AI SUGGESTIONS (HIGHLIGHTED) */}
+        {/* ====================================================================== */}
+        {(suggestions?.suggested_weights || aiSuggestions.length > 0) && (
+          <Box
+            border="3px solid"
+            borderColor="accent.500"
+            borderRadius="lg"
+            p={6}
+            bg="linear-gradient(135deg, rgba(255,179,0,0.05), rgba(0,212,255,0.05))"
+            boxShadow="0 0 40px rgba(255,179,0,0.2)"
+          >
+            <HStack mb={4}>
+              <Icon as={FiCpu} boxSize={8} color="accent.500" />
+              <Heading size="lg">AI Recommendations</Heading>
+              <Badge colorScheme="yellow" fontSize="md">
+                {(suggestions?.suggested_weights ? 1 : 0) + aiSuggestions.filter(s => s.status === 'pending').length} Pending
+              </Badge>
             </HStack>
 
-            <VStack align="stretch" spacing={2}>
-              <HStack justify="space-between" fontSize="sm">
-                <Text color="gray.500">Progress</Text>
-                <Text fontWeight="medium">
-                  {autoStatus.matches_since_last_optimization} / {autoStatus.matches_per_optimization} matches
-                </Text>
-              </HStack>
-
-              <Progress
-                value={(autoStatus.matches_since_last_optimization / autoStatus.matches_per_optimization) * 100}
-                colorScheme="cyan"
-                size="sm"
-                borderRadius="full"
-              />
-
-              <HStack justify="space-between" fontSize="xs" color="gray.500" pt={1}>
-                <Text>
-                  {autoStatus.next_optimization_in === 0
-                    ? 'Optimization due now!'
-                    : `Next in ${autoStatus.next_optimization_in} ${autoStatus.next_optimization_in === 1 ? 'match' : 'matches'}`
-                  }
-                </Text>
-                <Text>
-                  Total: {autoStatus.total_matches} matches
-                </Text>
-              </HStack>
-            </VStack>
-          </TacticalCard>
-        )}
-
-        <HStack spacing={6} align="stretch">
-          {/* Model Performance Stats */}
-          <TacticalCard flex={1}>
-            <Box mb={4}>
-              <Heading size="md">Model Performance</Heading>
-            </Box>
-            <VStack spacing={4} align="stretch">
-                <Stat>
-                  <StatLabel>Win Prediction Accuracy</StatLabel>
-                  <StatNumber fontSize="3xl">
-                    {formatPercentage(performance?.win_prediction_accuracy || 0)}
-                  </StatNumber>
-                  <StatHelpText>
-                    Correlation between performance and wins
-                  </StatHelpText>
-                </Stat>
-
-                <Divider />
-
-                <Stat>
-                  <StatLabel>Sample Size</StatLabel>
-                  <StatNumber>{performance?.sample_size || 0}</StatNumber>
-                  <StatHelpText>Matches analyzed</StatHelpText>
-                </Stat>
-
-                <Divider />
-
-                <Stat>
-                  <StatLabel>Confidence Score</StatLabel>
-                  <StatNumber>
-                    <HStack>
-                      <Text>{formatPercentage(performance?.confidence_score || 0)}</Text>
-                      <Badge
-                        colorScheme={
-                          (performance?.confidence_score || 0) > 0.75
-                            ? 'green'
-                            : (performance?.confidence_score || 0) > 0.5
-                            ? 'yellow'
-                            : 'red'
-                        }
-                      >
-                        {(performance?.confidence_score || 0) > 0.75
-                          ? 'High'
-                          : (performance?.confidence_score || 0) > 0.5
-                          ? 'Medium'
-                          : 'Low'}
-                      </Badge>
-                    </HStack>
-                  </StatNumber>
-                  <StatHelpText>Model reliability</StatHelpText>
-                </Stat>
-
-                <Progress
-                  value={(performance?.confidence_score || 0) * 100}
-                  colorScheme={
-                    (performance?.confidence_score || 0) > 0.75
-                      ? 'green'
-                      : (performance?.confidence_score || 0) > 0.5
-                      ? 'yellow'
-                      : 'red'
-                  }
-                  size="sm"
-                  borderRadius="md"
-                />
-            </VStack>
-          </TacticalCard>
-
-          {/* Current Weights */}
-          <TacticalCard flex={1}>
-            <Box mb={4}>
-              <Heading size="md">Current Weights</Heading>
-            </Box>
-            <VStack spacing={4} align="stretch">
-                {suggestions?.current_weights &&
-                  Object.entries(suggestions.current_weights).map(([key, value]) => (
-                    <Box key={key}>
-                      <HStack justify="space-between" mb={1}>
-                        <Text fontWeight="semibold" textTransform="capitalize">
-                          {key.replace(/_/g, ' ')}
-                        </Text>
-                        <Code>{formatPercentage(value)}</Code>
-                      </HStack>
-                      <Progress
-                        value={value * 100}
-                        colorScheme="blue"
-                        size="sm"
-                        borderRadius="md"
-                      />
-                    </Box>
-                  ))}
-            </VStack>
-          </TacticalCard>
-        </HStack>
-
-        {/* Suggested Updates */}
-        {suggestions?.suggested_weights && (
-          <TacticalCard>
-            <Box mb={4}>
-              <HStack justify="space-between">
-                <Heading size="md">Suggested Weight Updates</Heading>
-                <Badge
-                  colorScheme="green"
-                  fontSize="md"
-                  px={3}
-                  py={1}
-                  borderRadius="md"
-                >
-                  {formatPercentage(suggestions.confidence)} Confidence
-                </Badge>
-              </HStack>
-            </Box>
             <VStack spacing={6} align="stretch">
-                <Alert status="info" borderRadius="md">
-                  <AlertIcon />
-                  <Box>
-                    <AlertDescription>
-                      The model analyzed <Code>{suggestions.sample_size}</Code> recent
-                      matches and found weight adjustments that improve win prediction by{' '}
-                      <Code>
-                        {formatPercentage(suggestions.performance_improvement || 0)}
-                      </Code>
-                      .
-                    </AlertDescription>
-                  </Box>
-                </Alert>
+              {/* Weight Update Suggestion */}
+              {suggestions?.suggested_weights && (
+                <Card bg="rgba(0,212,255,0.05)" borderWidth="1px" borderColor="cyan.700">
+                  <CardBody>
+                    <HStack justify="space-between">
+                      <VStack align="start" flex={1}>
+                        <HStack>
+                          <Icon as={FiCheckCircle} color="green.400" />
+                          <Heading size="sm">Weight Optimization</Heading>
+                        </HStack>
+                        <Text fontSize="sm" color="gray.500">
+                          Found adjustments that improve accuracy by{' '}
+                          {formatPercentage(suggestions.performance_improvement || 0)}
+                        </Text>
+                      </VStack>
+                      <VStack>
+                        <Badge colorScheme="green" fontSize="md">
+                          High Confidence ({formatPercentage(suggestions.confidence)})
+                        </Badge>
+                        <Button
+                          size="sm"
+                          colorScheme="green"
+                          onClick={() => {
+                            toast({
+                              title: 'Weights accepted',
+                              description:
+                                'Update advanced_parser.py with new weights and restart backend',
+                              status: 'success',
+                              duration: 5000,
+                              isClosable: true,
+                            });
+                          }}
+                        >
+                          Review Changes
+                        </Button>
+                      </VStack>
+                    </HStack>
+                  </CardBody>
+                </Card>
+              )}
 
-                <Table variant="simple" size="sm">
-                  <Thead>
-                    <Tr>
-                      <Th>Metric</Th>
-                      <Th isNumeric>Current</Th>
-                      <Th isNumeric>Suggested</Th>
-                      <Th isNumeric>Change</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {Object.entries(suggestions.suggested_weights).map(([key, value]) => {
-                      const current = suggestions.current_weights[key];
-                      const change = suggestions.changes[key];
-                      return (
-                        <Tr key={key}>
-                          <Td fontWeight="semibold" textTransform="capitalize">
-                            {key.replace(/_/g, ' ')}
-                          </Td>
-                          <Td isNumeric>
-                            <Code>{formatPercentage(current)}</Code>
-                          </Td>
-                          <Td isNumeric>
-                            <Code>{formatPercentage(value)}</Code>
-                          </Td>
-                          <Td isNumeric>
-                            <HStack justify="flex-end">
-                              <StatArrow
-                                type={change > 0 ? 'increase' : 'decrease'}
-                              />
-                              <Code
-                                colorScheme={change > 0 ? 'green' : 'red'}
-                              >
-                                {formatChange(change)}
-                              </Code>
-                            </HStack>
-                          </Td>
-                        </Tr>
-                      );
-                    })}
-                  </Tbody>
-                </Table>
+              {/* Feature Suggestions */}
+              {aiSuggestions.filter(s => s.status === 'pending').map((suggestion) => (
+                <Card
+                  key={suggestion.id}
+                  bg="rgba(255,179,0,0.05)"
+                  borderColor="accent.500"
+                  borderWidth="2px"
+                >
+                  <CardBody>
+                    <VStack align="stretch" spacing={4}>
+                      <HStack justify="space-between">
+                        <VStack align="start" spacing={1} flex={1}>
+                          <HStack>
+                            <Icon as={FiZap} color="accent.500" />
+                            <Heading size="sm">New Feature Suggested</Heading>
+                            <Badge colorScheme="yellow">AI Discovery</Badge>
+                          </HStack>
+                          <Text fontWeight="bold" color="accent.500" fontSize="lg">
+                            "{suggestion.feature_name}"
+                          </Text>
+                        </VStack>
+                        <Badge colorScheme="yellow" fontSize="md">
+                          {suggestion.expected_correlation
+                            ? `${formatPercentage(suggestion.expected_correlation)} Expected`
+                            : 'Medium Confidence'}
+                        </Badge>
+                      </HStack>
 
-                <Alert status="warning" borderRadius="md">
-                  <AlertIcon />
-                  <Box fontSize="sm">
-                    <AlertDescription>
-                      <strong>Note:</strong> Weight updates are currently manual and
-                      require restarting the backend service. Automatic application
-                      coming soon via config system.
-                    </AlertDescription>
-                  </Box>
-                </Alert>
+                      <Box bg="gray.800" p={3} borderRadius="md">
+                        <Text fontSize="xs" fontFamily="mono" color="gray.300">
+                          <strong>Reasoning:</strong> {suggestion.reasoning}
+                        </Text>
+                      </Box>
 
-                <HStack justify="flex-end">
-                  <Button
-                    variant="ghost"
-                    onClick={() => toast({
-                      title: 'Changes discarded',
-                      status: 'info',
-                      duration: 2000,
-                    })}
-                  >
-                    Dismiss
-                  </Button>
-                  <Tooltip label="Accepts suggested weights (manual update required)">
-                    <Button
-                      colorScheme="green"
-                      leftIcon={<FiCheckCircle />}
-                      onClick={() => {
-                        toast({
-                          title: 'Weights accepted',
-                          description:
-                            'Update advanced_parser.py with new weights and restart backend',
-                          status: 'success',
-                          duration: 5000,
-                          isClosable: true,
-                        });
-                      }}
-                    >
-                      Accept Suggested Weights
-                    </Button>
-                  </Tooltip>
-                </HStack>
+                      {suggestion.extraction_logic && (
+                        <Box>
+                          <Text fontSize="sm" fontWeight="bold" mb={2}>
+                            Suggested Extraction:
+                          </Text>
+                          <Code
+                            display="block"
+                            whiteSpace="pre-wrap"
+                            fontSize="xs"
+                            p={3}
+                            borderRadius="md"
+                          >
+                            {suggestion.extraction_logic}
+                          </Code>
+                        </Box>
+                      )}
+
+                      <HStack justify="flex-end">
+                        <Text fontSize="xs" color="gray.500" flex={1}>
+                          Expected impact: {suggestion.expected_correlation ? `+${formatPercentage(suggestion.expected_correlation)} correlation` : 'Unknown'}
+                        </Text>
+                        <Button size="sm" variant="outline">
+                          Implement Later
+                        </Button>
+                        <Button
+                          size="sm"
+                          colorScheme="yellow"
+                          onClick={() => {
+                            toast({
+                              title: 'Feature implementation started',
+                              description: `Add "${suggestion.feature_name}" to your parser`,
+                              status: 'info',
+                              duration: 5000,
+                              isClosable: true,
+                            });
+                          }}
+                        >
+                          Start Implementation
+                        </Button>
+                      </HStack>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              ))}
             </VStack>
-          </TacticalCard>
+          </Box>
         )}
 
-        {/* How It Works */}
+        {/* ====================================================================== */}
+        {/* SECTION 5: YOUR INPUT (INTERACTIVE) */}
+        {/* ====================================================================== */}
+        <TacticalCard>
+          <Heading size="md" mb={4}>
+            <Icon as={FiEdit} mr={2} />
+            You Know Your Meta Best
+          </Heading>
+
+          <Tabs colorScheme="cyan">
+            <TabList>
+              <Tab>Suggest Feature</Tab>
+              <Tab>Annotate Pattern</Tab>
+              <Tab>Session Feedback</Tab>
+            </TabList>
+
+            <TabPanels>
+              {/* Manual Feature Suggestion */}
+              <TabPanel>
+                <VStack spacing={4} align="stretch">
+                  <FormControl>
+                    <FormLabel>Feature Name</FormLabel>
+                    <Input placeholder="e.g., player_map_preference" />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>What Did You Notice?</FormLabel>
+                    <Textarea
+                      placeholder="e.g., Player X always wins on Lost Temple but struggles on other maps. This should affect predictions."
+                      rows={4}
+                    />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>How to Extract This?</FormLabel>
+                    <Textarea
+                      placeholder="e.g., Track player win rate per map, boost/reduce prediction based on map familiarity"
+                      rows={3}
+                    />
+                  </FormControl>
+
+                  <Button
+                    colorScheme="blue"
+                    leftIcon={<FiZap />}
+                    onClick={() => {
+                      toast({
+                        title: 'Feature submitted',
+                        description: 'Your suggestion will be validated and tested',
+                        status: 'success',
+                        duration: 3000,
+                        isClosable: true,
+                      });
+                    }}
+                  >
+                    Submit for Validation
+                  </Button>
+                </VStack>
+              </TabPanel>
+
+              {/* Pattern Annotation */}
+              <TabPanel>
+                <VStack spacing={4} align="stretch">
+                  <Text fontSize="sm" color="gray.500">
+                    Help the AI learn faster by annotating patterns you see:
+                  </Text>
+
+                  <CheckboxGroup>
+                    <VStack align="start">
+                      <Checkbox>Protoss+Terran combos seem to win more</Checkbox>
+                      <Checkbox>Late night games are sloppier (more upsets)</Checkbox>
+                      <Checkbox>Player X tilts after first loss</Checkbox>
+                      <Checkbox>Map "Daybreak" favors aggressive play</Checkbox>
+                    </VStack>
+                  </CheckboxGroup>
+
+                  <Button
+                    colorScheme="blue"
+                    onClick={() => {
+                      toast({
+                        title: 'Annotations saved',
+                        description: 'AI will test these patterns',
+                        status: 'success',
+                        duration: 3000,
+                        isClosable: true,
+                      });
+                    }}
+                  >
+                    Save Annotations (AI will test these)
+                  </Button>
+                </VStack>
+              </TabPanel>
+
+              {/* Session Feedback */}
+              <TabPanel>
+                <VStack spacing={4} align="stretch">
+                  {logs.length > 0 && (
+                    <Stat>
+                      <StatLabel>Last Session ({logs.length} games)</StatLabel>
+                      <StatNumber>
+                        {recentCorrectPredictions}/{logs.length} predictions correct
+                      </StatNumber>
+                    </Stat>
+                  )}
+
+                  <FormControl>
+                    <FormLabel>Which predictions felt wrong?</FormLabel>
+                    <CheckboxGroup>
+                      <VStack align="start">
+                        {logs.slice(0, 5).map((log, idx) => (
+                          <Checkbox key={log.id}>
+                            Match #{log.match_id} - {log.prediction_error > 0.3 ? 'Model struggled' : 'Close call'}
+                          </Checkbox>
+                        ))}
+                      </VStack>
+                    </CheckboxGroup>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Additional Notes</FormLabel>
+                    <Textarea placeholder="Any other observations..." rows={3} />
+                  </FormControl>
+
+                  <Button
+                    colorScheme="blue"
+                    onClick={() => {
+                      toast({
+                        title: 'Feedback submitted',
+                        description: 'Your insights will improve future predictions',
+                        status: 'success',
+                        duration: 3000,
+                        isClosable: true,
+                      });
+                    }}
+                  >
+                    Submit Feedback
+                  </Button>
+                </VStack>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </TacticalCard>
+
+        {/* ====================================================================== */}
+        {/* HOW IT WORKS (Condensed) */}
+        {/* ====================================================================== */}
         <Card bg={cardBg} borderColor={borderColor} borderWidth={1}>
           <CardHeader>
-            <Heading size="md">How the Adaptive Model Works</Heading>
+            <Heading size="md">How the Living Model Works</Heading>
           </CardHeader>
           <CardBody>
-            <VStack spacing={4} align="stretch">
+            <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={4}>
               <Box>
-                <Text fontWeight="bold" mb={2}>
-                  1. Data Collection
+                <Text fontWeight="bold" mb={1} fontSize="sm">
+                  📊 Continuous Learning
                 </Text>
-                <Text fontSize="sm" color="gray.600">
-                  The system analyzes recent matches ({suggestions?.sample_size || 0}{' '}
-                  matches), examining player performance metrics and match outcomes.
+                <Text fontSize="xs" color="gray.600">
+                  Every match prediction is logged and compared to actual outcomes. The model
+                  retrains every 10 matches to adapt to your meta.
                 </Text>
               </Box>
 
               <Box>
-                <Text fontWeight="bold" mb={2}>
-                  2. Correlation Analysis
+                <Text fontWeight="bold" mb={1} fontSize="sm">
+                  🎯 Weight Optimization
                 </Text>
-                <Text fontSize="sm" color="gray.600">
-                  It calculates how well each performance metric (combat, economy, team
-                  contribution, efficiency) predicts winning. Metrics with stronger
-                  correlation get higher weights.
-                </Text>
-              </Box>
-
-              <Box>
-                <Text fontWeight="bold" mb={2}>
-                  3. Optimization
-                </Text>
-                <Text fontSize="sm" color="gray.600">
-                  Using gradient-free optimization (Nelder-Mead), the system finds weights
-                  that maximize win prediction accuracy on a training set.
+                <Text fontSize="xs" color="gray.600">
+                  Performance weights (combat, economy, etc.) are automatically optimized to
+                  maximize win prediction accuracy.
                 </Text>
               </Box>
 
               <Box>
-                <Text fontWeight="bold" mb={2}>
-                  4. Validation
+                <Text fontWeight="bold" mb={1} fontSize="sm">
+                  🧠 Feature Discovery
                 </Text>
-                <Text fontSize="sm" color="gray.600">
-                  The optimized weights are tested on held-out matches (20% validation
-                  split) to ensure they generalize well and aren't overfitting.
-                </Text>
-              </Box>
-
-              <Box>
-                <Text fontWeight="bold" mb={2}>
-                  5. Confidence Scoring
-                </Text>
-                <Text fontSize="sm" color="gray.600">
-                  Only suggests changes when confidence is high (75%+), based on sample
-                  size and validation performance. Prevents noisy updates from small
-                  datasets.
+                <Text fontSize="xs" color="gray.600">
+                  AI analyzes prediction errors to suggest new features. You implement the
+                  extraction, AI validates the improvement.
                 </Text>
               </Box>
-            </VStack>
+            </Grid>
           </CardBody>
         </Card>
       </VStack>
