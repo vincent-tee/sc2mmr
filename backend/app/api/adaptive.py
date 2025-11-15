@@ -263,3 +263,220 @@ def force_optimization(db: Session = Depends(get_db)):
         'message': 'Optimization completed',
         'result': result
     }
+
+
+# ============================================================================
+# Online Learning Endpoints
+# ============================================================================
+
+@router.get("/model-versions")
+def get_model_versions(db: Session = Depends(get_db)):
+    """
+    Get all model versions with their performance stats.
+
+    Returns:
+        List of model versions sorted by date (newest first)
+    """
+    try:
+        from ..online_learning import ModelVersion
+
+        versions = db.query(ModelVersion).order_by(
+            ModelVersion.created_at.desc()
+        ).limit(20).all()
+
+        return {
+            'versions': [
+                {
+                    'version_name': v.version_name,
+                    'created_at': v.created_at.isoformat(),
+                    'weights': v.weights_json,
+                    'features_used': v.features_used,
+                    'is_active': v.is_active,
+                    'is_experimental': v.is_experimental,
+                    'total_predictions': v.total_predictions,
+                    'correct_predictions': v.correct_predictions,
+                    'accuracy': v.correct_predictions / v.total_predictions if v.total_predictions > 0 else 0,
+                    'avg_error': v.avg_prediction_error,
+                    'notes': v.notes
+                }
+                for v in versions
+            ]
+        }
+    except Exception as e:
+        # Tables might not exist yet
+        return {'versions': []}
+
+
+@router.get("/prediction-logs")
+def get_prediction_logs(
+    limit: int = 50,
+    db: Session = Depends(get_db)
+):
+    """
+    Get recent prediction logs with outcomes.
+
+    Args:
+        limit: Number of logs to return (default 50, max 200)
+
+    Returns:
+        Recent predictions with errors and upset flags
+    """
+    try:
+        from ..online_learning import PredictionLog
+
+        limit = min(limit, 200)  # Cap at 200
+
+        logs = db.query(PredictionLog).order_by(
+            PredictionLog.created_at.desc()
+        ).limit(limit).all()
+
+        return {
+            'predictions': [
+                {
+                    'id': log.id,
+                    'match_id': log.match_id,
+                    'model_version': log.model_version,
+                    'created_at': log.created_at.isoformat(),
+                    'predicted_team1_win_prob': log.predicted_team1_win_prob,
+                    'predicted_team2_win_prob': log.predicted_team2_win_prob,
+                    'actual_team1_won': log.actual_team1_won,
+                    'prediction_error': log.prediction_error,
+                    'was_upset': log.was_upset,
+                    'features': log.features_json
+                }
+                for log in logs
+            ]
+        }
+    except Exception as e:
+        return {'predictions': []}
+
+
+@router.get("/blending-stats")
+def get_blending_stats(
+    days: int = 30,
+    db: Session = Depends(get_db)
+):
+    """
+    Get blending statistics (TrueSkill + Adaptive adjustments).
+
+    Args:
+        days: Number of days to analyze (default 30)
+
+    Returns:
+        Blending performance metrics
+    """
+    try:
+        from ..online_learning import PredictionLog
+        from datetime import datetime, timedelta
+
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+        logs = db.query(PredictionLog).filter(
+            PredictionLog.created_at >= cutoff_date,
+            PredictionLog.actual_team1_won.isnot(None)
+        ).all()
+
+        if not logs:
+            return {
+                'total_matches': 0,
+                'avg_error': 0,
+                'upset_count': 0,
+                'upset_rate': 0
+            }
+
+        total = len(logs)
+        avg_error = sum(log.prediction_error or 0 for log in logs) / total
+        upsets = sum(1 for log in logs if log.was_upset)
+
+        return {
+            'total_matches': total,
+            'avg_error': avg_error,
+            'upset_count': upsets,
+            'upset_rate': upsets / total if total > 0 else 0,
+            'days_analyzed': days
+        }
+    except Exception as e:
+        return {
+            'total_matches': 0,
+            'avg_error': 0,
+            'upset_count': 0,
+            'upset_rate': 0
+        }
+
+
+@router.get("/feature-importance")
+def get_feature_importance(db: Session = Depends(get_db)):
+    """
+    Get feature importance rankings.
+
+    Returns:
+        Features sorted by correlation strength
+    """
+    try:
+        from ..online_learning import FeatureImportance
+
+        features = db.query(FeatureImportance).order_by(
+            FeatureImportance.calculated_at.desc()
+        ).limit(100).all()
+
+        # Group by feature name, take most recent
+        feature_dict = {}
+        for f in features:
+            if f.feature_name not in feature_dict:
+                feature_dict[f.feature_name] = f
+
+        return {
+            'features': [
+                {
+                    'feature_name': f.feature_name,
+                    'correlation': f.correlation_with_outcome,
+                    'information_gain': f.information_gain,
+                    'sample_size': f.sample_size,
+                    'feature_type': f.feature_type,
+                    'calculated_at': f.calculated_at.isoformat()
+                }
+                for f in sorted(
+                    feature_dict.values(),
+                    key=lambda x: abs(x.correlation_with_outcome or 0),
+                    reverse=True
+                )
+            ]
+        }
+    except Exception as e:
+        return {'features': []}
+
+
+@router.get("/feature-suggestions")
+def get_feature_suggestions(db: Session = Depends(get_db)):
+    """
+    Get AI-suggested new features to implement.
+
+    Returns:
+        Feature suggestions sorted by expected correlation
+    """
+    try:
+        from ..online_learning import FeatureSuggestion
+
+        suggestions = db.query(FeatureSuggestion).order_by(
+            FeatureSuggestion.correlation_hypothesis.desc()
+        ).all()
+
+        return {
+            'suggestions': [
+                {
+                    'id': s.id,
+                    'feature_name': s.feature_name,
+                    'description': s.feature_description,
+                    'extraction_logic': s.extraction_logic,
+                    'reasoning': s.reasoning,
+                    'expected_correlation': s.correlation_hypothesis,
+                    'status': s.status,
+                    'created_at': s.created_at.isoformat(),
+                    'tested_at': s.tested_at.isoformat() if s.tested_at else None,
+                    'test_results': s.test_results
+                }
+                for s in suggestions
+            ]
+        }
+    except Exception as e:
+        return {'suggestions': []}
