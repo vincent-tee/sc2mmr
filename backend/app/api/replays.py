@@ -361,6 +361,10 @@ async def upload_replay(
         raise
     except Exception as e:
         # Log unexpected errors
+        logger.error(
+            f"Unexpected error processing replay '{file.filename}': {str(e)}",
+            exc_info=True
+        )
         extra_kwargs = {}
         if replay_data:
             extra_kwargs.update({
@@ -588,39 +592,55 @@ async def upload_replay_advanced(
         RatingSystem.update_ratings_from_match(db, replay_data, match)
 
         # Save advanced metrics for each player
-        for player_metrics in advanced_data.player_metrics:
-            # Find the corresponding MatchPlayer
-            player = db.query(Player).filter(Player.name == player_metrics.player_name).first()
-            if player:
-                match_player = db.query(MatchPlayer).filter(
-                    MatchPlayer.match_id == match.id,
-                    MatchPlayer.player_id == player.id
-                ).first()
+        try:
+            for player_metrics in advanced_data.player_metrics:
+                # Find the corresponding MatchPlayer
+                player = db.query(Player).filter(Player.name == player_metrics.player_name).first()
+                if player:
+                    match_player = db.query(MatchPlayer).filter(
+                        MatchPlayer.match_id == match.id,
+                        MatchPlayer.player_id == player.id
+                    ).first()
 
-                if match_player:
-                    # Save detailed metrics
-                    ImpactService.save_match_metrics(db, match_player.id, player_metrics)
+                    if match_player:
+                        # Save detailed metrics
+                        ImpactService.save_match_metrics(db, match_player.id, player_metrics)
 
-                    # Update player averages
-                    ImpactService.update_player_averages(db, player.id)
+                        # Update player averages
+                        ImpactService.update_player_averages(db, player.id)
+        except Exception as e:
+            logger.error(f"Failed to save impact metrics: {e}", exc_info=True)
+            # Continue - don't fail upload if metrics save fails
 
         # Update synergies
-        ImpactService.update_synergies(db, match.id)
+        try:
+            ImpactService.update_synergies(db, match.id)
+        except Exception as e:
+            logger.error(f"Failed to update synergies: {e}", exc_info=True)
+            # Continue - don't fail upload if synergies update fails
 
         # Apply performance-based rating adjustments
         # This modifies TrueSkill ratings based on individual performance
-        PerformanceRatingAdjuster.adjust_ratings_for_match(db, match.id)
+        try:
+            PerformanceRatingAdjuster.adjust_ratings_for_match(db, match.id)
+        except Exception as e:
+            logger.error(f"Failed to apply performance-based adjustments: {e}", exc_info=True)
+            # Continue - don't fail upload if adjustments fail
 
         rating_time_ms = (time.time() - rating_start) * 1000
 
         # Trigger auto-optimization if threshold reached
         # This runs retroactive analysis on all matches to optimize metric weights
-        optimization_result = trigger_auto_optimization(db)
-        if optimization_result:
-            logger.info(
-                f"Auto-optimization triggered: {optimization_result.get('suggestion')} "
-                f"(confidence: {optimization_result.get('confidence', 0):.2f})"
-            )
+        try:
+            optimization_result = trigger_auto_optimization(db)
+            if optimization_result:
+                logger.info(
+                    f"Auto-optimization triggered: {optimization_result.get('suggestion')} "
+                    f"(confidence: {optimization_result.get('confidence', 0):.2f})"
+                )
+        except Exception as e:
+            logger.warning(f"Auto-optimization failed: {e}", exc_info=False)
+            # Continue - don't fail upload if optimization fails
 
         total_time_ms = (time.time() - start_time) * 1000
 
@@ -691,6 +711,10 @@ async def upload_replay_advanced(
         raise
     except Exception as e:
         # Log unexpected errors
+        logger.error(
+            f"Unexpected error processing advanced replay '{file.filename}': {str(e)}",
+            exc_info=True
+        )
         extra_kwargs = {}
         if replay_data:
             extra_kwargs.update({
