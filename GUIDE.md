@@ -447,6 +447,14 @@ rm backend/data/sc2mmr.db
 # Restart server to recreate
 ```
 
+**Schema migration errors** (`no such column: matches.predicted_team1_win_prob`)
+```bash
+# Run the migration script
+cd backend
+python3 migrate_predictions_simple.py
+```
+See [MIGRATION_PREDICTIONS.md](backend/MIGRATION_PREDICTIONS.md) for details.
+
 **Replay parsing errors**
 - Some replays may be corrupted or non-standard
 - Check logs for specific error messages
