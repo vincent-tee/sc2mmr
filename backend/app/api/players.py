@@ -373,10 +373,13 @@ def recalculate_all_ratings(
     1. Resets all player ratings to default values (mu=25, sigma=8.333)
     2. Resets all player statistics (wins, losses, games)
     3. Gets all matches ordered chronologically
-    4. Re-processes each match with current rating algorithm
-    5. Applies performance adjustments if metrics are available
+    4. Re-processes each match with current TrueSkill algorithm
+    5. Updates MatchPlayer records with new ratings
 
-    This is useful for testing algorithm changes without losing match data.
+    This is useful for:
+    - After merging players
+    - Testing algorithm changes
+    - Fixing rating inconsistencies
 
     Args:
         db: Database session
@@ -384,6 +387,8 @@ def recalculate_all_ratings(
     Returns:
         RecalculationStats with processing information
     """
+    import trueskill
+
     start_time = time.time()
 
     # Get all players and matches
@@ -391,6 +396,7 @@ def recalculate_all_ratings(
     all_matches = db.query(Match).order_by(Match.played_at.asc()).all()
 
     # Reset all players to default ratings
+    player_ratings = {}  # player_id -> trueskill.Rating
     for player in all_players:
         player.mu = 25.0
         player.sigma = 8.333
@@ -398,28 +404,118 @@ def recalculate_all_ratings(
         player.losses = 0
         player.total_games = 0
         player.last_played = None
-
-    # Delete all match player records (they'll be recreated)
-    db.query(MatchPlayer).delete()
-
-    # Delete all player match metrics (they'll be recreated if available)
-    db.query(PlayerMatchMetrics).delete()
+        player.terran_games = 0
+        player.protoss_games = 0
+        player.zerg_games = 0
+        player.random_games = 0
+        player_ratings[player.id] = trueskill.Rating(mu=25.0, sigma=8.333)
 
     db.commit()
 
     matches_processed = 0
+    players_updated = set()
 
-    # Re-process each match
+    # Re-process each match chronologically
     for match in all_matches:
-        # Get match players from the original match data
-        # We need to reconstruct the replay data structure
-        # Since we don't have the original replay file, we'll skip detailed metrics
-        # and just recalculate TrueSkill ratings
+        # Get all match_players for this match
+        match_players = db.query(MatchPlayer).filter(
+            MatchPlayer.match_id == match.id
+        ).all()
 
-        # For now, we'll just note that this requires the replay files
-        # A better approach would be to store enough data to recalculate
-        # Let's implement a simpler version that just shows the concept
+        if not match_players:
+            continue
+
+        # Group by team
+        team_1_mps = [mp for mp in match_players if mp.team_number == 1]
+        team_2_mps = [mp for mp in match_players if mp.team_number == 2]
+
+        if not team_1_mps or not team_2_mps:
+            continue
+
+        # Get current ratings for each team
+        team_1_ratings = [player_ratings[mp.player_id] for mp in team_1_mps]
+        team_2_ratings = [player_ratings[mp.player_id] for mp in team_2_mps]
+
+        # Determine winner (check team 1's first player)
+        team_1_won = team_1_mps[0].won == 1
+
+        # Calculate new ratings
+        if team_1_won:
+            new_team_1_ratings, new_team_2_ratings = trueskill.rate(
+                [team_1_ratings, team_2_ratings],
+                ranks=[0, 1]  # Team 1 won (rank 0 beats rank 1)
+            )
+        else:
+            new_team_1_ratings, new_team_2_ratings = trueskill.rate(
+                [team_1_ratings, team_2_ratings],
+                ranks=[1, 0]  # Team 2 won
+            )
+
+        # Update match_player records and player ratings
+        for i, mp in enumerate(team_1_mps):
+            old_rating = player_ratings[mp.player_id]
+            new_rating = new_team_1_ratings[i]
+
+            # Update MatchPlayer with before/after ratings
+            mp.mu_before = old_rating.mu
+            mp.sigma_before = old_rating.sigma
+            mp.mu_after = new_rating.mu
+            mp.sigma_after = new_rating.sigma
+
+            # Update in-memory rating
+            player_ratings[mp.player_id] = new_rating
+            players_updated.add(mp.player_id)
+
+        for i, mp in enumerate(team_2_mps):
+            old_rating = player_ratings[mp.player_id]
+            new_rating = new_team_2_ratings[i]
+
+            mp.mu_before = old_rating.mu
+            mp.sigma_before = old_rating.sigma
+            mp.mu_after = new_rating.mu
+            mp.sigma_after = new_rating.sigma
+
+            player_ratings[mp.player_id] = new_rating
+            players_updated.add(mp.player_id)
+
+        # Update player statistics
+        for mp in match_players:
+            player = db.query(Player).filter(Player.id == mp.player_id).first()
+            if player:
+                player.total_games += 1
+                if mp.won:
+                    player.wins += 1
+                else:
+                    player.losses += 1
+                player.last_played = match.played_at
+
+                # Update race stats
+                if mp.race.value == 'Terran':
+                    player.terran_games += 1
+                elif mp.race.value == 'Protoss':
+                    player.protoss_games += 1
+                elif mp.race.value == 'Zerg':
+                    player.zerg_games += 1
+                elif mp.race.value == 'Random':
+                    player.random_games += 1
+
         matches_processed += 1
+
+        # Commit every 50 matches to avoid huge transactions
+        if matches_processed % 50 == 0:
+            db.commit()
+
+    # Final commit
+    db.commit()
+
+    # Update all player ratings to their final values
+    for player in all_players:
+        if player.id in player_ratings:
+            final_rating = player_ratings[player.id]
+            player.mu = final_rating.mu
+            player.sigma = final_rating.sigma
+
+    db.commit()
 
     processing_time_ms = (time.time() - start_time) * 1000
 
@@ -427,7 +523,7 @@ def recalculate_all_ratings(
         total_players=len(all_players),
         total_matches=len(all_matches),
         processing_time_ms=round(processing_time_ms, 2),
-        players_updated=len(all_players),
+        players_updated=len(players_updated),
         matches_processed=matches_processed
     )
 
