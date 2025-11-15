@@ -23,6 +23,8 @@ class PlayerInfo:
     mu: float
     sigma: float
     mmr: float  # Conservative rating: mu - 3*sigma
+    overall_impact: float  # Average overall impact score
+    total_games: int
 
     @classmethod
     def from_player(cls, player: Player) -> 'PlayerInfo':
@@ -32,7 +34,9 @@ class PlayerInfo:
             name=player.name,
             mu=player.mu,
             sigma=player.sigma,
-            mmr=player.mmr
+            mmr=player.mmr,
+            overall_impact=player.avg_overall_impact,
+            total_games=player.total_games
         )
 
 
@@ -46,6 +50,9 @@ class TeamSuggestion:
     mmr_difference: float
     win_probability: float  # Probability team 1 wins
     match_quality: float    # 0-1, higher is better balanced
+    team_1_avg_impact: float = 0.0  # Average impact score for team 1
+    team_2_avg_impact: float = 0.0  # Average impact score for team 2
+    impact_balance_score: float = 1.0  # How evenly high/low impact players are distributed
 
 
 class TeamBalancer:
@@ -129,6 +136,44 @@ class TeamBalancer:
         return win_prob
 
     @staticmethod
+    def calculate_impact_balance_score(
+        team_1: List[PlayerInfo],
+        team_2: List[PlayerInfo]
+    ) -> Tuple[float, float, float]:
+        """
+        Calculate how evenly high-impact and low-impact players are distributed.
+
+        Good balance means each team has a mix of:
+        - High-impact players (shot callers, strong players)
+        - Low-impact players (learning, weaker players)
+
+        Args:
+            team_1: List of players on team 1
+            team_2: List of players on team 2
+
+        Returns:
+            Tuple of (team_1_avg_impact, team_2_avg_impact, balance_score)
+            balance_score: 0-1, where 1 = perfect impact distribution
+        """
+        # Calculate average impact for each team
+        team_1_avg = sum(p.overall_impact for p in team_1) / len(team_1) if team_1 else 0
+        team_2_avg = sum(p.overall_impact for p in team_2) / len(team_2) if team_2 else 0
+
+        # Calculate balance score based on how close the averages are
+        # Perfect balance = same average impact on both teams
+        if team_1_avg == 0 and team_2_avg == 0:
+            balance_score = 1.0  # No impact data, consider balanced
+        else:
+            max_avg = max(team_1_avg, team_2_avg)
+            min_avg = min(team_1_avg, team_2_avg)
+            if max_avg > 0:
+                balance_score = min_avg / max_avg
+            else:
+                balance_score = 1.0
+
+        return team_1_avg, team_2_avg, balance_score
+
+    @staticmethod
     def generate_team_suggestions(
         players: List[PlayerInfo],
         top_n: int = 10
@@ -181,6 +226,11 @@ class TeamBalancer:
             # Calculate win probability
             win_probability = TeamBalancer.calculate_win_probability(team_1, team_2)
 
+            # Calculate impact balance
+            team_1_avg_impact, team_2_avg_impact, impact_balance = TeamBalancer.calculate_impact_balance_score(
+                team_1, team_2
+            )
+
             suggestions.append(TeamSuggestion(
                 team_1=team_1,
                 team_2=team_2,
@@ -188,7 +238,10 @@ class TeamBalancer:
                 team_2_mmr=team_2_mmr,
                 mmr_difference=mmr_difference,
                 win_probability=win_probability,
-                match_quality=match_quality
+                match_quality=match_quality,
+                team_1_avg_impact=team_1_avg_impact,
+                team_2_avg_impact=team_2_avg_impact,
+                impact_balance_score=impact_balance
             ))
 
         # Sort by match quality (descending) and MMR difference (ascending)
@@ -245,6 +298,61 @@ class TeamBalancer:
         suggestions = TeamBalancer.balance_teams(db, player_ids, top_n=1)
         return suggestions[0] if suggestions else None
 
+    @staticmethod
+    def balance_with_impact_priority(
+        db: Session,
+        player_ids: List[int],
+        top_n: int = 10,
+        impact_weight: float = 0.5
+    ) -> List[TeamSuggestion]:
+        """
+        Balance teams with priority on distributing high-impact and low-impact players evenly.
+
+        This ensures each team gets a mix of:
+        - Strong players (high MMR, high impact, shot callers)
+        - Weaker players (low MMR, low impact, learning)
+
+        Args:
+            db: Database session
+            player_ids: List of player IDs to balance
+            top_n: Number of suggestions to return
+            impact_weight: How much to weight impact balance (0-1)
+                          0 = pure MMR balance
+                          0.5 = equal weight to MMR and impact
+                          1 = pure impact balance
+
+        Returns:
+            List of TeamSuggestion objects sorted by combined balance score
+        """
+        # Fetch players from database
+        players = db.query(Player).filter(Player.id.in_(player_ids)).all()
+
+        if len(players) != len(player_ids):
+            found_ids = {p.id for p in players}
+            missing_ids = set(player_ids) - found_ids
+            raise ValueError(f"Players not found: {missing_ids}")
+
+        # Convert to PlayerInfo
+        player_infos = [PlayerInfo.from_player(p) for p in players]
+
+        # Generate basic suggestions
+        suggestions = TeamBalancer.generate_team_suggestions(player_infos, top_n=100)
+
+        # Re-score suggestions based on combined MMR and impact balance
+        for suggestion in suggestions:
+            # Combined score: weighted average of match_quality and impact_balance_score
+            combined_score = (
+                (1 - impact_weight) * suggestion.match_quality +
+                impact_weight * suggestion.impact_balance_score
+            )
+            # Store in match_quality for sorting
+            suggestion.match_quality = combined_score
+
+        # Sort by combined score (descending)
+        suggestions.sort(key=lambda x: -x.match_quality)
+
+        return suggestions[:top_n]
+
 
 class BalancerStats:
     """Statistics and analysis for team balancing."""
@@ -294,7 +402,11 @@ class BalancerStats:
                 'match_quality': suggestion.match_quality,
                 'win_probability_team_1': suggestion.win_probability,
                 'win_probability_team_2': 1 - suggestion.win_probability,
-                'fairness_rating': _get_fairness_rating(suggestion.match_quality)
+                'fairness_rating': _get_fairness_rating(suggestion.match_quality),
+                'team_1_avg_impact': suggestion.team_1_avg_impact,
+                'team_2_avg_impact': suggestion.team_2_avg_impact,
+                'impact_balance_score': suggestion.impact_balance_score,
+                'impact_difference': abs(suggestion.team_1_avg_impact - suggestion.team_2_avg_impact)
             }
         }
 
