@@ -492,46 +492,87 @@ def merge_players(
             detail="Cannot merge a player with itself"
         )
 
+    # Save original stats before merging
+    source_total_games = source_player.total_games
+    source_wins = source_player.wins
+    source_losses = source_player.losses
+    source_economic = source_player.avg_economic_score
+    source_combat = source_player.avg_combat_score
+    source_efficiency = source_player.avg_efficiency_score
+    source_overall = source_player.avg_overall_impact
+
+    target_total_games = target_player.total_games
+    target_wins = target_player.wins
+    target_losses = target_player.losses
+    target_economic = target_player.avg_economic_score
+    target_combat = target_player.avg_combat_score
+    target_efficiency = target_player.avg_efficiency_score
+    target_overall = target_player.avg_overall_impact
+
     # Transfer all match participations from source to target
-    match_players = db.query(MatchPlayer).filter(
+    # Use bulk update to avoid ORM tracking issues
+    from sqlalchemy import update
+
+    # Count matches first
+    matches_transferred = db.query(MatchPlayer).filter(
         MatchPlayer.player_id == source_player.id
-    ).all()
+    ).count()
 
-    matches_transferred = len(match_players)
-
-    for mp in match_players:
-        mp.player_id = target_player.id
+    # Bulk update match_players
+    db.execute(
+        update(MatchPlayer)
+        .where(MatchPlayer.player_id == source_player.id)
+        .values(player_id=target_player.id)
+    )
 
     # Update synergies - need to handle both player1 and player2
     from ..models import PlayerSynergy
 
-    synergies_as_p1 = db.query(PlayerSynergy).filter(
+    # Count and update synergies as player1
+    synergies_p1_count = db.query(PlayerSynergy).filter(
         PlayerSynergy.player1_id == source_player.id
-    ).all()
+    ).count()
 
-    synergies_as_p2 = db.query(PlayerSynergy).filter(
+    db.execute(
+        update(PlayerSynergy)
+        .where(PlayerSynergy.player1_id == source_player.id)
+        .values(player1_id=target_player.id)
+    )
+
+    # Count and update synergies as player2
+    synergies_p2_count = db.query(PlayerSynergy).filter(
         PlayerSynergy.player2_id == source_player.id
+    ).count()
+
+    db.execute(
+        update(PlayerSynergy)
+        .where(PlayerSynergy.player2_id == source_player.id)
+        .values(player2_id=target_player.id)
+    )
+
+    synergies_updated = synergies_p1_count + synergies_p2_count
+
+    # Flush to ensure updates are committed before we delete
+    db.flush()
+
+    # Merge statistics by adding source to target
+    target_player.total_games = target_total_games + source_total_games
+    target_player.wins = target_wins + source_wins
+    target_player.losses = target_losses + source_losses
+
+    # For race statistics, we need to query and recalculate since we don't store them
+    # Query ALL match_players for target (which now includes source's matches)
+    all_matches = db.query(MatchPlayer).filter(
+        MatchPlayer.player_id == target_player.id
     ).all()
 
-    synergies_updated = len(synergies_as_p1) + len(synergies_as_p2)
+    # Reset and recalculate race statistics from ALL matches
+    target_player.terran_games = 0
+    target_player.protoss_games = 0
+    target_player.zerg_games = 0
+    target_player.random_games = 0
 
-    for synergy in synergies_as_p1:
-        synergy.player1_id = target_player.id
-
-    for synergy in synergies_as_p2:
-        synergy.player2_id = target_player.id
-
-    # Recalculate target player's statistics
-    # Count wins/losses from transferred matches
-    total_transferred_wins = sum(1 for mp in match_players if mp.won)
-    total_transferred_losses = sum(1 for mp in match_players if not mp.won)
-
-    target_player.total_games += len(match_players)
-    target_player.wins += total_transferred_wins
-    target_player.losses += total_transferred_losses
-
-    # Transfer race statistics
-    for mp in match_players:
+    for mp in all_matches:
         if mp.race.value == 'Terran':
             target_player.terran_games += 1
         elif mp.race.value == 'Protoss':
@@ -546,28 +587,34 @@ def merge_players(
         if not target_player.last_played or source_player.last_played > target_player.last_played:
             target_player.last_played = source_player.last_played
 
-    # Merge impact scores (weighted average)
-    if source_player.total_games > 0:
-        total_combined_games = target_player.total_games
-        source_weight = matches_transferred / total_combined_games
-        target_weight = (total_combined_games - matches_transferred) / total_combined_games
+    # Merge impact scores (weighted average based on game counts)
+    if target_total_games > 0 and source_total_games > 0:
+        total_combined_games = target_total_games + source_total_games
+        target_weight = target_total_games / total_combined_games
+        source_weight = source_total_games / total_combined_games
 
         target_player.avg_economic_score = (
-            target_player.avg_economic_score * target_weight +
-            source_player.avg_economic_score * source_weight
+            target_economic * target_weight +
+            source_economic * source_weight
         )
         target_player.avg_combat_score = (
-            target_player.avg_combat_score * target_weight +
-            source_player.avg_combat_score * source_weight
+            target_combat * target_weight +
+            source_combat * source_weight
         )
         target_player.avg_efficiency_score = (
-            target_player.avg_efficiency_score * target_weight +
-            source_player.avg_efficiency_score * source_weight
+            target_efficiency * target_weight +
+            source_efficiency * source_weight
         )
         target_player.avg_overall_impact = (
-            target_player.avg_overall_impact * target_weight +
-            source_player.avg_overall_impact * source_weight
+            target_overall * target_weight +
+            source_overall * source_weight
         )
+    elif source_total_games > 0:
+        # Target had no games, just use source's scores
+        target_player.avg_economic_score = source_economic
+        target_player.avg_combat_score = source_combat
+        target_player.avg_efficiency_score = source_efficiency
+        target_player.avg_overall_impact = source_overall
 
     # Note: TrueSkill ratings (mu, sigma) are NOT merged
     # The target player keeps their existing rating
