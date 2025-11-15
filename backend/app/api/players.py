@@ -430,3 +430,174 @@ def recalculate_all_ratings(
         players_updated=len(all_players),
         matches_processed=matches_processed
     )
+
+
+class MergePlayersRequest(BaseModel):
+    """Request to merge two players."""
+    source_player_name: str  # Player to merge from (will be deleted)
+    target_player_name: str  # Player to merge into (will be kept)
+
+
+class MergePlayersResponse(BaseModel):
+    """Response from merging players."""
+    success: bool
+    message: str
+    kept_player: PlayerResponse
+    matches_transferred: int
+    synergies_updated: int
+
+
+@router.post("/merge", response_model=MergePlayersResponse)
+def merge_players(
+    request: MergePlayersRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Merge two players into one.
+
+    This combines all match history, statistics, and ratings from the source player
+    into the target player, then deletes the source player.
+
+    Use case: When the same person has been added under two different names.
+
+    Args:
+        request: MergePlayersRequest with source and target player names
+        db: Database session
+
+    Returns:
+        MergePlayersResponse with merge results
+
+    Raises:
+        HTTPException: If either player not found or if trying to merge player with itself
+    """
+    # Find both players
+    source_player = db.query(Player).filter(Player.name == request.source_player_name).first()
+    target_player = db.query(Player).filter(Player.name == request.target_player_name).first()
+
+    if not source_player:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source player '{request.source_player_name}' not found"
+        )
+
+    if not target_player:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Target player '{request.target_player_name}' not found"
+        )
+
+    if source_player.id == target_player.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot merge a player with itself"
+        )
+
+    # Transfer all match participations from source to target
+    match_players = db.query(MatchPlayer).filter(
+        MatchPlayer.player_id == source_player.id
+    ).all()
+
+    matches_transferred = len(match_players)
+
+    for mp in match_players:
+        mp.player_id = target_player.id
+
+    # Update synergies - need to handle both player1 and player2
+    from ..models import PlayerSynergy
+
+    synergies_as_p1 = db.query(PlayerSynergy).filter(
+        PlayerSynergy.player1_id == source_player.id
+    ).all()
+
+    synergies_as_p2 = db.query(PlayerSynergy).filter(
+        PlayerSynergy.player2_id == source_player.id
+    ).all()
+
+    synergies_updated = len(synergies_as_p1) + len(synergies_as_p2)
+
+    for synergy in synergies_as_p1:
+        synergy.player1_id = target_player.id
+
+    for synergy in synergies_as_p2:
+        synergy.player2_id = target_player.id
+
+    # Recalculate target player's statistics
+    # Count wins/losses from transferred matches
+    total_transferred_wins = sum(1 for mp in match_players if mp.won)
+    total_transferred_losses = sum(1 for mp in match_players if not mp.won)
+
+    target_player.total_games += len(match_players)
+    target_player.wins += total_transferred_wins
+    target_player.losses += total_transferred_losses
+
+    # Transfer race statistics
+    for mp in match_players:
+        if mp.race.value == 'Terran':
+            target_player.terran_games += 1
+        elif mp.race.value == 'Protoss':
+            target_player.protoss_games += 1
+        elif mp.race.value == 'Zerg':
+            target_player.zerg_games += 1
+        elif mp.race.value == 'Random':
+            target_player.random_games += 1
+
+    # Update last_played to most recent of the two
+    if source_player.last_played:
+        if not target_player.last_played or source_player.last_played > target_player.last_played:
+            target_player.last_played = source_player.last_played
+
+    # Merge impact scores (weighted average)
+    if source_player.total_games > 0:
+        total_combined_games = target_player.total_games
+        source_weight = matches_transferred / total_combined_games
+        target_weight = (total_combined_games - matches_transferred) / total_combined_games
+
+        target_player.avg_economic_score = (
+            target_player.avg_economic_score * target_weight +
+            source_player.avg_economic_score * source_weight
+        )
+        target_player.avg_combat_score = (
+            target_player.avg_combat_score * target_weight +
+            source_player.avg_combat_score * source_weight
+        )
+        target_player.avg_efficiency_score = (
+            target_player.avg_efficiency_score * target_weight +
+            source_player.avg_efficiency_score * source_weight
+        )
+        target_player.avg_overall_impact = (
+            target_player.avg_overall_impact * target_weight +
+            source_player.avg_overall_impact * source_weight
+        )
+
+    # Note: TrueSkill ratings (mu, sigma) are NOT merged
+    # The target player keeps their existing rating
+    # This is intentional - merging would require recalculating all matches chronologically
+
+    # Delete the source player
+    db.delete(source_player)
+
+    # Commit all changes
+    db.commit()
+    db.refresh(target_player)
+
+    return MergePlayersResponse(
+        success=True,
+        message=f"Successfully merged '{request.source_player_name}' into '{request.target_player_name}'. {matches_transferred} matches transferred.",
+        kept_player=PlayerResponse(
+            id=target_player.id,
+            name=target_player.name,
+            mu=target_player.mu,
+            sigma=target_player.sigma,
+            mmr=target_player.mmr,
+            recency_weighted_mmr=target_player.recency_weighted_mmr,
+            total_games=target_player.total_games,
+            wins=target_player.wins,
+            losses=target_player.losses,
+            win_rate=target_player.win_rate,
+            favorite_race=target_player.favorite_race,
+            is_core_player=bool(target_player.is_core_player),
+            last_played=target_player.last_played
+        ),
+        matches_transferred=matches_transferred,
+        synergies_updated=synergies_updated
+    )

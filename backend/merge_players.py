@@ -1,258 +1,158 @@
+#!/usr/bin/env python3
 """
-Script to merge two player records into one.
+Script to merge two players.
 
-Usage:
-    python3 merge_players.py <duplicate_name> <primary_name>
+Usage: python merge_players.py <source_player> <target_player>
 
-Example:
-    python3 merge_players.py "demonslayer" "dragonking"
-
-This will merge all data from demonslayer into dragonking, then delete demonslayer.
+Example: python merge_players.py DemonSlayer DragonKing
 """
 import sys
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.models import Player, MatchPlayer, PlayerSynergy, PlayerMatchMetrics
-from app.database import DATABASE_URL
-import logging
+from app.database import SessionLocal
+from app.models import Player, MatchPlayer, PlayerSynergy
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-def merge_players(session, duplicate_name: str, primary_name: str):
-    """
-    Merge duplicate player into primary player.
-
-    Args:
-        session: Database session
-        duplicate_name: Name of player to merge FROM (will be deleted)
-        primary_name: Name of player to merge INTO (will be kept)
-    """
-    # Fetch both players
-    duplicate = session.query(Player).filter(Player.name == duplicate_name).first()
-    primary = session.query(Player).filter(Player.name == primary_name).first()
-
-    if not duplicate:
-        logger.error(f"Duplicate player '{duplicate_name}' not found in database")
-        return False
-
-    if not primary:
-        logger.error(f"Primary player '{primary_name}' not found in database")
-        return False
-
-    logger.info(f"\n{'='*60}")
-    logger.info(f"MERGING PLAYERS")
-    logger.info(f"{'='*60}")
-    logger.info(f"FROM (will be deleted): {duplicate_name} (ID: {duplicate.id})")
-    logger.info(f"  - Total games: {duplicate.total_games}")
-    logger.info(f"  - W/L: {duplicate.wins}/{duplicate.losses}")
-    logger.info(f"  - MMR: {duplicate.mmr:.0f} (mu={duplicate.mu:.2f}, sigma={duplicate.sigma:.2f})")
-    logger.info(f"\nINTO (will be kept): {primary_name} (ID: {primary.id})")
-    logger.info(f"  - Total games: {primary.total_games}")
-    logger.info(f"  - W/L: {primary.wins}/{primary.losses}")
-    logger.info(f"  - MMR: {primary.mmr:.0f} (mu={primary.mu:.2f}, sigma={primary.sigma:.2f})")
-    logger.info(f"{'='*60}\n")
-
-    # Confirm merge
-    response = input(f"Proceed with merge? This will DELETE '{duplicate_name}' and move all their data to '{primary_name}'. Type 'yes' to confirm: ")
-    if response.lower() != 'yes':
-        logger.info("Merge cancelled.")
-        return False
+def merge_players(source_name: str, target_name: str):
+    """Merge source player into target player."""
+    db = SessionLocal()
 
     try:
-        # Step 1: Update all MatchPlayer records
-        match_players = session.query(MatchPlayer).filter(
-            MatchPlayer.player_id == duplicate.id
+        # Find both players
+        source_player = db.query(Player).filter(Player.name == source_name).first()
+        target_player = db.query(Player).filter(Player.name == target_name).first()
+
+        if not source_player:
+            print(f"❌ Error: Source player '{source_name}' not found")
+            return False
+
+        if not target_player:
+            print(f"❌ Error: Target player '{target_name}' not found")
+            return False
+
+        if source_player.id == target_player.id:
+            print(f"❌ Error: Cannot merge a player with itself")
+            return False
+
+        print(f"\n🔄 Merging '{source_name}' into '{target_name}'...")
+        print(f"   Source: {source_player.total_games} games, {source_player.wins}W-{source_player.losses}L, {source_player.mmr:.1f} MMR")
+        print(f"   Target: {target_player.total_games} games, {target_player.wins}W-{target_player.losses}L, {target_player.mmr:.1f} MMR")
+
+        # Transfer all match participations from source to target
+        match_players = db.query(MatchPlayer).filter(
+            MatchPlayer.player_id == source_player.id
         ).all()
 
-        logger.info(f"\n1. Updating {len(match_players)} MatchPlayer records...")
+        matches_transferred = len(match_players)
+        print(f"\n📋 Transferring {matches_transferred} match participations...")
+
         for mp in match_players:
-            mp.player_id = primary.id
+            mp.player_id = target_player.id
 
-        # Step 2: Handle PlayerSynergy records
-        logger.info(f"\n2. Merging PlayerSynergy records...")
-
-        # Get all synergies involving the duplicate player
-        synergies_as_p1 = session.query(PlayerSynergy).filter(
-            PlayerSynergy.player1_id == duplicate.id
-        ).all()
-        synergies_as_p2 = session.query(PlayerSynergy).filter(
-            PlayerSynergy.player2_id == duplicate.id
+        # Update synergies
+        synergies_as_p1 = db.query(PlayerSynergy).filter(
+            PlayerSynergy.player1_id == source_player.id
         ).all()
 
-        logger.info(f"   - Found {len(synergies_as_p1)} synergies where duplicate is player1")
-        logger.info(f"   - Found {len(synergies_as_p2)} synergies where duplicate is player2")
-
-        # Update or merge synergies
-        for syn in synergies_as_p1:
-            other_player_id = syn.player2_id
-
-            # Check if primary already has synergy with this player
-            existing = session.query(PlayerSynergy).filter(
-                ((PlayerSynergy.player1_id == primary.id) & (PlayerSynergy.player2_id == other_player_id)) |
-                ((PlayerSynergy.player1_id == other_player_id) & (PlayerSynergy.player2_id == primary.id))
-            ).first()
-
-            if existing:
-                # Merge the stats
-                logger.info(f"   - Merging synergy with player {other_player_id}")
-                existing.games_together += syn.games_together
-                existing.wins_together += syn.wins_together
-                existing.losses_together += syn.losses_together
-                # Recalculate averages
-                if existing.games_together > 0:
-                    existing.avg_win_rate = (existing.wins_together / existing.games_together) * 100
-                session.delete(syn)
-            else:
-                # Just update the player ID
-                logger.info(f"   - Moving synergy with player {other_player_id}")
-                syn.player1_id = primary.id
-
-        for syn in synergies_as_p2:
-            other_player_id = syn.player1_id
-
-            # Check if primary already has synergy with this player
-            existing = session.query(PlayerSynergy).filter(
-                ((PlayerSynergy.player1_id == primary.id) & (PlayerSynergy.player2_id == other_player_id)) |
-                ((PlayerSynergy.player1_id == other_player_id) & (PlayerSynergy.player2_id == primary.id))
-            ).first()
-
-            if existing:
-                # Merge the stats
-                logger.info(f"   - Merging synergy with player {other_player_id}")
-                existing.games_together += syn.games_together
-                existing.wins_together += syn.wins_together
-                existing.losses_together += syn.losses_together
-                # Recalculate averages
-                if existing.games_together > 0:
-                    existing.avg_win_rate = (existing.wins_together / existing.games_together) * 100
-                session.delete(syn)
-            else:
-                # Just update the player ID
-                logger.info(f"   - Moving synergy with player {other_player_id}")
-                syn.player2_id = primary.id
-
-        # Step 3: Merge player statistics
-        logger.info(f"\n3. Merging player statistics...")
-
-        # Combine game counts
-        primary.total_games += duplicate.total_games
-        primary.wins += duplicate.wins
-        primary.losses += duplicate.losses
-
-        # Combine race stats
-        primary.terran_games += duplicate.terran_games
-        primary.protoss_games += duplicate.protoss_games
-        primary.zerg_games += duplicate.zerg_games
-        primary.random_games += duplicate.random_games
-
-        # Update last_played to the most recent
-        if duplicate.last_played:
-            if not primary.last_played or duplicate.last_played > primary.last_played:
-                primary.last_played = duplicate.last_played
-
-        # Use created_at from the earlier record
-        if duplicate.created_at < primary.created_at:
-            primary.created_at = duplicate.created_at
-
-        # Keep the higher is_core_player value (1 = core, 0 = outsider)
-        if duplicate.is_core_player > primary.is_core_player:
-            primary.is_core_player = duplicate.is_core_player
-
-        logger.info(f"   - New total games: {primary.total_games}")
-        logger.info(f"   - New W/L: {primary.wins}/{primary.losses}")
-        logger.info(f"   - Win rate: {primary.win_rate*100:.1f}%")
-
-        # Step 4: Recalculate TrueSkill rating based on ALL matches
-        logger.info(f"\n4. TrueSkill rating will need to be recalculated...")
-        logger.info(f"   NOTE: You should run recalculate_ratings.py after this merge")
-        logger.info(f"   to properly recalculate TrueSkill ratings from match history")
-
-        # Step 5: Recalculate impact scores (average across all matches)
-        logger.info(f"\n5. Recalculating impact score averages...")
-
-        # Get all match_player records for primary player
-        all_match_players = session.query(MatchPlayer).filter(
-            MatchPlayer.player_id == primary.id
+        synergies_as_p2 = db.query(PlayerSynergy).filter(
+            PlayerSynergy.player2_id == source_player.id
         ).all()
 
-        # Get metrics for all matches
-        total_economic = 0
-        total_combat = 0
-        total_efficiency = 0
-        total_impact = 0
-        metrics_count = 0
+        synergies_updated = len(synergies_as_p1) + len(synergies_as_p2)
 
-        for mp in all_match_players:
-            metrics = session.query(PlayerMatchMetrics).filter(
-                PlayerMatchMetrics.match_player_id == mp.id
-            ).first()
+        if synergies_updated > 0:
+            print(f"🤝 Updating {synergies_updated} synergy records...")
 
-            if metrics:
-                total_economic += metrics.economic_score
-                total_combat += metrics.combat_score
-                total_efficiency += metrics.efficiency_score
-                total_impact += metrics.overall_impact
-                metrics_count += 1
+        for synergy in synergies_as_p1:
+            synergy.player1_id = target_player.id
 
-        if metrics_count > 0:
-            primary.avg_economic_score = total_economic / metrics_count
-            primary.avg_combat_score = total_combat / metrics_count
-            primary.avg_efficiency_score = total_efficiency / metrics_count
-            primary.avg_overall_impact = total_impact / metrics_count
-            logger.info(f"   - Recalculated averages from {metrics_count} matches")
+        for synergy in synergies_as_p2:
+            synergy.player2_id = target_player.id
 
-        # Step 6: Delete the duplicate player
-        logger.info(f"\n6. Deleting duplicate player '{duplicate_name}'...")
-        session.delete(duplicate)
+        # Recalculate target player's statistics
+        total_transferred_wins = sum(1 for mp in match_players if mp.won)
+        total_transferred_losses = sum(1 for mp in match_players if not mp.won)
+
+        print(f"\n📊 Updating statistics...")
+        print(f"   Adding {total_transferred_wins} wins and {total_transferred_losses} losses")
+
+        target_player.total_games += len(match_players)
+        target_player.wins += total_transferred_wins
+        target_player.losses += total_transferred_losses
+
+        # Transfer race statistics
+        for mp in match_players:
+            race = mp.race.value if hasattr(mp.race, 'value') else mp.race
+            if race == 'Terran':
+                target_player.terran_games += 1
+            elif race == 'Protoss':
+                target_player.protoss_games += 1
+            elif race == 'Zerg':
+                target_player.zerg_games += 1
+            elif race == 'Random':
+                target_player.random_games += 1
+
+        # Update last_played to most recent
+        if source_player.last_played:
+            if not target_player.last_played or source_player.last_played > target_player.last_played:
+                target_player.last_played = source_player.last_played
+
+        # Merge impact scores (weighted average)
+        if source_player.total_games > 0 and target_player.total_games > 0:
+            total_combined_games = target_player.total_games
+            source_weight = matches_transferred / total_combined_games
+            target_weight = (total_combined_games - matches_transferred) / total_combined_games
+
+            target_player.avg_economic_score = (
+                target_player.avg_economic_score * target_weight +
+                source_player.avg_economic_score * source_weight
+            )
+            target_player.avg_combat_score = (
+                target_player.avg_combat_score * target_weight +
+                source_player.avg_combat_score * source_weight
+            )
+            target_player.avg_efficiency_score = (
+                target_player.avg_efficiency_score * target_weight +
+                source_player.avg_efficiency_score * source_weight
+            )
+            target_player.avg_overall_impact = (
+                target_player.avg_overall_impact * target_weight +
+                source_player.avg_overall_impact * source_weight
+            )
+
+        # Delete the source player
+        print(f"\n🗑️  Deleting source player '{source_name}'...")
+        db.delete(source_player)
 
         # Commit all changes
-        session.commit()
+        db.commit()
+        db.refresh(target_player)
 
-        logger.info(f"\n{'='*60}")
-        logger.info(f"✓ MERGE COMPLETE")
-        logger.info(f"{'='*60}")
-        logger.info(f"Player '{duplicate_name}' has been merged into '{primary_name}'")
-        logger.info(f"\nFinal stats for '{primary_name}':")
-        logger.info(f"  - Total games: {primary.total_games}")
-        logger.info(f"  - W/L: {primary.wins}/{primary.losses} ({primary.win_rate*100:.1f}% win rate)")
-        logger.info(f"  - Favorite race: {primary.favorite_race}")
-        logger.info(f"\nIMPORTANT: Run 'python3 recalculate_ratings.py' to recalculate TrueSkill ratings!")
-        logger.info(f"{'='*60}\n")
+        print(f"\n✅ Merge complete!")
+        print(f"   '{target_name}' now has:")
+        print(f"   - {target_player.total_games} total games ({target_player.wins}W-{target_player.losses}L)")
+        print(f"   - {target_player.win_rate*100:.1f}% win rate")
+        print(f"   - {target_player.mmr:.1f} MMR")
+        print(f"   - Favorite race: {target_player.favorite_race}")
 
         return True
 
     except Exception as e:
-        logger.error(f"\nERROR during merge: {e}", exc_info=True)
-        session.rollback()
-        logger.info("\nMerge failed and was rolled back. No changes were made.")
+        print(f"\n❌ Error during merge: {e}")
+        db.rollback()
+        import traceback
+        traceback.print_exc()
         return False
-
-
-def main():
-    if len(sys.argv) != 3:
-        print("Usage: python3 merge_players.py <duplicate_name> <primary_name>")
-        print("\nExample:")
-        print("  python3 merge_players.py 'demonslayer' 'dragonking'")
-        print("\nThis will merge all data from demonslayer INTO dragonking,")
-        print("then delete demonslayer. Choose carefully which name to keep!")
-        sys.exit(1)
-
-    duplicate_name = sys.argv[1]
-    primary_name = sys.argv[2]
-
-    # Create database session
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
-
-    try:
-        success = merge_players(session, duplicate_name, primary_name)
-        sys.exit(0 if success else 1)
     finally:
-        session.close()
-
+        db.close()
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 3:
+        print("Usage: python merge_players.py <source_player> <target_player>")
+        print("\nExample: python merge_players.py DemonSlayer DragonKing")
+        print("\nThis will merge all data from source_player into target_player,")
+        print("then delete the source_player.")
+        sys.exit(1)
+
+    source = sys.argv[1]
+    target = sys.argv[2]
+
+    success = merge_players(source, target)
+    sys.exit(0 if success else 1)
