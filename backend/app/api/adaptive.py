@@ -22,7 +22,7 @@ router = APIRouter(prefix="/adaptive", tags=["adaptive"])
 _performance_cache = {
     'timestamp': None,
     'result': None,
-    'cache_duration_seconds': 300  # 5 minutes
+    'cache_duration_seconds': 30  # 30 seconds (allows refresh button to work)
 }
 
 
@@ -107,21 +107,32 @@ def suggest_weight_updates(db: Session = Depends(get_db)):
 
 
 @router.get("/model-performance")
-def get_model_performance(db: Session = Depends(get_db)):
+def get_model_performance(
+    force_refresh: bool = False,
+    db: Session = Depends(get_db)
+):
     """
     Get current model performance metrics.
+
+    Args:
+        force_refresh: If True, bypass cache and compute fresh results
+        db: Database session
 
     Returns:
         Model performance stats including correlation and sample size
     """
-    # Check cache validity
+    # Check cache validity (unless force_refresh is True)
     now = datetime.utcnow()
-    if (_performance_cache['timestamp'] is not None and
+    if (not force_refresh and
+        _performance_cache['timestamp'] is not None and
         _performance_cache['result'] is not None):
         cache_age = (now - _performance_cache['timestamp']).total_seconds()
         if cache_age < _performance_cache['cache_duration_seconds']:
-            # Return cached result
-            return _performance_cache['result']
+            # Return cached result (add cache info for debugging)
+            cached_result = _performance_cache['result'].copy()
+            cached_result['_cache_age_seconds'] = round(cache_age, 1)
+            cached_result['_from_cache'] = True
+            return cached_result
 
     # Cache miss or expired - compute fresh results
     current_weights = PerformanceWeights()
@@ -140,12 +151,13 @@ def get_model_performance(db: Session = Depends(get_db)):
             'economic': current_weights.economic_weight,
             'team_contribution': current_weights.team_contribution_weight,
             'efficiency': current_weights.efficiency_weight
-        }
+        },
+        '_from_cache': False
     }
 
     # Update cache
     _performance_cache['timestamp'] = now
-    _performance_cache['result'] = result
+    _performance_cache['result'] = result.copy()
 
     return result
 

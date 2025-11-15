@@ -140,6 +140,17 @@ class MatchResponse(BaseModel):
         from_attributes = True
 
 
+class MatchListResponse(BaseModel):
+    """Response model for list of matches with total count."""
+    matches: List[MatchResponse]
+    total_count: int
+    limit: int
+    offset: int
+
+    class Config:
+        from_attributes = True
+
+
 class MatchPlayerResponse(BaseModel):
     """Response model for match player details."""
     player_name: str
@@ -391,14 +402,14 @@ async def upload_replay(
             os.remove(tmp_file_path)
 
 
-@router.get("/matches", response_model=List[MatchResponse])
+@router.get("/matches", response_model=MatchListResponse)
 def get_matches(
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db)
 ):
     """
-    Get list of matches.
+    Get list of matches with pagination.
 
     Args:
         limit: Maximum number of matches to return
@@ -406,13 +417,19 @@ def get_matches(
         db: Database session
 
     Returns:
-        List of MatchResponse objects
+        MatchListResponse with matches array and total count
     """
+    from sqlalchemy import func
+
+    # Get total count
+    total_count = db.query(func.count(Match.id)).scalar() or 0
+
+    # Get paginated matches
     matches = db.query(Match).order_by(
         Match.played_at.desc()
     ).limit(limit).offset(offset).all()
 
-    return [
+    match_responses = [
         MatchResponse(
             id=m.id,
             played_at=m.played_at,
@@ -423,6 +440,13 @@ def get_matches(
         )
         for m in matches
     ]
+
+    return MatchListResponse(
+        matches=match_responses,
+        total_count=total_count,
+        limit=limit,
+        offset=offset
+    )
 
 
 @router.get("/matches/{match_id}", response_model=MatchDetailResponse)

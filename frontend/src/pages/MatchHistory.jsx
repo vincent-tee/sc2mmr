@@ -45,7 +45,8 @@ const MatchHistory = () => {
     },
   });
 
-  const matches = matchesData || [];
+  const matches = matchesData?.matches || [];
+  const totalMatches = matchesData?.total_count || 0;
 
   if (isLoading) {
     return (
@@ -120,7 +121,7 @@ const MatchHistory = () => {
                   fontSize="sm"
                   textTransform="uppercase"
                 >
-                  [ {matches.length} OPERATIONS RECORDED ]
+                  [ {totalMatches} OPERATIONS RECORDED ]
                 </Text>
               </VStack>
 
