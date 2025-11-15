@@ -212,6 +212,8 @@ class AdaptiveModelTuner:
             )
 
         # Split into training and validation
+        # Set random seed for reproducibility
+        np.random.seed(42)
         np.random.shuffle(all_data)
         split_idx = int(len(all_data) * (1 - AdaptiveModelTuner.VALIDATION_SPLIT))
         training_data = all_data[:split_idx]

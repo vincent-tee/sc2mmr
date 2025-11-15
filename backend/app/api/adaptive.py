@@ -11,11 +11,19 @@ from typing import Dict, Optional
 from ..database import get_db
 from ..adaptive_model import AdaptiveModelTuner, PerformanceWeights, ModelPerformance
 from ..auto_adaptive import AutoAdaptiveTracker, AutoAdaptiveConfig
-from ..models import Match
+from ..models import Match, PlayerMatchMetrics, MatchPlayer
 from sqlalchemy import func
+from datetime import datetime, timedelta
 
 
 router = APIRouter(prefix="/adaptive", tags=["adaptive"])
+
+# Cache for expensive operations
+_performance_cache = {
+    'timestamp': None,
+    'result': None,
+    'cache_duration_seconds': 300  # 5 minutes
+}
 
 
 class WeightSuggestionResponse(BaseModel):
@@ -106,13 +114,26 @@ def get_model_performance(db: Session = Depends(get_db)):
     Returns:
         Model performance stats including correlation and sample size
     """
+    # Check cache validity
+    now = datetime.utcnow()
+    if (_performance_cache['timestamp'] is not None and
+        _performance_cache['result'] is not None):
+        cache_age = (now - _performance_cache['timestamp']).total_seconds()
+        if cache_age < _performance_cache['cache_duration_seconds']:
+            # Return cached result
+            return _performance_cache['result']
+
+    # Cache miss or expired - compute fresh results
     current_weights = PerformanceWeights()
     _, performance = AdaptiveModelTuner.optimize_weights(db, current_weights)
 
-    return {
+    # Count actual matches (not PlayerMatchMetrics records)
+    total_matches = db.query(func.count(Match.id)).scalar() or 0
+
+    result = {
         'win_prediction_accuracy': performance.win_prediction_accuracy,
         'correlation_strength': performance.correlation_strength,
-        'sample_size': performance.sample_size,
+        'sample_size': total_matches,  # Fixed: use actual match count
         'confidence_score': performance.confidence_score,
         'current_weights': {
             'combat': current_weights.combat_weight,
@@ -121,6 +142,12 @@ def get_model_performance(db: Session = Depends(get_db)):
             'efficiency': current_weights.efficiency_weight
         }
     }
+
+    # Update cache
+    _performance_cache['timestamp'] = now
+    _performance_cache['result'] = result
+
+    return result
 
 
 @router.post("/update-weights")
