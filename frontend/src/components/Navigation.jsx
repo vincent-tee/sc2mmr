@@ -58,7 +58,7 @@ const Navigation = () => {
       position="sticky"
       top={0}
       zIndex={10}
-      boxShadow="0 4px 20px rgba(0, 212, 255, 0.1)"
+      boxShadow="0 2px 10px rgba(0, 212, 255, 0.1)"
       backdropFilter="blur(10px)"
     >
       <Container maxW="container.xl">
