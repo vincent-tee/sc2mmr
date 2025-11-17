@@ -84,8 +84,13 @@ def reset_everything():
         deleted_players = db.query(Player).delete()
         print(f"  - Deleted {deleted_players} Player records")
 
-        # Reset auto-increment
-        db.execute(text("DELETE FROM sqlite_sequence WHERE name IN ('players', 'matches', 'match_players', 'player_match_metrics', 'failed_uploads', 'player_synergies')"))
+        # Reset auto-increment (if table exists)
+        try:
+            db.execute(text("DELETE FROM sqlite_sequence WHERE name IN ('players', 'matches', 'match_players', 'player_match_metrics', 'failed_uploads', 'player_synergies')"))
+            print(f"  - Reset auto-increment counters")
+        except Exception:
+            # sqlite_sequence table doesn't exist, that's fine
+            pass
 
         db.commit()
         print("\n✅ Database completely cleared! Fresh start ready.")
