@@ -8,6 +8,7 @@ import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 import TeamGenerator from './pages/TeamGenerator';
+import LineupPredictor from './pages/LineupPredictor';
 import UploadReplays from './pages/UploadReplays';
 import FailedUploads from './pages/FailedUploads';
 import Players from './pages/Players';
@@ -25,6 +26,7 @@ function App() {
         <Routes>
           <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
           <Route path="/balance" element={<ErrorBoundary><TeamGenerator /></ErrorBoundary>} />
+          <Route path="/predictor" element={<ErrorBoundary><LineupPredictor /></ErrorBoundary>} />
           <Route path="/upload" element={<ErrorBoundary><UploadReplays /></ErrorBoundary>} />
           <Route path="/failed-uploads" element={<ErrorBoundary><FailedUploads /></ErrorBoundary>} />
           <Route path="/players" element={<ErrorBoundary><Players /></ErrorBoundary>} />
