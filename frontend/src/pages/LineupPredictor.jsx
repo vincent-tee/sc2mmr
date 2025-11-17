@@ -61,7 +61,7 @@ const LineupPredictor = () => {
     },
   });
 
-  const players = playersData?.players || [];
+  const players = playersData || [];
 
   // Calculate prediction when lineups change
   useEffect(() => {
