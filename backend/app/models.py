@@ -72,14 +72,18 @@ class Player(Base):
         Scaled MMR for display and balancing.
 
         Uses a scaled formula to convert TrueSkill values to a more intuitive range:
-        MMR = 1000 + 40*mu - 120*sigma
+        MMR = 1000 + 40*mu
+
+        Sigma (uncertainty) is kept internal for matchmaking quality but doesn't
+        affect displayed rating. This prevents inactive players from having their
+        displayed MMR penalized when only their uncertainty increases.
 
         This gives approximately:
         - New players: ~1000 MMR
         - Experienced players: 800-2200 MMR range
-        - Higher MMR = better skill, lower sigma = more certainty
+        - Higher MMR = better skill
         """
-        return 1000 + (40 * self.mu) - (120 * self.sigma)
+        return 1000 + (40 * self.mu)
 
     @property
     def favorite_race(self) -> str:
