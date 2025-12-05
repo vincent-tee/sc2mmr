@@ -17,44 +17,43 @@ from sqlalchemy.orm import Session
 
 from .models import Player, Match, MatchPlayer
 from .replay_parser import ReplayData
+from .config import settings
 
 
-# TrueSkill environment configuration
-# These defaults work well for most games
+# TrueSkill environment configuration using centralized settings
 trueskill.setup(
-    mu=25.0,              # Initial skill estimate
-    sigma=8.333,          # Initial uncertainty
-    beta=4.166,           # Skill class width (half of sigma)
-    tau=0.0833,           # Dynamics factor (skill change per day)
-    draw_probability=0.0  # No draws in SC2
+    mu=settings.trueskill_mu,
+    sigma=settings.trueskill_sigma,
+    beta=settings.trueskill_beta,
+    tau=settings.trueskill_tau,
+    draw_probability=settings.trueskill_draw_probability
 )
 
-# Recency weighting configuration
-# Matches decay exponentially - a match from RECENCY_HALF_LIFE days ago
-# has 50% the weight of a match today
-RECENCY_HALF_LIFE_DAYS = 60  # 60-day half-life (more gradual decay)
-RECENCY_ENABLED = True        # Enable recency weighting
+# Recency weighting configuration from settings
+RECENCY_HALF_LIFE_DAYS = settings.recency_half_life_days
+RECENCY_ENABLED = settings.recency_enabled
 
 
 class RatingSystem:
     """
     Manages TrueSkill ratings for players.
 
-    MMR Calculation Constants (Single Source of Truth):
-    - MMR_BASE: Base MMR value for all players (1000)
-    - MMR_MU_MULTIPLIER: How much each mu point affects MMR (40)
+    MMR Calculation Constants (Single Source of Truth from config):
+    - MMR_BASE: Base MMR value for all players (default 1000)
+    - MMR_MU_MULTIPLIER: How much each mu point affects MMR (default 40)
+    - MMR_SIGMA_MULTIPLIER: How much sigma affects conservative MMR (default 120)
 
     Two MMR formulas exist for different purposes:
-    1. Display MMR: 1000 + 40*mu (used for player cards, leaderboards)
+    1. Display MMR: MMR_BASE + MMR_MU_MULTIPLIER*mu (used for player cards, leaderboards)
        - Does NOT include sigma to avoid penalizing inactive players
-    2. Conservative MMR: 1000 + 40*mu - 120*sigma (used for matchmaking)
+    2. Conservative MMR: MMR_BASE + MMR_MU_MULTIPLIER*mu - MMR_SIGMA_MULTIPLIER*sigma
        - Includes sigma to give conservative estimate for balanced matches
     """
 
-    # MMR Calculation Constants - SINGLE SOURCE OF TRUTH
-    MMR_BASE = 1000
-    MMR_MU_MULTIPLIER = 40
-    MMR_SIGMA_MULTIPLIER = 120  # Only used in conservative rating
+    # MMR Calculation Constants - from centralized settings
+    MMR_BASE = settings.mmr_base
+    MMR_MU_MULTIPLIER = settings.mmr_mu_multiplier
+    MMR_SIGMA_MULTIPLIER = settings.mmr_sigma_multiplier
 
     @staticmethod
     def create_rating(mu: float = 25.0, sigma: float = 8.333) -> trueskill.Rating:

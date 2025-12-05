@@ -11,10 +11,11 @@ import logging
 
 from .database import init_db
 from .api import replays, players, teams, impact, adaptive
+from .config import settings
 
-# Configure logging
+# Configure logging using settings
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
@@ -35,32 +36,19 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="SC2 MMR Tracker",
-    description="""
-    Track StarCraft 2 replays, maintain player ratings, and balance teams for fair matches.
-
-    ## Features
-
-    * **Replay Upload** - Parse and process SC2 replay files
-    * **Player Tracking** - TrueSkill MMR ratings, win rates, and statistics
-    * **Team Balancing** - Generate balanced team compositions for fair matches
-    * **Player Rankings** - View player rankings and detailed statistics
-
-    ## Main Workflows
-
-    1. **Upload Replays**: POST `/replays/upload` with .SC2Replay file
-    2. **View Players**: GET `/players/` to see all players
-    3. **Balance Teams**: POST `/teams/balance` with player IDs to get team suggestions
-    4. **View Rankings**: GET `/players/rankings` to see player leaderboard
-    """,
-    version="1.0.0",
+    title=settings.api_title,
+    description=settings.api_description,
+    version=settings.api_version,
     lifespan=lifespan
 )
 
 # CORS middleware for frontend
+# Uses settings.cors_origins instead of wildcard ["*"] for security
+# In development: ["http://localhost:5173", "http://localhost:3000"]
+# In production: Set CORS_ORIGINS env var to your domain(s)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this for production
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
