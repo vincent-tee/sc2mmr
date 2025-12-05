@@ -214,8 +214,10 @@ def get_player_details(
     for mp in match_players:
         match = db.query(Match).filter(Match.id == mp.match_id).first()
         if match:
-            mmr_before = 1000 + (40 * mp.mu_before) - (120 * mp.sigma_before)
-            mmr_after = 1000 + (40 * mp.mu_after) - (120 * mp.sigma_after)
+            # Use centralized display MMR formula for consistency with Player.mmr
+            from ..rating_system import RatingSystem
+            mmr_before = RatingSystem.calculate_display_mmr(mp.mu_before)
+            mmr_after = RatingSystem.calculate_display_mmr(mp.mu_after)
 
             recent_matches.append({
                 'match_id': match.id,

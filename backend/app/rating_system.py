@@ -39,7 +39,22 @@ RECENCY_ENABLED = True        # Enable recency weighting
 class RatingSystem:
     """
     Manages TrueSkill ratings for players.
+
+    MMR Calculation Constants (Single Source of Truth):
+    - MMR_BASE: Base MMR value for all players (1000)
+    - MMR_MU_MULTIPLIER: How much each mu point affects MMR (40)
+
+    Two MMR formulas exist for different purposes:
+    1. Display MMR: 1000 + 40*mu (used for player cards, leaderboards)
+       - Does NOT include sigma to avoid penalizing inactive players
+    2. Conservative MMR: 1000 + 40*mu - 120*sigma (used for matchmaking)
+       - Includes sigma to give conservative estimate for balanced matches
     """
+
+    # MMR Calculation Constants - SINGLE SOURCE OF TRUTH
+    MMR_BASE = 1000
+    MMR_MU_MULTIPLIER = 40
+    MMR_SIGMA_MULTIPLIER = 120  # Only used in conservative rating
 
     @staticmethod
     def create_rating(mu: float = 25.0, sigma: float = 8.333) -> trueskill.Rating:
@@ -56,22 +71,47 @@ class RatingSystem:
         return trueskill.Rating(mu=mu, sigma=sigma)
 
     @staticmethod
+    def calculate_display_mmr(mu: float) -> float:
+        """
+        Calculate MMR for display purposes (player cards, leaderboards).
+
+        Formula: MMR = 1000 + 40*mu
+
+        This formula does NOT include sigma (uncertainty) because:
+        - Inactive players shouldn't have their displayed rating penalized
+        - Provides a stable, intuitive rating that only changes with match results
+        - New players start at ~2000 MMR (mu=25)
+
+        Args:
+            mu: Skill estimate from TrueSkill
+
+        Returns:
+            Display MMR value (typically 800-2400 range)
+        """
+        return RatingSystem.MMR_BASE + (RatingSystem.MMR_MU_MULTIPLIER * mu)
+
+    @staticmethod
     def get_conservative_rating(mu: float, sigma: float) -> float:
         """
-        Get scaled MMR rating for display and balancing.
+        Get conservative MMR rating for matchmaking and team balancing.
 
         Formula: MMR = 1000 + 40*mu - 120*sigma
-        - New players: ~1000 MMR
-        - Experienced players: 800-2200 MMR range
+
+        This formula INCLUDES sigma (uncertainty) because:
+        - Provides a "worst case" estimate for fair matchmaking
+        - New/uncertain players are rated more conservatively
+        - Helps create balanced teams by accounting for uncertainty
 
         Args:
             mu: Skill estimate
-            sigma: Uncertainty
+            sigma: Uncertainty (higher = less certain about skill)
 
         Returns:
-            Scaled MMR value
+            Conservative MMR value
         """
-        return 1000 + (40 * mu) - (120 * sigma)
+        return (RatingSystem.MMR_BASE +
+                (RatingSystem.MMR_MU_MULTIPLIER * mu) -
+                (RatingSystem.MMR_SIGMA_MULTIPLIER * sigma))
 
     @staticmethod
     def calculate_win_probability(
@@ -208,8 +248,9 @@ class RatingSystem:
             # Calculate weight
             weight = RatingSystem.calculate_recency_weight(days_ago)
 
-            # Use post-match MMR for this calculation (using scaled formula)
-            match_mmr = 1000 + (40 * mp.mu_after) - (120 * mp.sigma_after)
+            # Use post-match display MMR for this calculation
+            # Using display MMR (not conservative) for consistency with Player.mmr
+            match_mmr = RatingSystem.calculate_display_mmr(mp.mu_after)
 
             weighted_mmr_sum += match_mmr * weight
             total_weight += weight

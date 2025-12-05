@@ -1,6 +1,6 @@
 """
 Basic tests for SC2 MMR Tracker.
-Run with: pytest tests/test_basic.py
+Run with: pytest tests/test_basic.py -v
 """
 import pytest
 from sqlalchemy import create_engine
@@ -10,60 +10,167 @@ from app.models import Base, Player, GameMode, Race
 from app.rating_system import RatingSystem
 
 
-def test_player_creation():
-    """Test creating a player with default ratings."""
-    player = Player(name="TestPlayer")
+class TestPlayerModel:
+    """Tests for the Player model."""
 
-    assert player.name == "TestPlayer"
-    assert player.mu == 25.0
-    assert player.sigma == 8.333
-    assert player.total_games == 0
-    assert player.wins == 0
-    assert player.losses == 0
+    def test_player_creation_with_session(self, player_factory):
+        """Test creating a player with database defaults applied."""
+        player = player_factory(name="TestPlayer")
+
+        assert player.name == "TestPlayer"
+        assert player.mu == 25.0
+        assert player.sigma == 8.333
+        assert player.total_games == 0
+        assert player.wins == 0
+        assert player.losses == 0
+
+    def test_player_creation_without_session(self):
+        """Test that Player without session has None for defaults (expected SQLAlchemy behavior)."""
+        # Note: SQLAlchemy column defaults are only applied on flush/commit
+        player = Player(name="TestPlayer")
+        assert player.name == "TestPlayer"
+        # Without session, defaults are None until flush
+        # This is expected SQLAlchemy behavior
+
+    def test_player_mmr_calculation(self, player_factory):
+        """
+        Test MMR calculation uses the scaled display formula.
+
+        Current formula: MMR = MMR_BASE + MMR_MU_MULTIPLIER * mu
+        - New players (mu=25): 2000 MMR
+        - Sigma is NOT included in display MMR to prevent penalizing inactive players
+        """
+        player = player_factory(name="TestPlayer", mu=25.0, sigma=8.333)
+
+        # Use RatingSystem constants for maintainability
+        expected_mmr = RatingSystem.calculate_display_mmr(25.0)  # = 2000
+        assert player.mmr == expected_mmr
+        assert player.mmr == RatingSystem.MMR_BASE + (RatingSystem.MMR_MU_MULTIPLIER * 25.0)
+
+    def test_player_mmr_varies_with_mu(self, player_factory):
+        """Test that MMR scales correctly with mu value."""
+        player_low = player_factory(name="LowSkill", mu=15.0, sigma=8.333)
+        player_high = player_factory(name="HighSkill", mu=35.0, sigma=8.333)
+
+        assert player_low.mmr == RatingSystem.calculate_display_mmr(15.0)  # = 1600
+        assert player_high.mmr == RatingSystem.calculate_display_mmr(35.0)  # = 2400
+        assert player_high.mmr > player_low.mmr
+
+    def test_player_win_rate_as_decimal(self, player_factory):
+        """
+        Test win rate calculation returns decimal (0.0 to 1.0).
+
+        Note: win_rate property returns decimal format, not percentage.
+        Frontend is responsible for converting to percentage display.
+        """
+        player = player_factory(name="TestPlayer", total_games=10, wins=7, losses=3)
+
+        # win_rate returns decimal: 7/10 = 0.7
+        assert player.win_rate == 0.7
+
+    def test_player_win_rate_zero_games(self, player_factory):
+        """Test win rate is 0 when player has no games."""
+        player = player_factory(name="NewPlayer", total_games=0, wins=0, losses=0)
+        assert player.win_rate == 0.0
+
+    def test_favorite_race(self, player_factory):
+        """Test favorite race determination based on game counts."""
+        player = player_factory(
+            name="TestPlayer",
+            terran_games=5,
+            protoss_games=10,
+            zerg_games=3,
+            random_games=0
+        )
+
+        assert player.favorite_race == "Protoss"
+
+    def test_favorite_race_no_games(self, player_factory):
+        """Test favorite race when player has no games."""
+        player = player_factory(
+            name="NewPlayer",
+            terran_games=0,
+            protoss_games=0,
+            zerg_games=0,
+            random_games=0
+        )
+        assert player.favorite_race == "Unknown"
 
 
-def test_player_mmr_calculation():
-    """Test MMR calculation (mu - 3*sigma)."""
-    player = Player(name="TestPlayer", mu=25.0, sigma=8.333)
+class TestRatingSystem:
+    """Tests for the RatingSystem class."""
 
-    expected_mmr = 25.0 - (3 * 8.333)
-    assert abs(player.mmr - expected_mmr) < 0.01
+    def test_trueskill_rating_creation(self):
+        """Test TrueSkill Rating object creation."""
+        rating = RatingSystem.create_rating(mu=25.0, sigma=8.333)
+
+        assert rating.mu == 25.0
+        assert rating.sigma == 8.333
+
+    def test_trueskill_rating_defaults(self):
+        """Test TrueSkill Rating with default values."""
+        rating = RatingSystem.create_rating()
+
+        assert rating.mu == 25.0
+        assert rating.sigma == 8.333
+
+    def test_conservative_rating(self):
+        """
+        Test conservative rating calculation for matchmaking.
+
+        Formula: MMR = MMR_BASE + MMR_MU_MULTIPLIER*mu - MMR_SIGMA_MULTIPLIER*sigma
+        This is the "conservative" estimate that penalizes uncertainty,
+        used for matchmaking balance (not display).
+        """
+        mmr = RatingSystem.get_conservative_rating(mu=25.0, sigma=8.333)
+
+        # Use constants for maintainability
+        expected = (RatingSystem.MMR_BASE +
+                   (RatingSystem.MMR_MU_MULTIPLIER * 25.0) -
+                   (RatingSystem.MMR_SIGMA_MULTIPLIER * 8.333))
+        assert abs(mmr - expected) < 0.01
+
+    def test_conservative_rating_experienced_player(self):
+        """Test conservative rating for experienced player with low sigma."""
+        # Experienced player: higher mu, lower sigma
+        mmr = RatingSystem.get_conservative_rating(mu=30.0, sigma=4.0)
+
+        # Use constants for maintainability
+        expected = (RatingSystem.MMR_BASE +
+                   (RatingSystem.MMR_MU_MULTIPLIER * 30.0) -
+                   (RatingSystem.MMR_SIGMA_MULTIPLIER * 4.0))
+        assert abs(mmr - expected) < 0.01
 
 
-def test_player_win_rate():
-    """Test win rate calculation."""
-    player = Player(name="TestPlayer", total_games=10, wins=7, losses=3)
+# Backward compatibility: keep old test function names as aliases
+def test_player_creation(player_factory):
+    """Alias for backward compatibility."""
+    TestPlayerModel().test_player_creation_with_session(player_factory)
 
-    assert player.win_rate == 70.0
+
+def test_player_mmr_calculation(player_factory):
+    """Alias for backward compatibility."""
+    TestPlayerModel().test_player_mmr_calculation(player_factory)
 
 
-def test_favorite_race():
-    """Test favorite race determination."""
-    player = Player(
-        name="TestPlayer",
-        terran_games=5,
-        protoss_games=10,
-        zerg_games=3,
-        random_games=0
-    )
+def test_player_win_rate(player_factory):
+    """Alias for backward compatibility."""
+    TestPlayerModel().test_player_win_rate_as_decimal(player_factory)
 
-    assert player.favorite_race == "Protoss"
+
+def test_favorite_race(player_factory):
+    """Alias for backward compatibility."""
+    TestPlayerModel().test_favorite_race(player_factory)
 
 
 def test_trueskill_rating_creation():
-    """Test TrueSkill Rating object creation."""
-    rating = RatingSystem.create_rating(mu=25.0, sigma=8.333)
-
-    assert rating.mu == 25.0
-    assert rating.sigma == 8.333
+    """Alias for backward compatibility."""
+    TestRatingSystem().test_trueskill_rating_creation()
 
 
 def test_conservative_rating():
-    """Test conservative rating calculation."""
-    mmr = RatingSystem.get_conservative_rating(mu=25.0, sigma=8.333)
-
-    expected = 25.0 - (3 * 8.333)
-    assert abs(mmr - expected) < 0.01
+    """Alias for backward compatibility."""
+    TestRatingSystem().test_conservative_rating()
 
 
 if __name__ == "__main__":

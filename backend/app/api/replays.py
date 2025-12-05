@@ -484,9 +484,10 @@ def get_match_details(
 
     players_data = []
     for mp, player in match_players_with_player:
-        # Use consistent MMR formula: MMR = 1000 + 40*mu - 120*sigma
-        mmr_before = 1000 + (40 * mp.mu_before) - (120 * mp.sigma_before)
-        mmr_after = 1000 + (40 * mp.mu_after) - (120 * mp.sigma_after)
+        # Use centralized display MMR formula for consistency with Player.mmr
+        from ..rating_system import RatingSystem
+        mmr_before = RatingSystem.calculate_display_mmr(mp.mu_before)
+        mmr_after = RatingSystem.calculate_display_mmr(mp.mu_after)
 
         players_data.append(MatchPlayerResponse(
             player_name=player.name,

@@ -71,7 +71,7 @@ class Player(Base):
         """
         Scaled MMR for display and balancing.
 
-        Uses a scaled formula to convert TrueSkill values to a more intuitive range:
+        Uses the centralized display MMR formula from RatingSystem:
         MMR = 1000 + 40*mu
 
         Sigma (uncertainty) is kept internal for matchmaking quality but doesn't
@@ -79,11 +79,15 @@ class Player(Base):
         displayed MMR penalized when only their uncertainty increases.
 
         This gives approximately:
-        - New players: ~1000 MMR
-        - Experienced players: 800-2200 MMR range
+        - New players: ~2000 MMR (mu=25)
+        - Experienced players: 800-2400 MMR range
         - Higher MMR = better skill
+
+        See RatingSystem.calculate_display_mmr() for the authoritative implementation.
         """
-        return 1000 + (40 * self.mu)
+        # Import here to avoid circular imports
+        from .rating_system import RatingSystem
+        return RatingSystem.calculate_display_mmr(self.mu)
 
     @property
     def favorite_race(self) -> str:
@@ -188,9 +192,19 @@ class MatchPlayer(Base):
 
     @property
     def mmr_change(self) -> float:
-        """Calculate the MMR change from this match using scaled formula."""
-        mmr_before = 1000 + (40 * self.mu_before) - (120 * self.sigma_before)
-        mmr_after = 1000 + (40 * self.mu_after) - (120 * self.sigma_after)
+        """
+        Calculate the MMR change from this match.
+
+        Uses the display MMR formula (1000 + 40*mu) to match what users see
+        in Player.mmr. This ensures consistency between displayed ratings
+        and match history.
+
+        Note: Uses display MMR (not conservative) because users expect the
+        change to match the difference they see in their profile.
+        """
+        from .rating_system import RatingSystem
+        mmr_before = RatingSystem.calculate_display_mmr(self.mu_before)
+        mmr_after = RatingSystem.calculate_display_mmr(self.mu_after)
         return mmr_after - mmr_before
 
 
