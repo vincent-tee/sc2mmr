@@ -32,6 +32,7 @@ import {
   FiRefreshCw,
 } from 'react-icons/fi';
 import { useDropzone, type FileRejection } from 'react-dropzone';
+import { useQueryClient } from '@tanstack/react-query';
 import { replaysApi } from '../api/endpoints';
 import type { ApiClientError } from '../api/client';
 import { useToast } from '../hooks/useToast';
@@ -79,6 +80,7 @@ const UploadReplays: React.FC = () => {
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   const dropzoneBg = useColorModeValue('white', 'gray.800');
   const dropzoneBorder = useColorModeValue('gray.300', 'gray.600');
@@ -152,6 +154,11 @@ const UploadReplays: React.FC = () => {
         100,
         response.data
       );
+
+      // Invalidate relevant caches when a replay is successfully processed
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({ queryKey: ['players'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-matches-ticker'] });
     } catch (error) {
       const uploadError = error as UploadError;
       if (uploadError.isDuplicate) {

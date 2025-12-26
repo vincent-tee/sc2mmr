@@ -132,6 +132,8 @@ const FailedUploads: React.FC = () => {
       const matchId = response.data.match_id;
       queryClient.invalidateQueries({ queryKey: ['failed-uploads'] });
       queryClient.invalidateQueries({ queryKey: ['matches'] });
+      // Also invalidate players since ratings are updated when a match is processed
+      queryClient.invalidateQueries({ queryKey: ['players'] });
 
       // Show success toast with "View Match" button
       toast({

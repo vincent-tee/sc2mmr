@@ -2,7 +2,7 @@
  * PlayerCard Component
  * Tactical unit card with hexagonal styling and multi-race support
  */
-import React from 'react';
+import React, { useCallback, KeyboardEvent } from 'react';
 import {
   Box,
   Avatar,
@@ -89,6 +89,14 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
   const playerRaces: RaceInfo[] = getPlayerRaces(player);
   const primaryRace = playerRaces.length > 0 ? playerRaces[0].name : 'Random';
 
+  // Handle keyboard navigation for accessibility
+  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (onClick && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      onClick();
+    }
+  }, [onClick]);
+
   return (
     <RaceBackground
       race={primaryRace.toLowerCase()}
@@ -103,12 +111,22 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
       p={sizeConfig.padding}
       cursor={onClick ? 'pointer' : 'default'}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={onClick ? 0 : undefined}
+      role={onClick ? 'button' : undefined}
+      aria-label={onClick ? `Select player ${player.name}` : undefined}
+      aria-pressed={onClick ? isSelected : undefined}
       transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
       _hover={onClick ? {
         transform: 'translateY(-4px)',
         boxShadow: isSelected
           ? '0 8px 30px rgba(255, 140, 26, 0.4), 0 0 0 1px rgba(255, 140, 26, 0.5)'
           : '0 8px 20px rgba(255, 140, 26, 0.2)',
+        borderColor: 'brand.400',
+      } : {}}
+      _focus={onClick ? {
+        outline: 'none',
+        boxShadow: `0 0 0 3px rgba(255, 140, 26, 0.5)`,
         borderColor: 'brand.400',
       } : {}}
       position="relative"
@@ -297,4 +315,4 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
   );
 };
 
-export default PlayerCard;
+export default React.memo(PlayerCard);

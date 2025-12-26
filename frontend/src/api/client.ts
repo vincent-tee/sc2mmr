@@ -11,6 +11,9 @@ import axios, {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+// Default timeout in milliseconds (30 seconds)
+const DEFAULT_TIMEOUT = 30000;
+
 // Extended error interface for our custom error properties
 export interface ApiClientError extends AxiosError {
   userMessage?: string;
@@ -19,6 +22,7 @@ export interface ApiClientError extends AxiosError {
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
+  timeout: DEFAULT_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },

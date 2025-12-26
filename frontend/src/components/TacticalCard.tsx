@@ -2,7 +2,7 @@
  * TacticalCard Component
  * Angular SC2-style card with corner clips and glows
  */
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useCallback, KeyboardEvent } from 'react';
 import { Box, BoxProps, useColorModeValue } from '@chakra-ui/react';
 
 type TacticalCardVariant = 'default' | 'angled' | 'command';
@@ -40,6 +40,14 @@ const TacticalCard: React.FC<TacticalCardProps> = ({
     },
   };
 
+  // Handle keyboard navigation for accessibility
+  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (onClick && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      onClick();
+    }
+  }, [onClick]);
+
   return (
     <Box
       bg={bgColor}
@@ -47,6 +55,10 @@ const TacticalCard: React.FC<TacticalCardProps> = ({
       position="relative"
       cursor={onClick ? 'pointer' : 'default'}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={onClick ? 0 : undefined}
+      role={onClick ? 'button' : undefined}
+      aria-label={onClick ? 'Interactive card' : undefined}
       transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
       border="2px solid"
       borderColor={borderColor}
@@ -59,6 +71,11 @@ const TacticalCard: React.FC<TacticalCardProps> = ({
         _before: {
           opacity: 1,
         },
+      } : {}}
+      _focus={onClick ? {
+        outline: 'none',
+        boxShadow: `0 0 0 3px rgba(255, 140, 26, 0.5)`,
+        borderColor: glowColor,
       } : {}}
       _before={{
         content: '""',
@@ -124,4 +141,4 @@ const TacticalCard: React.FC<TacticalCardProps> = ({
   );
 };
 
-export default TacticalCard;
+export default React.memo(TacticalCard);
