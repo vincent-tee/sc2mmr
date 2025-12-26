@@ -35,12 +35,6 @@ import { formatWinRate, getPlayerRaces, getRaceColor } from '../utils/formatting
 import RankBadge from '../components/RankBadge';
 import type { Player } from '../types/api';
 
-// Extended Player type with optional fields that may come from the API
-interface ExtendedPlayer extends Player {
-  hybrid_mmr?: number;
-  avg_pim?: number;
-}
-
 type SortOption = 'mmr' | 'name' | 'games';
 
 const Players: React.FC = () => {
@@ -49,7 +43,7 @@ const Players: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('mmr');
 
   // Fetch players
-  const { data: playersData, isLoading } = useQuery<ExtendedPlayer[]>({
+  const { data: playersData, isLoading } = useQuery<Player[]>({
     queryKey: ['players'],
     queryFn: async () => {
       const response = await playersApi.getAll();

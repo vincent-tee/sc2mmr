@@ -15,6 +15,8 @@ export interface Player {
   mu: number;
   sigma: number;
   mmr: number;
+  hybrid_mmr: number | null;
+  avg_pim: number | null;
   recency_weighted_mmr: number | null;
   win_rate: number;
   total_games: number;
