@@ -1,7 +1,9 @@
 /**
  * BalanceResults Component - Team Balance Suggestions Display
  * Shows balance results and allows export of team configurations
+ * Includes celebration animations for well-balanced teams
  */
+import { useEffect, useState } from 'react';
 import {
   Box,
   Heading,
@@ -18,6 +20,7 @@ import {
   MenuItem,
   Button,
 } from '@chakra-ui/react';
+import { keyframes } from '@emotion/react';
 import {
   FiChevronDown,
   FiCopy,
@@ -25,12 +28,115 @@ import {
   FiShare2,
   FiTarget,
   FiActivity,
+  FiCheck,
+  FiStar,
 } from 'react-icons/fi';
 import PlayerCard from '@/components/PlayerCard';
 import TacticalCard from '@/components/TacticalCard';
 import VSScreen from '@/components/VSScreen';
 import { formatMMR, getFairnessColor } from '@/utils/formatting';
 import type { TeamSuggestion } from '@/types/api';
+
+// Celebration animation keyframes
+const celebrationPulse = keyframes`
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 1; }
+`;
+
+const confettiFloat = keyframes`
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+`;
+
+const starBurst = keyframes`
+  0% { transform: scale(0) rotate(0deg); opacity: 0; }
+  50% { transform: scale(1.2) rotate(180deg); opacity: 1; }
+  100% { transform: scale(1) rotate(360deg); opacity: 1; }
+`;
+
+const slideInBounce = keyframes`
+  0% { transform: translateY(20px); opacity: 0; }
+  60% { transform: translateY(-5px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+`;
+
+// Celebration banner component
+const CelebrationBanner: React.FC<{ fairnessRating: string }> = ({ fairnessRating }) => {
+  const [show, setShow] = useState(true);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setShow(false), 4000);
+    return () => clearTimeout(timer);
+  }, []);
+  
+  if (!show) return null;
+  
+  const isPerfect = fairnessRating === 'Perfect';
+  
+  return (
+    <Box
+      position="fixed"
+      top="50%"
+      left="50%"
+      transform="translate(-50%, -50%)"
+      zIndex={1000}
+      animation={`${celebrationPulse} 0.5s ease-in-out`}
+      pointerEvents="none"
+    >
+      <Box
+        bg={isPerfect ? 'green.500' : 'blue.500'}
+        color="white"
+        px={8}
+        py={4}
+        borderRadius="xl"
+        boxShadow={`0 0 60px ${isPerfect ? 'rgba(72, 187, 120, 0.8)' : 'rgba(66, 153, 225, 0.8)'}`}
+        textAlign="center"
+      >
+        <HStack justify="center" spacing={3} mb={2}>
+          <Icon 
+            as={isPerfect ? FiStar : FiCheck} 
+            boxSize={8} 
+            animation={`${starBurst} 0.6s ease-out`}
+          />
+          <Heading size="lg" fontFamily="heading">
+            {isPerfect ? 'Perfect Balance!' : 'Teams Balanced!'}
+          </Heading>
+          <Icon 
+            as={isPerfect ? FiStar : FiCheck} 
+            boxSize={8} 
+            animation={`${starBurst} 0.6s ease-out 0.1s`}
+          />
+        </HStack>
+        <Text fontSize="md" opacity={0.9}>
+          {isPerfect 
+            ? 'These teams are perfectly matched!' 
+            : 'Great team configuration found!'}
+        </Text>
+      </Box>
+      
+      {/* Confetti particles for Perfect balance */}
+      {isPerfect && (
+        <>
+          {[...Array(12)].map((_, i) => (
+            <Box
+              key={i}
+              position="absolute"
+              top="100%"
+              left={`${10 + i * 7}%`}
+              width="10px"
+              height="10px"
+              borderRadius="full"
+              bg={['gold', 'green.400', 'blue.400', 'purple.400', 'orange.400'][i % 5]}
+              animation={`${confettiFloat} ${1 + Math.random()}s ease-out forwards`}
+              style={{ animationDelay: `${i * 0.1}s` }}
+            />
+          ))}
+        </>
+      )}
+    </Box>
+  );
+};
 
 // Extended TeamSuggestion with additional impact fields
 interface TeamSuggestionWithImpact extends TeamSuggestion {
@@ -50,12 +156,32 @@ const BalanceResults: React.FC<BalanceResultsProps> = ({
   suggestions,
   onExport,
 }) => {
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationRating, setCelebrationRating] = useState<string>('');
+  
+  // Trigger celebration when suggestions change and top result is good
+  useEffect(() => {
+    if (suggestions.length > 0) {
+      const topRating = suggestions[0].fairness_rating;
+      if (topRating === 'Perfect' || topRating === 'Very Good') {
+        setCelebrationRating(topRating);
+        setShowCelebration(true);
+        // Reset after animation
+        const timer = setTimeout(() => setShowCelebration(false), 4500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [suggestions]);
+
   if (suggestions.length === 0) {
     return null;
   }
 
   return (
     <Box>
+      {/* Celebration overlay for good balance */}
+      {showCelebration && <CelebrationBanner fairnessRating={celebrationRating} />}
+      
       <Heading
         size="lg"
         mb={6}
@@ -63,19 +189,25 @@ const BalanceResults: React.FC<BalanceResultsProps> = ({
         letterSpacing="wider"
         color="brand.400"
         textAlign="center"
+        animation={suggestions.length > 0 ? `${slideInBounce} 0.5s ease-out` : undefined}
       >
         Team Configurations
       </Heading>
 
       <VStack spacing={6} align="stretch">
         {suggestions.map((suggestion, index) => (
-          <TeamSuggestionCard
+          <Box
             key={index}
-            suggestion={suggestion}
-            index={index}
-            isRecommended={index === 0}
-            onExport={onExport}
-          />
+            animation={`${slideInBounce} 0.5s ease-out`}
+            style={{ animationDelay: `${index * 0.15}s`, animationFillMode: 'backwards' }}
+          >
+            <TeamSuggestionCard
+              suggestion={suggestion}
+              index={index}
+              isRecommended={index === 0}
+              onExport={onExport}
+            />
+          </Box>
         ))}
       </VStack>
     </Box>
