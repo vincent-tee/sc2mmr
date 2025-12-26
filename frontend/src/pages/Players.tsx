@@ -18,6 +18,9 @@ import {
   Badge,
   Avatar,
   Progress,
+  VisuallyHidden,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react';
 import { FiSearch, FiFilter, FiTarget } from 'react-icons/fi';
 import { useState, type ChangeEvent } from 'react';
@@ -182,29 +185,39 @@ const Players: React.FC = () => {
           <TacticalCard variant="command" glowColor="rgba(0, 212, 255, 0.4)">
             <Box p={4}>
               <HStack spacing={4}>
-                <InputGroup flex={1}>
-                  <InputLeftElement pointerEvents="none">
-                    <Icon as={FiSearch} color="brand.400" />
-                  </InputLeftElement>
-                  <Input
-                    placeholder="SEARCH OPERATIVES..."
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    textTransform="uppercase"
-                    fontFamily="heading"
-                    letterSpacing="wide"
-                    borderColor="whiteAlpha.200"
-                    _placeholder={{ color: 'gray.600' }}
-                    _focus={{
-                      borderColor: 'brand.500',
-                      boxShadow: '0 0 10px rgba(0, 212, 255, 0.3)',
-                    }}
-                  />
-                </InputGroup>
+                <FormControl flex={1}>
+                  <VisuallyHidden>
+                    <FormLabel htmlFor="player-search">Search players</FormLabel>
+                  </VisuallyHidden>
+                  <InputGroup>
+                    <InputLeftElement pointerEvents="none">
+                      <Icon as={FiSearch} color="brand.400" />
+                    </InputLeftElement>
+                    <Input
+                      id="player-search"
+                      placeholder="SEARCH OPERATIVES..."
+                      value={searchTerm}
+                      onChange={handleSearchChange}
+                      textTransform="uppercase"
+                      fontFamily="heading"
+                      letterSpacing="wide"
+                      borderColor="whiteAlpha.200"
+                      _placeholder={{ color: 'gray.600' }}
+                      _focus={{
+                        borderColor: 'brand.500',
+                        boxShadow: '0 0 10px rgba(0, 212, 255, 0.3)',
+                      }}
+                    />
+                  </InputGroup>
+                </FormControl>
 
-                <HStack>
+                <FormControl as={HStack} maxW="280px">
+                  <VisuallyHidden>
+                    <FormLabel htmlFor="player-sort">Sort players by</FormLabel>
+                  </VisuallyHidden>
                   <Icon as={FiFilter} color="brand.400" />
                   <Select
+                    id="player-sort"
                     value={sortBy}
                     onChange={handleSortChange}
                     maxW="250px"
@@ -222,7 +235,7 @@ const Players: React.FC = () => {
                     <option value="name">SORT BY NAME</option>
                     <option value="games">SORT BY MISSIONS</option>
                   </Select>
-                </HStack>
+                </FormControl>
               </HStack>
             </Box>
           </TacticalCard>

@@ -82,7 +82,7 @@ const theme = extendTheme({
     },
   },
   fonts: {
-    heading: `'Rajdhani', 'Orbitron', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`,
+    heading: `'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`,
     body: `'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`,
   },
   styles: {

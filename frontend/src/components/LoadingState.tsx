@@ -105,8 +105,21 @@ const LoadingState: React.FC<LoadingStateProps> = ({ variant = 'players', count 
     match: <MatchCardSkeleton />,
   };
 
+  const defaultMessages: Record<LoadingStateVariant, string> = {
+    players: 'Loading players...',
+    team: 'Loading team data...',
+    match: 'Loading match data...',
+  };
+
   return (
-    <VStack spacing={4} align="stretch">
+    <VStack
+      spacing={4}
+      align="stretch"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={message || defaultMessages[variant]}
+    >
       {message && (
         <Text color="gray.400" textAlign="center" fontSize="sm">
           {message}
