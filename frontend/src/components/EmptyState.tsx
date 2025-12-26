@@ -51,18 +51,18 @@ const EmptyState: React.FC<EmptyStateProps> = ({
 
   const defaultContent: Record<EmptyStateVariant, EmptyStateContent> = {
     upload: {
-      title: 'No Replays Yet',
-      description: 'Upload your StarCraft 2 replay files to get started with team balancing and player statistics.',
+      title: 'Ready to Get Started?',
+      description: 'Upload your StarCraft 2 replay files to start tracking your games, player stats, and team balancing.',
       actionLabel: 'Upload Replays',
     },
     players: {
-      title: 'No Players Found',
-      description: 'Upload some replays to start tracking players and their performance.',
+      title: 'No Players Yet',
+      description: 'Once you upload some replays, your players will appear here with their stats and ratings.',
       actionLabel: 'Upload Replays',
     },
     stats: {
-      title: 'Not Enough Data',
-      description: 'More games are needed to generate accurate statistics and ratings.',
+      title: 'Need More Games',
+      description: 'A few more matches will help us generate accurate statistics and predictions for you.',
       actionLabel: 'Upload More Replays',
     },
   };

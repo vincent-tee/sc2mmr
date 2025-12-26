@@ -88,9 +88,8 @@ const Navigation: React.FC = () => {
     >
       <Container maxW="container.xl">
         <Flex h={16} alignItems="center" justifyContent="space-between">
-          {/* Logo - Command Center Style */}
+          {/* Logo - Cozy Style */}
           <HStack spacing={3} cursor="pointer" onClick={() => navigate('/')} position="relative">
-            {/* Corner brackets for tactical look */}
             <Box position="relative">
               <Box
                 bg="brand.500"
@@ -100,33 +99,10 @@ const Navigation: React.FC = () => {
                 fontWeight="black"
                 fontSize="xl"
                 fontFamily="heading"
-                position="relative"
-                clipPath="polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 calc(100% - 8px))"
+                borderRadius="md"
                 boxShadow="0 0 20px rgba(255, 140, 26, 0.4)"
               >
                 SC2
-                {/* Top-left corner bracket */}
-                <Box
-                  position="absolute"
-                  top={-1}
-                  left={-1}
-                  width="12px"
-                  height="12px"
-                  borderTop="2px solid"
-                  borderLeft="2px solid"
-                  borderColor="brand.300"
-                />
-                {/* Bottom-right corner bracket */}
-                <Box
-                  position="absolute"
-                  bottom={-1}
-                  right={-1}
-                  width="12px"
-                  height="12px"
-                  borderBottom="2px solid"
-                  borderRight="2px solid"
-                  borderColor="brand.300"
-                />
               </Box>
             </Box>
             <VStack spacing={0} align="start" display={{ base: 'none', md: 'flex' }}>
@@ -136,16 +112,16 @@ const Navigation: React.FC = () => {
                 fontFamily="heading"
                 color="brand.400"
                 lineHeight="1.2"
-                letterSpacing="wider"
+                letterSpacing="wide"
               >
-                MMR TRACKER
+                MMR Tracker
               </Text>
               <Text
                 fontSize="xs"
                 color="gray.500"
                 letterSpacing="wide"
               >
-                COMMAND CENTER
+                Team Balancer
               </Text>
             </VStack>
           </HStack>
@@ -225,9 +201,9 @@ const Navigation: React.FC = () => {
             borderColor="brand.500"
             fontFamily="heading"
             color="brand.400"
-            letterSpacing="wider"
+            letterSpacing="wide"
           >
-            COMMAND PANEL
+            Menu
           </DrawerHeader>
 
           <DrawerBody pt={4}>
@@ -270,7 +246,7 @@ const Navigation: React.FC = () => {
                         color="gray.900"
                         fontWeight="bold"
                       >
-                        PRIMARY
+                        Popular
                       </Badge>
                     )}
                   </Button>

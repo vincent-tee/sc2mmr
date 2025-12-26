@@ -7,9 +7,31 @@
  */
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Box, Spinner, Center } from '@chakra-ui/react';
+import { Box, Spinner, Center, Link } from '@chakra-ui/react';
 import Navigation from './components/Navigation';
 import ErrorBoundary from './components/ErrorBoundary';
+
+/**
+ * Skip-to-content link for keyboard/screen reader accessibility
+ */
+const SkipToContent: React.FC = () => (
+  <Link
+    href="#main-content"
+    position="absolute"
+    top="-40px"
+    left="0"
+    bg="brand.500"
+    color="white"
+    px={4}
+    py={2}
+    zIndex={100}
+    _focus={{
+      top: "0",
+    }}
+  >
+    Skip to main content
+  </Link>
+);
 
 // Lazy load all pages for code splitting
 // Critical path pages (Home) are loaded eagerly for better perceived performance
@@ -53,9 +75,10 @@ const PageLoader: React.FC = () => (
 function App(): React.ReactElement {
   return (
     <Router>
+      <SkipToContent />
       <Box minH="100vh" position="relative" zIndex={1}>
         <Navigation />
-        <Box as="main" role="main">
+        <Box as="main" role="main" id="main-content">
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route
