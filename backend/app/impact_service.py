@@ -2,15 +2,19 @@
 Impact and Synergy Service
 
 Manages player impact scores and synergy calculations.
+Supports recency-weighted impact averages for better prediction accuracy.
 """
+
 from typing import List, Dict, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 import json
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
 
-from .models import Player, MatchPlayer, PlayerMatchMetrics, PlayerSynergy
+from .models import Player, MatchPlayer, PlayerMatchMetrics, PlayerSynergy, Match
 from .advanced_parser import PlayerMetrics, calculate_player_synergy
+from .config import settings
 
 
 class ImpactService:
@@ -18,9 +22,7 @@ class ImpactService:
 
     @staticmethod
     def save_match_metrics(
-        db: Session,
-        match_player_id: int,
-        metrics: PlayerMetrics
+        db: Session, match_player_id: int, metrics: PlayerMetrics
     ) -> PlayerMatchMetrics:
         """
         Save detailed metrics for a match player.
@@ -34,7 +36,9 @@ class ImpactService:
             Created PlayerMatchMetrics object
         """
         # Convert unit composition dict to JSON string
-        unit_comp_json = json.dumps(metrics.unit_composition) if metrics.unit_composition else None
+        unit_comp_json = (
+            json.dumps(metrics.unit_composition) if metrics.unit_composition else None
+        )
 
         # Convert damage timeline to JSON string
         damage_timeline_json = None
@@ -73,9 +77,11 @@ class ImpactService:
             early_game_damage=metrics.early_game_damage,
             mid_game_damage=metrics.mid_game_damage,
             late_game_damage=metrics.late_game_damage,
-            player_archetype=metrics.player_archetype.value if hasattr(metrics, 'player_archetype') and metrics.player_archetype else None,
+            player_archetype=metrics.player_archetype.value
+            if hasattr(metrics, "player_archetype") and metrics.player_archetype
+            else None,
             aggression_score=metrics.aggression_score,
-            damage_timeline=damage_timeline_json
+            damage_timeline=damage_timeline_json,
         )
 
         db.add(match_metrics)
@@ -88,6 +94,9 @@ class ImpactService:
         """
         Update a player's average impact scores based on all their matches.
 
+        Uses recency weighting (same as MMR) so recent performance matters more.
+        This aligns impact metrics with recency-weighted MMR for better predictions.
+
         Args:
             db: Database session
             player_id: Player ID to update
@@ -96,29 +105,48 @@ class ImpactService:
         if not player:
             return
 
-        # Get all match metrics for this player using JOIN to avoid N+1 queries
-        # This is much more efficient than querying each PlayerMatchMetrics individually
-        metrics_list = db.query(PlayerMatchMetrics).join(
-            MatchPlayer,
-            PlayerMatchMetrics.match_player_id == MatchPlayer.id
-        ).filter(
-            MatchPlayer.player_id == player_id
-        ).all()
+        # Get all match metrics for this player with match date for recency weighting
+        metrics_with_dates = (
+            db.query(PlayerMatchMetrics, Match.played_at)
+            .join(MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id)
+            .join(Match, MatchPlayer.match_id == Match.id)
+            .filter(MatchPlayer.player_id == player_id)
+            .all()
+        )
 
-        if not metrics_list:
+        if not metrics_with_dates:
             return
 
-        # Calculate averages
-        count = len(metrics_list)
-        total_econ = sum(m.economic_score for m in metrics_list)
-        total_combat = sum(m.combat_score for m in metrics_list)
-        total_efficiency = sum(m.efficiency_score for m in metrics_list)
-        total_impact = sum(m.overall_impact for m in metrics_list)
+        # Calculate recency-weighted averages
+        now = datetime.utcnow()
+        half_life_days = settings.recency_half_life_days
+        use_recency = settings.recency_enabled
 
-        player.avg_economic_score = total_econ / count
-        player.avg_combat_score = total_combat / count
-        player.avg_efficiency_score = total_efficiency / count
-        player.avg_overall_impact = total_impact / count
+        weighted_econ = 0.0
+        weighted_combat = 0.0
+        weighted_efficiency = 0.0
+        weighted_impact = 0.0
+        total_weight = 0.0
+
+        for metrics, played_at in metrics_with_dates:
+            if use_recency and played_at:
+                # Calculate recency weight using exponential decay
+                days_ago = (now - played_at).total_seconds() / 86400.0
+                weight = math.pow(0.5, days_ago / half_life_days)
+            else:
+                weight = 1.0
+
+            weighted_econ += metrics.economic_score * weight
+            weighted_combat += metrics.combat_score * weight
+            weighted_efficiency += metrics.efficiency_score * weight
+            weighted_impact += metrics.overall_impact * weight
+            total_weight += weight
+
+        if total_weight > 0:
+            player.avg_economic_score = weighted_econ / total_weight
+            player.avg_combat_score = weighted_combat / total_weight
+            player.avg_efficiency_score = weighted_efficiency / total_weight
+            player.avg_overall_impact = weighted_impact / total_weight
 
         db.commit()
 
@@ -132,9 +160,9 @@ class ImpactService:
             match_id: Match ID to process
         """
         # Get all players in this match
-        match_players = db.query(MatchPlayer).filter(
-            MatchPlayer.match_id == match_id
-        ).all()
+        match_players = (
+            db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).all()
+        )
 
         # Group by team
         team_1_players = [mp for mp in match_players if mp.team_number == 1]
@@ -165,12 +193,16 @@ class ImpactService:
                     player1_id, player2_id = player2_id, player1_id
 
                 # Get or create synergy record
-                synergy = db.query(PlayerSynergy).filter(
-                    and_(
-                        PlayerSynergy.player1_id == player1_id,
-                        PlayerSynergy.player2_id == player2_id
+                synergy = (
+                    db.query(PlayerSynergy)
+                    .filter(
+                        and_(
+                            PlayerSynergy.player1_id == player1_id,
+                            PlayerSynergy.player2_id == player2_id,
+                        )
                     )
-                ).first()
+                    .first()
+                )
 
                 if not synergy:
                     synergy = PlayerSynergy(
@@ -178,7 +210,7 @@ class ImpactService:
                         player2_id=player2_id,
                         games_together=0,
                         wins_together=0,
-                        losses_together=0
+                        losses_together=0,
                     )
                     db.add(synergy)
 
@@ -189,7 +221,9 @@ class ImpactService:
                 else:
                     synergy.losses_together += 1
 
-                synergy.avg_win_rate = (synergy.wins_together / synergy.games_together) * 100
+                synergy.avg_win_rate = (
+                    synergy.wins_together / synergy.games_together
+                ) * 100
                 synergy.updated_at = datetime.utcnow()
 
         # Commit all synergy updates at once (more efficient than per-pair commits)
@@ -217,43 +251,55 @@ class ImpactService:
             player2_id: Second player ID
         """
         # Get synergy record
-        synergy = db.query(PlayerSynergy).filter(
-            and_(
-                PlayerSynergy.player1_id == player1_id,
-                PlayerSynergy.player2_id == player2_id
+        synergy = (
+            db.query(PlayerSynergy)
+            .filter(
+                and_(
+                    PlayerSynergy.player1_id == player1_id,
+                    PlayerSynergy.player2_id == player2_id,
+                )
             )
-        ).first()
+            .first()
+        )
 
         if not synergy or synergy.games_together < 3:
             # Need at least 3 games to calculate meaningful synergy
             return
 
         # Get all matches where both players were on the same team
-        matches_together = db.query(MatchPlayer).filter(
-            MatchPlayer.player_id == player1_id
-        ).all()
+        matches_together = (
+            db.query(MatchPlayer).filter(MatchPlayer.player_id == player1_id).all()
+        )
 
         player1_metrics_list = []
         player2_metrics_list = []
 
         for mp1 in matches_together:
             # Check if player2 was in same match and same team
-            mp2 = db.query(MatchPlayer).filter(
-                and_(
-                    MatchPlayer.match_id == mp1.match_id,
-                    MatchPlayer.player_id == player2_id,
-                    MatchPlayer.team_number == mp1.team_number
+            mp2 = (
+                db.query(MatchPlayer)
+                .filter(
+                    and_(
+                        MatchPlayer.match_id == mp1.match_id,
+                        MatchPlayer.player_id == player2_id,
+                        MatchPlayer.team_number == mp1.team_number,
+                    )
                 )
-            ).first()
+                .first()
+            )
 
             if mp2:
                 # Get metrics for both players
-                metrics1 = db.query(PlayerMatchMetrics).filter(
-                    PlayerMatchMetrics.match_player_id == mp1.id
-                ).first()
-                metrics2 = db.query(PlayerMatchMetrics).filter(
-                    PlayerMatchMetrics.match_player_id == mp2.id
-                ).first()
+                metrics1 = (
+                    db.query(PlayerMatchMetrics)
+                    .filter(PlayerMatchMetrics.match_player_id == mp1.id)
+                    .first()
+                )
+                metrics2 = (
+                    db.query(PlayerMatchMetrics)
+                    .filter(PlayerMatchMetrics.match_player_id == mp2.id)
+                    .first()
+                )
 
                 if metrics1 and metrics2:
                     # Convert to PlayerMetrics objects
@@ -266,8 +312,7 @@ class ImpactService:
         if len(player1_metrics_list) >= 3:
             # Calculate synergy using the algorithm
             synergy_score = calculate_player_synergy(
-                player1_metrics_list,
-                player2_metrics_list
+                player1_metrics_list, player2_metrics_list
             )
 
             # Calculate average combined impact
@@ -283,8 +328,7 @@ class ImpactService:
 
     @staticmethod
     def _db_metrics_to_player_metrics(
-        db_metrics: PlayerMatchMetrics,
-        match_player: MatchPlayer
+        db_metrics: PlayerMatchMetrics, match_player: MatchPlayer
     ) -> PlayerMetrics:
         """
         Convert database metrics to PlayerMetrics object.
@@ -296,7 +340,11 @@ class ImpactService:
         Returns:
             PlayerMetrics object
         """
-        unit_comp = json.loads(db_metrics.unit_composition) if db_metrics.unit_composition else {}
+        unit_comp = (
+            json.loads(db_metrics.unit_composition)
+            if db_metrics.unit_composition
+            else {}
+        )
 
         return PlayerMetrics(
             player_name="",  # Not needed for synergy calc
@@ -325,14 +373,12 @@ class ImpactService:
             economic_score=db_metrics.economic_score,
             combat_score=db_metrics.combat_score,
             efficiency_score=db_metrics.efficiency_score,
-            overall_impact=db_metrics.overall_impact
+            overall_impact=db_metrics.overall_impact,
         )
 
     @staticmethod
     def get_player_synergies(
-        db: Session,
-        player_id: int,
-        min_games: int = 3
+        db: Session, player_id: int, min_games: int = 3
     ) -> List[Tuple[Player, PlayerSynergy]]:
         """
         Get all synergies for a player.
@@ -346,34 +392,42 @@ class ImpactService:
             List of (other_player, synergy) tuples, sorted by synergy score
         """
         # Get synergies where player is player1
-        synergies1 = db.query(PlayerSynergy).filter(
-            and_(
-                PlayerSynergy.player1_id == player_id,
-                PlayerSynergy.games_together >= min_games
+        synergies1 = (
+            db.query(PlayerSynergy)
+            .filter(
+                and_(
+                    PlayerSynergy.player1_id == player_id,
+                    PlayerSynergy.games_together >= min_games,
+                )
             )
-        ).all()
+            .all()
+        )
 
         # Get synergies where player is player2
-        synergies2 = db.query(PlayerSynergy).filter(
-            and_(
-                PlayerSynergy.player2_id == player_id,
-                PlayerSynergy.games_together >= min_games
+        synergies2 = (
+            db.query(PlayerSynergy)
+            .filter(
+                and_(
+                    PlayerSynergy.player2_id == player_id,
+                    PlayerSynergy.games_together >= min_games,
+                )
             )
-        ).all()
+            .all()
+        )
 
         results = []
 
         for synergy in synergies1:
-            other_player = db.query(Player).filter(
-                Player.id == synergy.player2_id
-            ).first()
+            other_player = (
+                db.query(Player).filter(Player.id == synergy.player2_id).first()
+            )
             if other_player:
                 results.append((other_player, synergy))
 
         for synergy in synergies2:
-            other_player = db.query(Player).filter(
-                Player.id == synergy.player1_id
-            ).first()
+            other_player = (
+                db.query(Player).filter(Player.id == synergy.player1_id).first()
+            )
             if other_player:
                 results.append((other_player, synergy))
 
@@ -384,9 +438,7 @@ class ImpactService:
 
     @staticmethod
     def get_top_synergies(
-        db: Session,
-        min_games: int = 5,
-        limit: int = 10
+        db: Session, min_games: int = 5, limit: int = 10
     ) -> List[Tuple[Player, Player, PlayerSynergy]]:
         """
         Get top synergies across all players.
@@ -399,11 +451,13 @@ class ImpactService:
         Returns:
             List of (player1, player2, synergy) tuples
         """
-        synergies = db.query(PlayerSynergy).filter(
-            PlayerSynergy.games_together >= min_games
-        ).order_by(
-            PlayerSynergy.synergy_score.desc()
-        ).limit(limit).all()
+        synergies = (
+            db.query(PlayerSynergy)
+            .filter(PlayerSynergy.games_together >= min_games)
+            .order_by(PlayerSynergy.synergy_score.desc())
+            .limit(limit)
+            .all()
+        )
 
         results = []
         for synergy in synergies:
