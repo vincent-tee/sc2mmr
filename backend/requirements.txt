@@ -8,7 +8,7 @@ sqlalchemy==2.0.23
 alembic==1.12.1
 
 # SC2 Replay parsing
-sc2reader==1.8.0
+sc2reader==1.9.0
 
 # Rating system
 trueskill==0.4.5
