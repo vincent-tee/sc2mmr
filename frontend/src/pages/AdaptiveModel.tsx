@@ -136,8 +136,35 @@ interface FeatureSuggestion {
   expected_correlation: number | null;
 }
 
+interface MLModelsStatus {
+  xgboost: {
+    is_trained: boolean;
+    model_type: string;
+    accuracy: number | null;
+    top_features: Record<string, number>;
+  };
+  build_classifier: {
+    use_clustering: boolean;
+    cluster_names: Record<number, string>;
+  };
+  recommendation: string;
+}
+
+interface TrainingResult {
+  status: string;
+  model_type?: string;
+  train_accuracy?: number;
+  test_accuracy?: number;
+  feature_importance?: Record<string, number>;
+  samples?: number;
+  clusters?: number;
+  reason?: string;
+}
+
 const AdaptiveModel: React.FC = () => {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [isTrainingXgb, setIsTrainingXgb] = useState(false);
+  const [isTrainingBuild, setIsTrainingBuild] = useState(false);
   const toast = useToast();
 
   const cardBg = useColorModeValue('white', 'gray.800');
@@ -228,6 +255,83 @@ const AdaptiveModel: React.FC = () => {
     },
     refetchInterval: 30000,
   });
+
+  // Fetch ML models status
+  const { data: mlModelsStatus, refetch: refetchMLStatus } = useQuery<MLModelsStatus>({
+    queryKey: ['ml-models-status'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/ml-models-status');
+      return response.data;
+    },
+    refetchInterval: 60000,
+  });
+
+  // Train XGBoost model
+  const trainXgboost = async (): Promise<void> => {
+    setIsTrainingXgb(true);
+    try {
+      const response = await apiClient.post<TrainingResult>('/adaptive/train-xgboost');
+      const result = response.data;
+      
+      if (result.status === 'success') {
+        toast({
+          title: 'XGBoost Model Trained',
+          description: `Accuracy: ${result.test_accuracy}% on test data`,
+          status: 'success',
+          duration: 5000,
+          isClosable: true,
+        });
+        refetchMLStatus();
+        refetchAccuracy();
+      } else {
+        toast({
+          title: 'Training Incomplete',
+          description: result.reason || 'Not enough data for training',
+          status: 'warning',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Training Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsTrainingXgb(false);
+    }
+  };
+
+  // Train Build Order Classifier
+  const trainBuildClassifier = async (): Promise<void> => {
+    setIsTrainingBuild(true);
+    try {
+      const response = await apiClient.post<TrainingResult>('/adaptive/train-build-classifier');
+      const result = response.data;
+      
+      toast({
+        title: 'Build Classifier Updated',
+        description: `Status: ${result.status}, Samples: ${result.samples || 0}`,
+        status: result.status === 'clustering' ? 'success' : 'info',
+        duration: 5000,
+        isClosable: true,
+      });
+      refetchMLStatus();
+    } catch (error) {
+      toast({
+        title: 'Training Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsTrainingBuild(false);
+    }
+  };
 
   // ============================================================================
   // HELPER FUNCTIONS
@@ -535,6 +639,103 @@ const AdaptiveModel: React.FC = () => {
                 </Text>
               </Box>
             </VStack>
+          )}
+        </TacticalCard>
+
+        {/* ====================================================================== */}
+        {/* ML MODEL TRAINING */}
+        {/* ====================================================================== */}
+        <TacticalCard>
+          <HStack mb={4} justify="space-between">
+            <HStack>
+              <Icon as={FiCpu} boxSize={6} color="purple.400" />
+              <Heading size="md">ML Model Training</Heading>
+            </HStack>
+            <Badge colorScheme="purple">Advanced</Badge>
+          </HStack>
+
+          <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
+            {/* XGBoost Model */}
+            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px">
+              <CardBody>
+                <VStack spacing={3} align="stretch">
+                  <HStack justify="space-between">
+                    <Text fontWeight="bold">XGBoost Predictor</Text>
+                    <Badge colorScheme={mlModelsStatus?.xgboost?.is_trained ? 'green' : 'gray'}>
+                      {mlModelsStatus?.xgboost?.is_trained ? 'Trained' : 'Not Trained'}
+                    </Badge>
+                  </HStack>
+                  
+                  {mlModelsStatus?.xgboost?.is_trained && (
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" color="gray.400">Accuracy:</Text>
+                      <Text fontSize="sm" fontWeight="bold" color="green.400">
+                        {mlModelsStatus.xgboost.accuracy}%
+                      </Text>
+                    </HStack>
+                  )}
+                  
+                  <Text fontSize="xs" color="gray.500">
+                    Gradient boosting model using player metrics, momentum, and team composition.
+                  </Text>
+                  
+                  <Button
+                    size="sm"
+                    colorScheme="purple"
+                    leftIcon={<FiZap />}
+                    onClick={trainXgboost}
+                    isLoading={isTrainingXgb}
+                    loadingText="Training..."
+                  >
+                    Train XGBoost
+                  </Button>
+                </VStack>
+              </CardBody>
+            </Card>
+
+            {/* Build Order Classifier */}
+            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px">
+              <CardBody>
+                <VStack spacing={3} align="stretch">
+                  <HStack justify="space-between">
+                    <Text fontWeight="bold">Build Classifier</Text>
+                    <Badge colorScheme={mlModelsStatus?.build_classifier?.use_clustering ? 'green' : 'blue'}>
+                      {mlModelsStatus?.build_classifier?.use_clustering ? 'K-Means' : 'Rule-Based'}
+                    </Badge>
+                  </HStack>
+                  
+                  <Text fontSize="xs" color="gray.500">
+                    Classifies player builds into archetypes: cheese, rush, macro, timing, standard.
+                  </Text>
+                  
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    leftIcon={<FiCpu />}
+                    onClick={trainBuildClassifier}
+                    isLoading={isTrainingBuild}
+                    loadingText="Training..."
+                  >
+                    Train Classifier
+                  </Button>
+                </VStack>
+              </CardBody>
+            </Card>
+          </Grid>
+
+          {/* Top Features from XGBoost */}
+          {mlModelsStatus?.xgboost?.is_trained && mlModelsStatus.xgboost.top_features && 
+           Object.keys(mlModelsStatus.xgboost.top_features).length > 0 && (
+            <Box mt={4} p={3} bg="gray.800" borderRadius="md">
+              <Text fontSize="sm" fontWeight="bold" mb={2}>Top Prediction Features:</Text>
+              <HStack spacing={2} flexWrap="wrap">
+                {Object.entries(mlModelsStatus.xgboost.top_features).map(([name, importance]) => (
+                  <Badge key={name} colorScheme="purple" fontSize="xs">
+                    {name}: {(importance as number).toFixed(3)}
+                  </Badge>
+                ))}
+              </HStack>
+            </Box>
           )}
         </TacticalCard>
 
