@@ -65,14 +65,14 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
   // Prepare VSScreen data
   const team1Players = players.filter(p => p.team_number === 1);
   const team2Players = players.filter(p => p.team_number === 2);
-  const team1TotalMMR = team1Players.reduce((sum, p) => sum + p.mmr, 0);
-  const team2TotalMMR = team2Players.reduce((sum, p) => sum + p.mmr, 0);
+  const team1TotalMMR = team1Players.reduce((sum, p) => sum + (p.mmr ?? p.mmr_before), 0);
+  const team2TotalMMR = team2Players.reduce((sum, p) => sum + (p.mmr ?? p.mmr_before), 0);
 
   const vsScreenData = {
     team1: {
       players: team1Players.map(p => ({
         name: p.player_name,
-        mmr: p.mmr,
+        mmr: p.mmr ?? p.mmr_before,
         race: p.race,
       })),
       totalMMR: team1TotalMMR,
@@ -81,7 +81,7 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
     team2: {
       players: team2Players.map(p => ({
         name: p.player_name,
-        mmr: p.mmr,
+        mmr: p.mmr ?? p.mmr_before,
         race: p.race,
       })),
       totalMMR: team2TotalMMR,

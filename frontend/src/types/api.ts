@@ -132,6 +132,8 @@ export interface MatchPlayer {
   mmr_before: number;
   mmr_after: number;
   mmr_change: number;
+  /** Computed MMR property for display (uses mmr_before) */
+  mmr?: number;
 }
 
 export interface MatchDetail {

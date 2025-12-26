@@ -28,7 +28,7 @@ import {
   isDuoCategory,
 } from '@/types/leaderboard';
 import { getRaceEmoji, getRaceColor } from '@/utils/formatting';
-import { spacing, radii, colors, transitions, shadows } from '@/theme/tokens';
+import { spacing, radii, transitions } from '@/theme/tokens';
 
 // =============================================================================
 // Types
@@ -68,14 +68,11 @@ const medalShine = keyframes`
   }
 `;
 
-const rowHoverGlow = keyframes`
-  0% {
-    box-shadow: 0 0 0 rgba(255, 140, 26, 0);
-  }
-  100% {
-    box-shadow: 0 0 10px rgba(255, 140, 26, 0.3);
-  }
-`;
+// Row hover glow animation - available for future use
+// const rowHoverGlow = keyframes`
+//   0% { box-shadow: 0 0 0 rgba(255, 140, 26, 0); }
+//   100% { box-shadow: 0 0 10px rgba(255, 140, 26, 0.3); }
+// `;
 
 // =============================================================================
 // Medal Badge Component

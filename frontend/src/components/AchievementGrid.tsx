@@ -19,10 +19,9 @@ import {
   type AchievementCategory,
   type PlayerAchievement,
   type Achievement,
-  CATEGORY_INFO,
   getCategoryInfo,
 } from '@/types/achievements';
-import { spacing, radii, colors, transitions } from '@/theme/tokens';
+import { spacing, radii } from '@/theme/tokens';
 
 // =============================================================================
 // Types
@@ -187,7 +186,6 @@ const AchievementGrid: React.FC<AchievementGridProps> = ({
     defaultCategory
   );
 
-  const bgColor = useColorModeValue('gray.50', 'space.900');
   const emptyTextColor = useColorModeValue('gray.500', 'gray.400');
 
   // Get unique categories

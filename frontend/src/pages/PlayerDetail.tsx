@@ -17,7 +17,6 @@ import {
   StatLabel,
   StatNumber,
   StatHelpText,
-  StatGroup,
   Table,
   Thead,
   Tbody,

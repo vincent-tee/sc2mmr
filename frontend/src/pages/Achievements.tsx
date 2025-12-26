@@ -2,7 +2,7 @@
  * Achievements Page
  * Achievement catalog with filtering and player lookup
  */
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Container,
@@ -11,7 +11,6 @@ import {
   VStack,
   HStack,
   SimpleGrid,
-  Button,
   Badge,
   Flex,
   Select,
@@ -20,8 +19,6 @@ import {
   InputLeftElement,
   useColorModeValue,
   Skeleton,
-  Alert,
-  AlertIcon,
   Tooltip,
   Tabs,
   TabList,
@@ -31,7 +28,7 @@ import {
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
-import { FiSearch, FiFilter, FiAward, FiClock, FiStar } from 'react-icons/fi';
+import { FiSearch, FiClock } from 'react-icons/fi';
 import { achievementsApi } from '../api/achievements';
 import {
   Achievement,
@@ -43,7 +40,7 @@ import {
   getCategoryInfo,
   RecentAchievementEntry,
 } from '../types/achievements';
-import { colors, shadows, layout } from '../theme/tokens';
+import { colors, layout } from '../theme/tokens';
 
 // =============================================================================
 // Animations

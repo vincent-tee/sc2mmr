@@ -7,6 +7,7 @@ Provides endpoints for:
 - Recent achievements feed
 - Achievement initialization
 """
+
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -22,8 +23,10 @@ router = APIRouter(prefix="/achievements", tags=["achievements"])
 # Response Models
 # ============================================================================
 
+
 class AchievementResponse(BaseModel):
     """Achievement details."""
+
     code: str
     name: str
     description: str
@@ -41,6 +44,7 @@ class AchievementResponse(BaseModel):
 
 class PlayerAchievementsResponse(BaseModel):
     """Player's achievements summary."""
+
     player_id: int
     player_name: str
     total_achievements: int
@@ -51,6 +55,7 @@ class PlayerAchievementsResponse(BaseModel):
 
 class AchievementLeaderboardEntry(BaseModel):
     """Leaderboard entry."""
+
     rank: int
     player_id: int
     name: str
@@ -60,6 +65,7 @@ class AchievementLeaderboardEntry(BaseModel):
 
 class RecentAchievementEntry(BaseModel):
     """Recent achievement feed entry."""
+
     player_name: str
     player_id: int
     achievement_code: str
@@ -71,6 +77,7 @@ class RecentAchievementEntry(BaseModel):
 
 class InitResponse(BaseModel):
     """Initialization response."""
+
     success: bool
     created: int
     message: str
@@ -80,10 +87,13 @@ class InitResponse(BaseModel):
 # Endpoints
 # ============================================================================
 
+
 @router.get("/player/{player_id}", response_model=PlayerAchievementsResponse)
 async def get_player_achievements(
     player_id: int,
-    include_available: bool = Query(False, description="Include achievements not yet earned"),
+    include_available: bool = Query(
+        False, description="Include achievements not yet earned"
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -112,8 +122,8 @@ async def get_player_achievements(
     }
 
     if include_available:
-        response["available_achievements"] = AchievementService.get_available_achievements(
-            db, player_id
+        response["available_achievements"] = (
+            AchievementService.get_available_achievements(db, player_id)
         )
 
     return response
@@ -215,12 +225,14 @@ async def check_all_player_achievements(
     for player in players:
         newly_awarded = AchievementService.check_and_award_all(db, player.id)
         if newly_awarded:
-            results.append({
-                "player_id": player.id,
-                "player_name": player.name,
-                "newly_awarded": newly_awarded,
-                "count": len(newly_awarded),
-            })
+            results.append(
+                {
+                    "player_id": player.id,
+                    "player_name": player.name,
+                    "newly_awarded": newly_awarded,
+                    "count": len(newly_awarded),
+                }
+            )
 
     return {
         "players_checked": len(players),
@@ -257,13 +269,18 @@ async def feature_achievement(
 
     Only one achievement can be featured at a time.
     """
-    from ..models.achievements import PlayerAchievement, Achievement
+    from ..models import PlayerAchievement, Achievement
 
     # Find the player's achievement
-    player_achievement = db.query(PlayerAchievement).join(Achievement).filter(
-        PlayerAchievement.player_id == player_id,
-        Achievement.code == achievement_code,
-    ).first()
+    player_achievement = (
+        db.query(PlayerAchievement)
+        .join(Achievement)
+        .filter(
+            PlayerAchievement.player_id == player_id,
+            Achievement.code == achievement_code,
+        )
+        .first()
+    )
 
     if not player_achievement:
         raise HTTPException(
@@ -297,7 +314,7 @@ async def get_all_achievements(
 
     Useful for displaying the achievement catalog/trophy case.
     """
-    from ..models.achievements import Achievement
+    from ..models import Achievement
 
     query = db.query(Achievement).filter(Achievement.is_active == True)
 

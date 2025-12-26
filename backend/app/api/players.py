@@ -1,6 +1,7 @@
 """
 API endpoints for player statistics and management.
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -19,9 +20,31 @@ import time
 router = APIRouter(prefix="/players", tags=["players"])
 
 
+def _player_to_response(p: "Player") -> "PlayerResponse":
+    """Convert a Player model to PlayerResponse."""
+    return PlayerResponse(
+        id=p.id,
+        name=p.name,
+        mu=p.mu,
+        sigma=p.sigma,
+        mmr=p.mmr,
+        recency_weighted_mmr=p.recency_weighted_mmr,
+        hybrid_mmr=p.hybrid_mmr,
+        avg_pim=p.avg_pim,
+        total_games=p.total_games,
+        wins=p.wins,
+        losses=p.losses,
+        win_rate=p.win_rate,
+        favorite_race=p.favorite_race,
+        is_core_player=bool(p.is_core_player),
+        last_played=p.last_played,
+    )
+
+
 # Request/Response models
 class PlayerResponse(BaseModel):
     """Response model for player data."""
+
     id: int
     name: str
     mu: float
@@ -30,7 +53,7 @@ class PlayerResponse(BaseModel):
     recency_weighted_mmr: Optional[float]
     # Hybrid MMR System (SPEC-ML-001)
     hybrid_mmr: Optional[float] = None  # Performance-adjusted MMR
-    avg_pim: Optional[float] = None     # Average Performance Impact Modifier
+    avg_pim: Optional[float] = None  # Average Performance Impact Modifier
     total_games: int
     wins: int
     losses: int
@@ -45,6 +68,7 @@ class PlayerResponse(BaseModel):
 
 class PlayerDetailResponse(BaseModel):
     """Detailed player response with race statistics."""
+
     id: int
     name: str
     mu: float
@@ -69,6 +93,7 @@ class PlayerDetailResponse(BaseModel):
 
 class PlayerRankingResponse(BaseModel):
     """Player ranking response."""
+
     rank: int
     player: PlayerResponse
 
@@ -78,21 +103,20 @@ class PlayerRankingResponse(BaseModel):
 
 class CreatePlayerRequest(BaseModel):
     """Request to create a new player."""
+
     name: str
     is_core_player: bool = True
 
 
 class CalibratePlayerRequest(BaseModel):
     """Request to calibrate a new outsider player."""
+
     name: str
     similar_to_player_id: int
 
 
 @router.get("/", response_model=List[PlayerResponse])
-def get_players(
-    core_only: bool = False,
-    db: Session = Depends(get_db)
-):
+def get_players(core_only: bool = False, db: Session = Depends(get_db)):
     """
     Get all players.
 
@@ -110,33 +134,12 @@ def get_players(
 
     players = query.order_by(Player.name).all()
 
-    return [
-        PlayerResponse(
-            id=p.id,
-            name=p.name,
-            mu=p.mu,
-            sigma=p.sigma,
-            mmr=p.mmr,
-            recency_weighted_mmr=p.recency_weighted_mmr,
-            hybrid_mmr=p.hybrid_mmr,
-            avg_pim=p.avg_pim,
-            total_games=p.total_games,
-            wins=p.wins,
-            losses=p.losses,
-            win_rate=p.win_rate,
-            favorite_race=p.favorite_race,
-            is_core_player=bool(p.is_core_player),
-            last_played=p.last_played
-        )
-        for p in players
-    ]
+    return [_player_to_response(p) for p in players]
 
 
 @router.get("/rankings", response_model=List[PlayerRankingResponse])
 def get_player_rankings(
-    min_games: int = 5,
-    core_only: bool = False,
-    db: Session = Depends(get_db)
+    min_games: int = 5, core_only: bool = False, db: Session = Depends(get_db)
 ):
     """
     Get player rankings by MMR.
@@ -161,21 +164,7 @@ def get_player_rankings(
     return [
         PlayerRankingResponse(
             rank=idx + 1,
-            player=PlayerResponse(
-                id=p.id,
-                name=p.name,
-                mu=p.mu,
-                sigma=p.sigma,
-                mmr=p.mmr,
-                recency_weighted_mmr=p.recency_weighted_mmr,
-                total_games=p.total_games,
-                wins=p.wins,
-                losses=p.losses,
-                win_rate=p.win_rate,
-                favorite_race=p.favorite_race,
-                is_core_player=bool(p.is_core_player),
-                last_played=p.last_played
-            )
+            player=_player_to_response(p),
         )
         for idx, p in enumerate(players_sorted)
     ]
@@ -183,9 +172,7 @@ def get_player_rankings(
 
 @router.get("/{player_id}", response_model=PlayerDetailResponse)
 def get_player_details(
-    player_id: int,
-    recent_matches_limit: int = 10,
-    db: Session = Depends(get_db)
+    player_id: int, recent_matches_limit: int = 10, db: Session = Depends(get_db)
 ):
     """
     Get detailed information about a specific player.
@@ -207,16 +194,20 @@ def get_player_details(
 
     # Race statistics
     race_stats = {
-        'Terran': player.terran_games,
-        'Protoss': player.protoss_games,
-        'Zerg': player.zerg_games,
-        'Random': player.random_games
+        "Terran": player.terran_games,
+        "Protoss": player.protoss_games,
+        "Zerg": player.zerg_games,
+        "Random": player.random_games,
     }
 
     # Recent matches
-    match_players = db.query(MatchPlayer).filter(
-        MatchPlayer.player_id == player_id
-    ).order_by(MatchPlayer.id.desc()).limit(recent_matches_limit).all()
+    match_players = (
+        db.query(MatchPlayer)
+        .filter(MatchPlayer.player_id == player_id)
+        .order_by(MatchPlayer.id.desc())
+        .limit(recent_matches_limit)
+        .all()
+    )
 
     recent_matches = []
     for mp in match_players:
@@ -224,21 +215,24 @@ def get_player_details(
         if match:
             # Use centralized display MMR formula for consistency with Player.mmr
             from ..rating_system import RatingSystem
+
             mmr_before = RatingSystem.calculate_display_mmr(mp.mu_before)
             mmr_after = RatingSystem.calculate_display_mmr(mp.mu_after)
 
-            recent_matches.append({
-                'match_id': match.id,
-                'played_at': match.played_at.isoformat(),
-                'game_mode': match.game_mode.value,
-                'map_name': match.map_name,
-                'race': mp.race.value,
-                'won': bool(mp.won),
-                'team_number': mp.team_number,
-                'mmr_before': round(mmr_before, 1),
-                'mmr_after': round(mmr_after, 1),
-                'mmr_change': round(mmr_after - mmr_before, 1)
-            })
+            recent_matches.append(
+                {
+                    "match_id": match.id,
+                    "played_at": match.played_at.isoformat(),
+                    "game_mode": match.game_mode.value,
+                    "map_name": match.map_name,
+                    "race": mp.race.value,
+                    "won": bool(mp.won),
+                    "team_number": mp.team_number,
+                    "mmr_before": round(mmr_before, 1),
+                    "mmr_after": round(mmr_after, 1),
+                    "mmr_change": round(mmr_after - mmr_before, 1),
+                }
+            )
 
     return PlayerDetailResponse(
         id=player.id,
@@ -256,15 +250,12 @@ def get_player_details(
         is_core_player=bool(player.is_core_player),
         last_played=player.last_played,
         race_stats=race_stats,
-        recent_matches=recent_matches
+        recent_matches=recent_matches,
     )
 
 
 @router.post("/", response_model=PlayerResponse)
-def create_player(
-    request: CreatePlayerRequest,
-    db: Session = Depends(get_db)
-):
+def create_player(request: CreatePlayerRequest, db: Session = Depends(get_db)):
     """
     Create a new player.
 
@@ -282,41 +273,23 @@ def create_player(
     existing_player = db.query(Player).filter(Player.name == request.name).first()
     if existing_player:
         raise HTTPException(
-            status_code=409,
-            detail=f"Player with name '{request.name}' already exists"
+            status_code=409, detail=f"Player with name '{request.name}' already exists"
         )
 
     # Create new player
     player = Player(
-        name=request.name,
-        is_core_player=1 if request.is_core_player else 0
+        name=request.name, is_core_player=1 if request.is_core_player else 0
     )
 
     db.add(player)
     db.commit()
     db.refresh(player)
 
-    return PlayerResponse(
-        id=player.id,
-        name=player.name,
-        mu=player.mu,
-        sigma=player.sigma,
-        mmr=player.mmr,
-        total_games=player.total_games,
-        wins=player.wins,
-        losses=player.losses,
-        win_rate=player.win_rate,
-        favorite_race=player.favorite_race,
-        is_core_player=bool(player.is_core_player),
-        last_played=player.last_played
-    )
+    return _player_to_response(player)
 
 
 @router.post("/calibrate", response_model=PlayerResponse)
-def calibrate_player(
-    request: CalibratePlayerRequest,
-    db: Session = Depends(get_db)
-):
+def calibrate_player(request: CalibratePlayerRequest, db: Session = Depends(get_db)):
     """
     Create a new outsider player calibrated to a similar core player.
 
@@ -334,39 +307,23 @@ def calibrate_player(
     existing_player = db.query(Player).filter(Player.name == request.name).first()
     if existing_player:
         raise HTTPException(
-            status_code=409,
-            detail=f"Player with name '{request.name}' already exists"
+            status_code=409, detail=f"Player with name '{request.name}' already exists"
         )
 
     try:
         # Calibrate new player
         player = RatingSystem.calibrate_new_player(
-            db,
-            request.name,
-            request.similar_to_player_id
+            db, request.name, request.similar_to_player_id
         )
 
-        return PlayerResponse(
-            id=player.id,
-            name=player.name,
-            mu=player.mu,
-            sigma=player.sigma,
-            mmr=player.mmr,
-            recency_weighted_mmr=player.recency_weighted_mmr,
-            total_games=player.total_games,
-            wins=player.wins,
-            losses=player.losses,
-            win_rate=player.win_rate,
-            favorite_race=player.favorite_race,
-            is_core_player=bool(player.is_core_player),
-            last_played=player.last_played
-        )
+        return _player_to_response(player)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
 class RecalculationStats(BaseModel):
     """Statistics from rating recalculation."""
+
     total_players: int
     total_matches: int
     processing_time_ms: float
@@ -381,9 +338,7 @@ class RecalculationStats(BaseModel):
 
 
 @router.post("/recalculate-ratings", response_model=RecalculationStats)
-def recalculate_all_ratings(
-    db: Session = Depends(get_db)
-):
+def recalculate_all_ratings(db: Session = Depends(get_db)):
     """
     Recalculate all player ratings from scratch using TrueSkill + Performance Adjustments.
 
@@ -453,9 +408,9 @@ def recalculate_all_ratings(
     # Re-process each match chronologically
     for match_index, match in enumerate(all_matches):
         # Get all match_players for this match
-        match_players = db.query(MatchPlayer).filter(
-            MatchPlayer.match_id == match.id
-        ).all()
+        match_players = (
+            db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
+        )
 
         if not match_players:
             continue
@@ -478,12 +433,12 @@ def recalculate_all_ratings(
         if team_1_won:
             new_team_1_ratings, new_team_2_ratings = trueskill.rate(
                 [team_1_ratings, team_2_ratings],
-                ranks=[0, 1]  # Team 1 won (rank 0 beats rank 1)
+                ranks=[0, 1],  # Team 1 won (rank 0 beats rank 1)
             )
         else:
             new_team_1_ratings, new_team_2_ratings = trueskill.rate(
                 [team_1_ratings, team_2_ratings],
-                ranks=[1, 0]  # Team 2 won
+                ranks=[1, 0],  # Team 2 won
             )
 
         # Update match_player records with TrueSkill ratings
@@ -513,16 +468,26 @@ def recalculate_all_ratings(
         # Apply performance-based adjustments (living model)
         # Fetch all metrics for this match in one query
         match_player_ids = [mp.id for mp in match_players]
-        metrics_list = db.query(PlayerMatchMetrics).filter(
-            PlayerMatchMetrics.match_player_id.in_(match_player_ids)
-        ).all()
+        metrics_list = (
+            db.query(PlayerMatchMetrics)
+            .filter(PlayerMatchMetrics.match_player_id.in_(match_player_ids))
+            .all()
+        )
 
         # Create mapping: match_player_id -> metrics
         player_metrics_map = {m.match_player_id: m for m in metrics_list}
 
         # Get metrics for each team
-        team_1_metrics = [player_metrics_map[mp.id] for mp in team_1_mps if mp.id in player_metrics_map]
-        team_2_metrics = [player_metrics_map[mp.id] for mp in team_2_mps if mp.id in player_metrics_map]
+        team_1_metrics = [
+            player_metrics_map[mp.id]
+            for mp in team_1_mps
+            if mp.id in player_metrics_map
+        ]
+        team_2_metrics = [
+            player_metrics_map[mp.id]
+            for mp in team_2_mps
+            if mp.id in player_metrics_map
+        ]
 
         # Track if this match has metrics
         match_has_metrics = len(player_metrics_map) > 0
@@ -535,7 +500,9 @@ def recalculate_all_ratings(
         for mp in match_players:
             if mp.id not in player_metrics_map:
                 # No metrics for this player, use TrueSkill rating as-is
-                player_ratings[mp.player_id] = trueskill.Rating(mu=mp.mu_after, sigma=mp.sigma_after)
+                player_ratings[mp.player_id] = trueskill.Rating(
+                    mu=mp.mu_after, sigma=mp.sigma_after
+                )
                 continue
 
             metrics = player_metrics_map[mp.id]
@@ -549,11 +516,10 @@ def recalculate_all_ratings(
                 opponent_metrics = team_1_metrics
 
             # Calculate performance multiplier
-            base_multiplier = PerformanceRatingAdjuster.calculate_performance_multiplier(
-                metrics,
-                team_metrics,
-                opponent_metrics,
-                bool(mp.won)
+            base_multiplier = (
+                PerformanceRatingAdjuster.calculate_performance_multiplier(
+                    metrics, team_metrics, opponent_metrics, bool(mp.won)
+                )
             )
 
             # Apply recency bias: recent matches have stronger performance adjustments
@@ -576,17 +542,23 @@ def recalculate_all_ratings(
 
             # Validation: Ensure multiplier is within expected bounds
             if multiplier < 0.5 or multiplier > 1.5:
-                print(f"WARNING: Multiplier {multiplier} outside expected bounds for player {mp.player_id} in match {match.id}")
+                print(
+                    f"WARNING: Multiplier {multiplier} outside expected bounds for player {mp.player_id} in match {match.id}"
+                )
 
             # Validation: Ensure rating change is reasonable
             if abs(base_mu_change) > 10:  # TrueSkill changes should rarely exceed 10
-                print(f"INFO: Large TrueSkill change {base_mu_change:.2f} for player {mp.player_id} in match {match.id}")
+                print(
+                    f"INFO: Large TrueSkill change {base_mu_change:.2f} for player {mp.player_id} in match {match.id}"
+                )
 
             # Update the match_player record with adjusted rating
             mp.mu_after = adjusted_mu_after
 
             # Update in-memory rating with adjusted value
-            player_ratings[mp.player_id] = trueskill.Rating(mu=adjusted_mu_after, sigma=mp.sigma_after)
+            player_ratings[mp.player_id] = trueskill.Rating(
+                mu=adjusted_mu_after, sigma=mp.sigma_after
+            )
 
         # Update player statistics
         for mp in match_players:
@@ -600,13 +572,13 @@ def recalculate_all_ratings(
                 player.last_played = match.played_at
 
                 # Update race stats
-                if mp.race.value == 'Terran':
+                if mp.race.value == "Terran":
                     player.terran_games += 1
-                elif mp.race.value == 'Protoss':
+                elif mp.race.value == "Protoss":
                     player.protoss_games += 1
-                elif mp.race.value == 'Zerg':
+                elif mp.race.value == "Zerg":
                     player.zerg_games += 1
-                elif mp.race.value == 'Random':
+                elif mp.race.value == "Random":
                     player.random_games += 1
 
         matches_processed += 1
@@ -630,7 +602,9 @@ def recalculate_all_ratings(
     processing_time_ms = (time.time() - start_time) * 1000
 
     # Calculate statistics about performance adjustments
-    avg_multiplier = sum(all_multipliers) / len(all_multipliers) if all_multipliers else 1.0
+    avg_multiplier = (
+        sum(all_multipliers) / len(all_multipliers) if all_multipliers else 1.0
+    )
     min_multiplier = min(all_multipliers) if all_multipliers else 1.0
     max_multiplier = max(all_multipliers) if all_multipliers else 1.0
 
@@ -645,18 +619,20 @@ def recalculate_all_ratings(
         avg_performance_multiplier=round(avg_multiplier, 3),
         min_performance_multiplier=round(min_multiplier, 3),
         max_performance_multiplier=round(max_multiplier, 3),
-        total_adjustments_applied=total_adjustments_applied
+        total_adjustments_applied=total_adjustments_applied,
     )
 
 
 class MergePlayersRequest(BaseModel):
     """Request to merge two players."""
+
     source_player_name: str  # Player to merge from (will be deleted)
     target_player_name: str  # Player to merge into (will be kept)
 
 
 class MergePlayersResponse(BaseModel):
     """Response from merging players."""
+
     success: bool
     message: str
     kept_player: PlayerResponse
@@ -665,10 +641,7 @@ class MergePlayersResponse(BaseModel):
 
 
 @router.post("/merge", response_model=MergePlayersResponse)
-def merge_players(
-    request: MergePlayersRequest,
-    db: Session = Depends(get_db)
-):
+def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
     """
     Merge two players into one.
 
@@ -688,26 +661,27 @@ def merge_players(
         HTTPException: If either player not found or if trying to merge player with itself
     """
     # Find both players
-    source_player = db.query(Player).filter(Player.name == request.source_player_name).first()
-    target_player = db.query(Player).filter(Player.name == request.target_player_name).first()
+    source_player = (
+        db.query(Player).filter(Player.name == request.source_player_name).first()
+    )
+    target_player = (
+        db.query(Player).filter(Player.name == request.target_player_name).first()
+    )
 
     if not source_player:
         raise HTTPException(
             status_code=404,
-            detail=f"Source player '{request.source_player_name}' not found"
+            detail=f"Source player '{request.source_player_name}' not found",
         )
 
     if not target_player:
         raise HTTPException(
             status_code=404,
-            detail=f"Target player '{request.target_player_name}' not found"
+            detail=f"Target player '{request.target_player_name}' not found",
         )
 
     if source_player.id == target_player.id:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot merge a player with itself"
-        )
+        raise HTTPException(status_code=400, detail="Cannot merge a player with itself")
 
     # Save original stats before merging
     source_total_games = source_player.total_games
@@ -731,9 +705,9 @@ def merge_players(
     from sqlalchemy import update
 
     # Count matches first
-    matches_transferred = db.query(MatchPlayer).filter(
-        MatchPlayer.player_id == source_player.id
-    ).count()
+    matches_transferred = (
+        db.query(MatchPlayer).filter(MatchPlayer.player_id == source_player.id).count()
+    )
 
     # Bulk update match_players
     db.execute(
@@ -746,9 +720,11 @@ def merge_players(
     from ..models import PlayerSynergy
 
     # Count and update synergies as player1
-    synergies_p1_count = db.query(PlayerSynergy).filter(
-        PlayerSynergy.player1_id == source_player.id
-    ).count()
+    synergies_p1_count = (
+        db.query(PlayerSynergy)
+        .filter(PlayerSynergy.player1_id == source_player.id)
+        .count()
+    )
 
     db.execute(
         update(PlayerSynergy)
@@ -757,9 +733,11 @@ def merge_players(
     )
 
     # Count and update synergies as player2
-    synergies_p2_count = db.query(PlayerSynergy).filter(
-        PlayerSynergy.player2_id == source_player.id
-    ).count()
+    synergies_p2_count = (
+        db.query(PlayerSynergy)
+        .filter(PlayerSynergy.player2_id == source_player.id)
+        .count()
+    )
 
     db.execute(
         update(PlayerSynergy)
@@ -779,9 +757,9 @@ def merge_players(
 
     # For race statistics, we need to query and recalculate since we don't store them
     # Query ALL match_players for target (which now includes source's matches)
-    all_matches = db.query(MatchPlayer).filter(
-        MatchPlayer.player_id == target_player.id
-    ).all()
+    all_matches = (
+        db.query(MatchPlayer).filter(MatchPlayer.player_id == target_player.id).all()
+    )
 
     # Reset and recalculate race statistics from ALL matches
     target_player.terran_games = 0
@@ -790,18 +768,21 @@ def merge_players(
     target_player.random_games = 0
 
     for mp in all_matches:
-        if mp.race.value == 'Terran':
+        if mp.race.value == "Terran":
             target_player.terran_games += 1
-        elif mp.race.value == 'Protoss':
+        elif mp.race.value == "Protoss":
             target_player.protoss_games += 1
-        elif mp.race.value == 'Zerg':
+        elif mp.race.value == "Zerg":
             target_player.zerg_games += 1
-        elif mp.race.value == 'Random':
+        elif mp.race.value == "Random":
             target_player.random_games += 1
 
     # Update last_played to most recent of the two
     if source_player.last_played:
-        if not target_player.last_played or source_player.last_played > target_player.last_played:
+        if (
+            not target_player.last_played
+            or source_player.last_played > target_player.last_played
+        ):
             target_player.last_played = source_player.last_played
 
     # Merge impact scores (weighted average based on game counts)
@@ -811,20 +792,16 @@ def merge_players(
         source_weight = source_total_games / total_combined_games
 
         target_player.avg_economic_score = (
-            target_economic * target_weight +
-            source_economic * source_weight
+            target_economic * target_weight + source_economic * source_weight
         )
         target_player.avg_combat_score = (
-            target_combat * target_weight +
-            source_combat * source_weight
+            target_combat * target_weight + source_combat * source_weight
         )
         target_player.avg_efficiency_score = (
-            target_efficiency * target_weight +
-            source_efficiency * source_weight
+            target_efficiency * target_weight + source_efficiency * source_weight
         )
         target_player.avg_overall_impact = (
-            target_overall * target_weight +
-            source_overall * source_weight
+            target_overall * target_weight + source_overall * source_weight
         )
     elif source_total_games > 0:
         # Target had no games, just use source's scores
@@ -847,21 +824,7 @@ def merge_players(
     return MergePlayersResponse(
         success=True,
         message=f"Successfully merged '{request.source_player_name}' into '{request.target_player_name}'. {matches_transferred} matches transferred.",
-        kept_player=PlayerResponse(
-            id=target_player.id,
-            name=target_player.name,
-            mu=target_player.mu,
-            sigma=target_player.sigma,
-            mmr=target_player.mmr,
-            recency_weighted_mmr=target_player.recency_weighted_mmr,
-            total_games=target_player.total_games,
-            wins=target_player.wins,
-            losses=target_player.losses,
-            win_rate=target_player.win_rate,
-            favorite_race=target_player.favorite_race,
-            is_core_player=bool(target_player.is_core_player),
-            last_played=target_player.last_played
-        ),
+        kept_player=_player_to_response(target_player),
         matches_transferred=matches_transferred,
-        synergies_updated=synergies_updated
+        synergies_updated=synergies_updated,
     )

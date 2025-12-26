@@ -18,7 +18,6 @@ import {
   Badge,
   Avatar,
   Progress,
-  Tooltip,
 } from '@chakra-ui/react';
 import { FiSearch, FiFilter, FiTarget } from 'react-icons/fi';
 import { useState, type ChangeEvent } from 'react';
@@ -29,7 +28,7 @@ import TacticalCard from '../components/TacticalCard';
 import TacticalBackground from '../components/common/TacticalBackground';
 import EmptyState from '../components/EmptyState';
 import LoadingState from '../components/LoadingState';
-import { formatMMR, formatWinRate, getPlayerRaces, getRaceColor } from '../utils/formatting';
+import { formatWinRate, getPlayerRaces, getRaceColor } from '../utils/formatting';
 import RankBadge from '../components/RankBadge';
 import type { Player } from '../types/api';
 
@@ -249,8 +248,6 @@ const Players: React.FC = () => {
               {filteredPlayers.map((player, index) => {
                 const playerRaces = getPlayerRaces(player);
                 const primaryRace = playerRaces.length > 0 ? playerRaces[0].name : 'Random';
-                const displayMmr = player.hybrid_mmr || player.mmr;
-                const mmrLevel = displayMmr >= 1600 ? 'high' : displayMmr >= 1400 ? 'medium' : 'low';
 
                 return (
                   <TacticalCard

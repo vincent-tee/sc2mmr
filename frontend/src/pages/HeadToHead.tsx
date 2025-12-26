@@ -19,37 +19,35 @@ import {
   Skeleton,
   Alert,
   AlertIcon,
-  Divider,
-  Progress,
   Stat,
   StatLabel,
   StatNumber,
   StatHelpText,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { keyframes } from '@emotion/react';
-import { FiRefreshCw, FiTrendingUp, FiTarget } from 'react-icons/fi';
+import { FiTarget } from 'react-icons/fi';
 import { headToHeadApi } from '../api/headtohead';
 import { playersApi } from '../api/endpoints';
 import {
-  HeadToHeadResponse,
   RivalryResponse,
   getIntensityConfig,
   formatDuration,
   getH2HWinRate,
 } from '../types/headtohead';
-import { colors, shadows } from '../theme/tokens';
+import { colors } from '../theme/tokens';
 import VSScreen from '../components/VSScreen';
 
 // =============================================================================
 // Animations
 // =============================================================================
 
-const pulseGlow = keyframes`
-  0%, 100% { box-shadow: 0 0 10px rgba(255, 140, 26, 0.3); }
-  50% { box-shadow: 0 0 25px rgba(255, 140, 26, 0.6); }
-`;
+// Pulse glow animation - available for future use
+// const pulseGlow = keyframes`
+//   0%, 100% { box-shadow: 0 0 10px rgba(255, 140, 26, 0.3); }
+//   50% { box-shadow: 0 0 25px rgba(255, 140, 26, 0.6); }
+// `;
 
 const fillAnimation = keyframes`
   from { width: 0%; }
@@ -286,7 +284,7 @@ const HeadToHead: React.FC = () => {
   }, [selectedPlayer1, selectedPlayer2, navigate]);
 
   // Fetch players list
-  const { data: players, isLoading: playersLoading } = useQuery({
+  const { data: players } = useQuery({
     queryKey: ['players', 'all'],
     queryFn: async () => {
       const response = await playersApi.getAll(true);

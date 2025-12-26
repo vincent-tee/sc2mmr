@@ -190,13 +190,13 @@ const TooltipContent: React.FC<TooltipContentProps> = ({
 // =============================================================================
 
 const AchievementBadge: React.FC<AchievementBadgeProps> = ({
-  code,
+  code: _code,
   name,
   description,
   flavor_text,
   icon,
   rarity,
-  category,
+  category: _category,
   points,
   earned = false,
   earned_at,
@@ -204,6 +204,9 @@ const AchievementBadge: React.FC<AchievementBadgeProps> = ({
   size = 'md',
   onClick,
 }) => {
+  // Props prefixed with _ are intentionally unused but kept for API consistency
+  void _code;
+  void _category;
   const sizeConfig = SIZE_CONFIG[size];
   const rarityColors = RARITY_COLORS[rarity];
   const bgColor = useColorModeValue('gray.700', 'space.800');

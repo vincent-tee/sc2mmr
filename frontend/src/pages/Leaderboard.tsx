@@ -23,12 +23,10 @@ import {
   Skeleton,
   Alert,
   AlertIcon,
-  Icon,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { keyframes } from '@emotion/react';
-import { FiTrendingUp, FiUsers, FiAward, FiTarget, FiZap } from 'react-icons/fi';
 import { leaderboardApi } from '../api/leaderboard';
 import {
   LEADERBOARD_CATEGORIES,
@@ -39,16 +37,17 @@ import {
   getRankMedal,
   isDuoCategory,
 } from '../types/leaderboard';
-import { colors, shadows, typography } from '../theme/tokens';
+import { colors, shadows } from '../theme/tokens';
 
 // =============================================================================
 // Animations
 // =============================================================================
 
-const shimmer = keyframes`
-  0% { background-position: -200% center; }
-  100% { background-position: 200% center; }
-`;
+// Shimmer animation - available for future use
+// const shimmer = keyframes`
+//   0% { background-position: -200% center; }
+//   100% { background-position: 200% center; }
+// `;
 
 const pulseGlow = keyframes`
   0%, 100% { box-shadow: 0 0 10px rgba(255, 140, 26, 0.3); }

@@ -14,7 +14,7 @@ import {
   Tooltip,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { formatMMR, getInitials, getRaceColor, getMMRBadgeColor, getPlayerRaces } from '../utils/formatting';
+import { getInitials, getRaceColor, getPlayerRaces } from '../utils/formatting';
 import RankBadge from './RankBadge';
 import RaceBackground from './RaceBackground';
 
@@ -62,9 +62,6 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
   onClick,
   size = 'md',
 }) => {
-  const bgColor = useColorModeValue('white', 'rgba(26, 32, 44, 0.8)');
-  const hoverBg = useColorModeValue('gray.50', 'rgba(45, 55, 72, 0.8)');
-  const selectedBg = useColorModeValue('brand.50', 'rgba(0, 82, 102, 0.3)');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
 
   const sizes: Record<CardSize, SizeConfig> = {

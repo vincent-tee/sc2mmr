@@ -74,6 +74,9 @@ const Navigation: React.FC = () => {
 
   return (
     <Box
+      as="nav"
+      role="navigation"
+      aria-label="Main navigation"
       bg={bgColor}
       borderBottom="2px"
       borderColor={borderColor}

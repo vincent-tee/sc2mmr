@@ -113,10 +113,11 @@ const FailedUploads: React.FC = () => {
       setReviewNotes('');
       setSelectedUpload(null);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const axiosError = error as { response?: { data?: { detail?: string } } };
       toast({
         title: 'Error',
-        description: error.response?.data?.detail || 'Failed to mark as reviewed',
+        description: axiosError.response?.data?.detail || 'Failed to mark as reviewed',
         status: 'error',
         duration: 5000,
       });
@@ -152,10 +153,11 @@ const FailedUploads: React.FC = () => {
         isClosable: true,
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const axiosError = error as { response?: { data?: { detail?: string } } };
       toast({
         title: 'Error processing replay',
-        description: error.response?.data?.detail || 'Failed to process replay with manual winner',
+        description: axiosError.response?.data?.detail || 'Failed to process replay with manual winner',
         status: 'error',
         duration: 5000,
       });

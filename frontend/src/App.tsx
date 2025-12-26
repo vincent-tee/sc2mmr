@@ -33,7 +33,8 @@ function App(): React.ReactElement {
     <Router>
       <Box minH="100vh" position="relative" zIndex={1}>
         <Navigation />
-        <Routes>
+        <Box as="main" role="main">
+          <Routes>
           <Route
             path="/"
             element={
@@ -122,7 +123,32 @@ function App(): React.ReactElement {
               </ErrorBoundary>
             }
           />
-        </Routes>
+          <Route
+            path="/leaderboard"
+            element={
+              <ErrorBoundary>
+                <Leaderboard />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/achievements"
+            element={
+              <ErrorBoundary>
+                <Achievements />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/h2h"
+            element={
+              <ErrorBoundary>
+                <HeadToHead />
+              </ErrorBoundary>
+            }
+          />
+          </Routes>
+        </Box>
       </Box>
     </Router>
   );
