@@ -697,3 +697,66 @@ def _get_recommendation(model_results: list) -> str:
         return f"Prediction accuracy is moderate ({best['accuracy']}%). More match data may help."
     else:
         return "Prediction accuracy is low. This may improve with more match history."
+
+
+# ============================================================================
+# ML Model Training Endpoints
+# ============================================================================
+
+
+@router.post("/train-xgboost")
+def train_xgboost_model(db: Session = Depends(get_db)):
+    """
+    Train the XGBoost prediction model on historical match data.
+
+    Returns training statistics including accuracy and feature importance.
+    """
+    from ..services.xgboost_predictor import train_xgboost_model
+
+    result = train_xgboost_model(db)
+    return result
+
+
+@router.post("/train-build-classifier")
+def train_build_classifier(db: Session = Depends(get_db)):
+    """
+    Train the build order classifier using K-means clustering.
+
+    Classifies player builds into archetypes (cheese, rush, macro, etc.)
+    """
+    from ..services.build_order_classifier import train_classifier
+
+    result = train_classifier(db)
+    return result
+
+
+@router.get("/ml-models-status")
+def get_ml_models_status(db: Session = Depends(get_db)):
+    """
+    Get status of all ML models (XGBoost, Build Classifier, etc.)
+    """
+    from ..services.xgboost_predictor import get_xgboost_predictor
+    from ..services.build_order_classifier import get_classifier
+
+    xgb = get_xgboost_predictor()
+    build_clf = get_classifier()
+
+    return {
+        "xgboost": {
+            "is_trained": xgb.is_trained,
+            "model_type": "XGBoost" if xgb.is_xgboost else "LogisticRegression",
+            "accuracy": round(xgb.training_accuracy * 100, 1)
+            if xgb.is_trained
+            else None,
+            "top_features": dict(
+                list(sorted(xgb.feature_importance.items(), key=lambda x: -x[1]))[:5]
+            )
+            if xgb.feature_importance
+            else {},
+        },
+        "build_classifier": {
+            "use_clustering": build_clf.use_clustering,
+            "cluster_names": build_clf.CLUSTER_NAMES,
+        },
+        "recommendation": "Train models using POST /adaptive/train-xgboost and /adaptive/train-build-classifier",
+    }
