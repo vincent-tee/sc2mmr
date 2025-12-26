@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from .database import init_db
-from .api import replays, players, teams, impact, adaptive
+from .api import replays, players, teams, impact, adaptive, achievements, leaderboard, headtohead
 from .config import settings
 
 # Configure logging using settings
@@ -60,6 +60,9 @@ app.include_router(players.router)
 app.include_router(teams.router)
 app.include_router(impact.router)
 app.include_router(adaptive.router)
+app.include_router(achievements.router)
+app.include_router(leaderboard.router)
+app.include_router(headtohead.router)
 
 
 @app.get("/")

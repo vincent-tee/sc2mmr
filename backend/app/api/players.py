@@ -28,6 +28,9 @@ class PlayerResponse(BaseModel):
     sigma: float
     mmr: float
     recency_weighted_mmr: Optional[float]
+    # Hybrid MMR System (SPEC-ML-001)
+    hybrid_mmr: Optional[float] = None  # Performance-adjusted MMR
+    avg_pim: Optional[float] = None     # Average Performance Impact Modifier
     total_games: int
     wins: int
     losses: int
@@ -48,6 +51,9 @@ class PlayerDetailResponse(BaseModel):
     sigma: float
     mmr: float
     recency_weighted_mmr: Optional[float]
+    # Hybrid MMR System (SPEC-ML-001)
+    hybrid_mmr: Optional[float] = None
+    avg_pim: Optional[float] = None
     total_games: int
     wins: int
     losses: int
@@ -112,6 +118,8 @@ def get_players(
             sigma=p.sigma,
             mmr=p.mmr,
             recency_weighted_mmr=p.recency_weighted_mmr,
+            hybrid_mmr=p.hybrid_mmr,
+            avg_pim=p.avg_pim,
             total_games=p.total_games,
             wins=p.wins,
             losses=p.losses,
@@ -239,6 +247,8 @@ def get_player_details(
         sigma=player.sigma,
         mmr=player.mmr,
         recency_weighted_mmr=player.recency_weighted_mmr,
+        hybrid_mmr=player.hybrid_mmr,
+        avg_pim=player.avg_pim,
         total_games=player.total_games,
         wins=player.wins,
         losses=player.losses,

@@ -68,3 +68,54 @@ replays/
 # OS
 .DS_Store
 Thumbs.db
+.firebase/
+*.backup
+# Claude and MoAI configuration (user-specific, root only)
+.claude/.env.local*
+.uv_cache
+.aws/
+*.temp
+*_backup_*/
+.vercel/
+.moai/*.tmp
+.netlify/
+docs_backup_*/
+# Temporary files
+*.pyo
+# Virtual environment
+.playwright-mcp
+# MoAI dynamic content (로컬 프로젝트만 무시, but package templates are tracked)
+# Cache
+.venv/
+.uv-cache
+# Backups
+*.pyc
+docs/.next/
+hooks_backup_*/
+.env/
+*.tmp
+.mypy_cache
+.moai/temp/
+*.backup/
+.moai/reports/*.tmp
+# Environment variables and deployment secrets
+*-backup/
+.claude/settings.local.*.json
+coverage.json
+# Test coverage
+# Package templates (src/moai_adk/templates/) are tracked
+/CLAUDE.md
+*.tsbuildinfo
+.tscache/
+.moai-backups/
+.claude/settings.local.json
+.moai/logs/
+.ruff_cache
+.env*
+# Next.js build output
+# Build artifacts
+.moai/reports/*-draft.*
+# MoAI reports (임시 보고서만 무시)
+.venv_issue43_py313
+docs/out/
+*.bak

@@ -11,7 +11,7 @@ import time
 import logging
 
 from ..database import get_db
-from ..models import Match, MatchPlayer, Player, FailedUpload, UploadErrorType
+from ..models import Match, MatchPlayer, Player, FailedUpload, UploadErrorType, PerformanceFeatures
 from ..replay_parser import parse_replay, validate_replay_data, ReplayParseError, WinnerDeterminationError
 from ..rating_system import RatingSystem
 from ..advanced_parser import parse_replay_advanced
@@ -151,6 +151,56 @@ class MatchListResponse(BaseModel):
         from_attributes = True
 
 
+class MatchPlayerSummary(BaseModel):
+    """Summary of a player in a match for list views."""
+    player_id: int
+    player_name: str
+    team_number: int
+    race: str
+    won: bool
+    mmr_change: float
+    # Performance metrics (if available)
+    damage_dealt: Optional[int] = None
+    damage_ratio: Optional[float] = None
+    impact_score: Optional[float] = None
+    units_killed: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MatchWithPlayersResponse(BaseModel):
+    """Match response with player summaries included."""
+    id: int
+    played_at: datetime
+    game_mode: str
+    map_name: str
+    duration_seconds: int
+    replay_hash: str
+    predicted_team1_win_prob: Optional[float] = None
+    predicted_team2_win_prob: Optional[float] = None
+    winner_team: int
+    players: List[MatchPlayerSummary]
+    # Highlight stats
+    mvp_player_id: Optional[int] = None
+    mvp_player_name: Optional[str] = None
+    total_damage: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MatchListWithPlayersResponse(BaseModel):
+    """Response model for matches with players included."""
+    matches: List[MatchWithPlayersResponse]
+    total_count: int
+    limit: int
+    offset: int
+
+    class Config:
+        from_attributes = True
+
+
 class MatchPlayerResponse(BaseModel):
     """Response model for match player details."""
     player_name: str
@@ -235,13 +285,16 @@ async def upload_replay(
             )
         duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
 
+        # Save replay file if enabled
+        replay_file_path = _save_replay_file(content, file.filename, replay_data.replay_hash)
+
         # Create match record
         match = Match(
             played_at=replay_data.played_at,
             game_mode=replay_data.game_mode,
             map_name=replay_data.map_name,
             duration_seconds=replay_data.duration_seconds,
-            replay_file_path=None,  # We're not storing the file for now
+            replay_file_path=replay_file_path,
             replay_hash=replay_data.replay_hash
         )
         db.add(match)
@@ -250,7 +303,34 @@ async def upload_replay(
         # Update ratings and create match_players
         rating_start = time.time()
         RatingSystem.update_ratings_from_match(db, replay_data, match)
+
+        # Extract and save ML features
+        if replay_file_path:
+            try:
+                from ..services.ml_features_service import MLFeaturesService
+                MLFeaturesService.extract_and_save_ml_features(db, replay_file_path, match.id)
+            except Exception as e:
+                logger.warning(f"ML feature extraction failed: {e}")
+                # Don't fail upload if ML extraction fails
+
         rating_time_ms = (time.time() - rating_start) * 1000
+
+        # =====================================================================
+        # Online Learning Integration - Record outcome for model improvement
+        # =====================================================================
+        try:
+            from ..online_learning import OnlineLearningEngine
+            
+            # Determine which team won
+            team1_won = any(p.won for p in replay_data.players if p.team == 1)
+            
+            # Record outcome for the living ML model
+            learning_engine = OnlineLearningEngine(db)
+            learning_engine.record_outcome(match.id, team1_won)
+            logger.info(f"Recorded match outcome for online learning: match_id={match.id}")
+        except Exception as e:
+            # Don't fail upload if online learning fails
+            logger.warning(f"Online learning record failed (non-fatal): {e}")
 
         total_time_ms = (time.time() - start_time) * 1000
 
@@ -449,6 +529,117 @@ def get_matches(
     )
 
 
+@router.get("/matches-with-players", response_model=MatchListWithPlayersResponse)
+def get_matches_with_players(
+    limit: int = 20,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """
+    Get list of matches with player summaries and highlight stats.
+
+    Ideal for match history pages that want to show player highlights
+    without requiring additional API calls per match.
+
+    Args:
+        limit: Maximum number of matches to return (default 20)
+        offset: Number of matches to skip
+        db: Database session
+
+    Returns:
+        MatchListWithPlayersResponse with matches, players, and highlight data
+    """
+    from sqlalchemy import func
+    from ..models import PlayerMatchMetrics
+    from ..rating_system import RatingSystem
+
+    # Get total count
+    total_count = db.query(func.count(Match.id)).scalar() or 0
+
+    # Get paginated matches
+    matches = db.query(Match).order_by(
+        Match.played_at.desc()
+    ).limit(limit).offset(offset).all()
+
+    match_responses = []
+
+    for match in matches:
+        # Get all players for this match with their metrics
+        match_players = db.query(MatchPlayer, Player).join(
+            Player, MatchPlayer.player_id == Player.id
+        ).filter(
+            MatchPlayer.match_id == match.id
+        ).all()
+
+        player_summaries = []
+        winner_team = 0
+        mvp_player_id = None
+        mvp_player_name = None
+        max_impact = -1
+        total_damage = 0
+
+        for mp, player in match_players:
+            # Get metrics if available
+            metrics = db.query(PlayerMatchMetrics).filter(
+                PlayerMatchMetrics.match_player_id == mp.id
+            ).first()
+
+            # Calculate MMR change using centralized formula
+            mmr_before = RatingSystem.calculate_display_mmr(mp.mu_before)
+            mmr_after = RatingSystem.calculate_display_mmr(mp.mu_after)
+            mmr_change = round(mmr_after - mmr_before, 1)
+
+            # Track winner team
+            if mp.won:
+                winner_team = mp.team_number
+
+            # Build player summary
+            summary = MatchPlayerSummary(
+                player_id=player.id,
+                player_name=player.name,
+                team_number=mp.team_number,
+                race=mp.race.value,
+                won=bool(mp.won),
+                mmr_change=mmr_change,
+                damage_dealt=metrics.damage_dealt if metrics else None,
+                damage_ratio=metrics.damage_ratio if metrics else None,
+                impact_score=metrics.overall_impact if metrics else None,
+                units_killed=metrics.units_killed if metrics else None
+            )
+            player_summaries.append(summary)
+
+            # Track MVP (highest impact on winning team)
+            if metrics and mp.won:
+                total_damage += metrics.damage_dealt or 0
+                if metrics.overall_impact and metrics.overall_impact > max_impact:
+                    max_impact = metrics.overall_impact
+                    mvp_player_id = player.id
+                    mvp_player_name = player.name
+
+        match_responses.append(MatchWithPlayersResponse(
+            id=match.id,
+            played_at=match.played_at,
+            game_mode=match.game_mode.value,
+            map_name=match.map_name,
+            duration_seconds=match.duration_seconds,
+            replay_hash=match.replay_hash or "",
+            predicted_team1_win_prob=match.predicted_team1_win_prob,
+            predicted_team2_win_prob=match.predicted_team2_win_prob,
+            winner_team=winner_team,
+            players=player_summaries,
+            mvp_player_id=mvp_player_id,
+            mvp_player_name=mvp_player_name,
+            total_damage=total_damage if total_damage > 0 else None
+        ))
+
+    return MatchListWithPlayersResponse(
+        matches=match_responses,
+        total_count=total_count,
+        limit=limit,
+        offset=offset
+    )
+
+
 @router.get("/matches/{match_id}", response_model=MatchDetailResponse)
 def get_match_details(
     match_id: int,
@@ -600,13 +791,16 @@ async def upload_replay_advanced(
             )
         duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
 
+        # Save replay file if enabled
+        replay_file_path = _save_replay_file(content, file.filename, replay_data.replay_hash)
+
         # Create match record
         match = Match(
             played_at=replay_data.played_at,
             game_mode=replay_data.game_mode,
             map_name=replay_data.map_name,
             duration_seconds=replay_data.duration_seconds,
-            replay_file_path=None,
+            replay_file_path=replay_file_path,
             replay_hash=replay_data.replay_hash
         )
         db.add(match)
@@ -655,6 +849,15 @@ async def upload_replay_advanced(
         except Exception as e:
             logger.error(f"Failed to apply performance-based adjustments: {e}", exc_info=True)
             # Continue - don't fail upload if adjustments fail
+
+        # Extract and save ML features
+        if replay_file_path:
+            try:
+                from ..services.ml_features_service import MLFeaturesService
+                MLFeaturesService.extract_and_save_ml_features(db, replay_file_path, match.id)
+            except Exception as e:
+                logger.warning(f"ML feature extraction failed: {e}")
+                # Don't fail upload if ML extraction fails
 
         rating_time_ms = (time.time() - rating_start) * 1000
 
@@ -950,6 +1153,152 @@ def _save_failed_replay_file(content: bytes, filename: str, replay_hash: str) ->
         f.write(content)
 
     return file_path
+
+
+def _save_replay_file(content: bytes, filename: str, replay_hash: str) -> str:
+    """
+    Save a successful replay file to persistent storage.
+
+    Args:
+        content: Raw replay file bytes
+        filename: Original filename
+        replay_hash: Replay hash for unique identification
+
+    Returns:
+        Path to saved file, or None if storage is disabled
+    """
+    from ..config import settings
+
+    if not settings.replay_storage_enabled:
+        return None
+
+    # Create replays directory if it doesn't exist
+    replays_dir = os.path.join(os.getcwd(), settings.replay_storage_dir)
+    os.makedirs(replays_dir, exist_ok=True)
+
+    # Use replay hash for unique filename (without original name to save space)
+    file_path = os.path.join(replays_dir, f"{replay_hash}.SC2Replay")
+
+    # Don't overwrite if exists
+    if os.path.exists(file_path):
+        return file_path
+
+    with open(file_path, 'wb') as f:
+        f.write(content)
+
+    return file_path
+
+
+class BulkReprocessRequest(BaseModel):
+    """Request for bulk reprocessing."""
+    match_ids: Optional[List[int]] = None  # If None, process all
+    force: bool = False  # If True, reprocess even if features exist
+
+
+class BulkReprocessResponse(BaseModel):
+    """Response for bulk reprocessing."""
+    total: int
+    processed: int
+    skipped: int
+    failed: int
+    errors: List[dict]
+
+
+@router.post("/bulk-reprocess", response_model=BulkReprocessResponse)
+def bulk_reprocess_replays(
+    request: BulkReprocessRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Bulk re-process existing matches to extract ML features.
+
+    This is useful for:
+    - Backfilling ML features for matches uploaded before ML integration
+    - Re-extracting features after algorithm improvements
+
+    Args:
+        request: Bulk reprocess options
+        db: Database session
+
+    Returns:
+        BulkReprocessResponse with processing statistics
+    """
+    from ..services.ml_features_service import MLFeaturesService
+
+    # Get matches to process
+    query = db.query(Match)
+
+    if request.match_ids:
+        query = query.filter(Match.id.in_(request.match_ids))
+
+    matches = query.all()
+
+    total = len(matches)
+    processed = 0
+    skipped = 0
+    failed = 0
+    errors = []
+
+    for match in matches:
+        try:
+            # Check if replay file exists
+            if not match.replay_file_path or not os.path.exists(match.replay_file_path):
+                skipped += 1
+                errors.append({
+                    "match_id": match.id,
+                    "error": "Replay file not found"
+                })
+                continue
+
+            # Check if features already exist (unless force=True)
+            if not request.force:
+                # Check if any player has features
+                match_players = db.query(MatchPlayer).filter(
+                    MatchPlayer.match_id == match.id
+                ).all()
+
+                has_features = False
+                for mp in match_players:
+                    existing = db.query(PerformanceFeatures).filter(
+                        PerformanceFeatures.match_player_id == mp.id
+                    ).first()
+                    if existing and existing.pim is not None:
+                        has_features = True
+                        break
+
+                if has_features:
+                    skipped += 1
+                    continue
+
+            # Extract and save ML features
+            results = MLFeaturesService.extract_and_save_ml_features(
+                db, match.replay_file_path, match.id
+            )
+
+            if any(results.values()):
+                processed += 1
+            else:
+                failed += 1
+                errors.append({
+                    "match_id": match.id,
+                    "error": "Feature extraction returned no results"
+                })
+
+        except Exception as e:
+            failed += 1
+            errors.append({
+                "match_id": match.id,
+                "error": str(e)
+            })
+            logger.error(f"Failed to reprocess match {match.id}: {e}")
+
+    return BulkReprocessResponse(
+        total=total,
+        processed=processed,
+        skipped=skipped,
+        failed=failed,
+        errors=errors[:50]  # Limit error list
+    )
 
 
 class ManualWinnerRequest(BaseModel):

@@ -397,8 +397,15 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         metrics.damage_dealt = metrics.army_value_killed
         metrics.damage_taken = metrics.army_value_lost
 
+        # Calculate damage ratio - handle edge cases
         if metrics.damage_taken > 0:
             metrics.damage_ratio = metrics.damage_dealt / metrics.damage_taken
+        elif metrics.damage_dealt > 0:
+            # Dealt damage but took none - use a high ratio to represent dominance
+            metrics.damage_ratio = float(metrics.damage_dealt)  # Use dealt as ratio (e.g., 31225:1)
+        else:
+            # No damage dealt or taken - neutral ratio
+            metrics.damage_ratio = 1.0
 
         # Spending efficiency (how much of collected resources were spent)
         # Approximate as: units built * avg cost

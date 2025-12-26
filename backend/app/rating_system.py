@@ -18,6 +18,9 @@ from sqlalchemy.orm import Session
 from .models import Player, Match, MatchPlayer
 from .replay_parser import ReplayData
 from .config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # TrueSkill environment configuration using centralized settings
@@ -156,22 +159,131 @@ class RatingSystem:
         return (team1_win_prob, team2_win_prob)
 
     @staticmethod
-    def apply_skill_decay(player: Player, days_since_last_game: int) -> None:
+    def apply_skill_decay(
+        player: Player,
+        days_since_last_game: int,
+        db: Session = None
+    ) -> None:
         """
-        Increase uncertainty (sigma) for players who haven't played recently.
-        This models skill deterioration from inactivity.
+        Apply adaptive skill decay based on player's typical session gaps.
+
+        Instead of penalizing all inactive players equally, this method:
+        1. Calculates player's typical gap between sessions
+        2. Only starts decaying after 2x their normal gap
+        3. Uses a gentler decay rate for infrequent players
+
+        This prevents unfair penalties for players who naturally play
+        less frequently (e.g., weekly vs daily players).
 
         Args:
             player: Player to apply decay to
             days_since_last_game: Number of days since last game
+            db: Database session (required for adaptive decay)
         """
-        # Increase sigma based on days inactive
-        # tau (0.0833) per day is the default dynamics factor
-        decay_per_day = 0.0833
-        sigma_increase = decay_per_day * days_since_last_game
+        # Base decay rate (tau per day)
+        base_decay_per_day = 0.0833
+
+        # Use adaptive decay if enabled and we have enough data
+        if settings.adaptive_decay_enabled and db and player.total_games >= settings.min_games_for_adaptive_decay:
+            typical_gap = RatingSystem.calculate_typical_session_gap(db, player)
+
+            if typical_gap > 0:
+                # Only start decaying after 2x their normal gap
+                decay_threshold = typical_gap * settings.adaptive_decay_multiplier
+
+                if days_since_last_game <= decay_threshold:
+                    # Within normal range - no decay
+                    logger.debug(
+                        f"Player {player.name}: {days_since_last_game} days inactive, "
+                        f"within threshold ({decay_threshold:.1f} days) - no decay"
+                    )
+                    return
+
+                # Days beyond the threshold
+                excess_days = days_since_last_game - decay_threshold
+
+                # Use a gentler decay rate for infrequent players
+                # Players with longer typical gaps get slower decay
+                decay_multiplier = min(1.0, 7.0 / typical_gap)  # Cap at daily players
+                adjusted_decay = base_decay_per_day * decay_multiplier
+
+                sigma_increase = adjusted_decay * excess_days
+
+                logger.info(
+                    f"Adaptive decay for {player.name}: "
+                    f"typical_gap={typical_gap:.1f}d, threshold={decay_threshold:.1f}d, "
+                    f"excess={excess_days:.1f}d, sigma_increase={sigma_increase:.4f}"
+                )
+            else:
+                # Fallback to standard decay
+                sigma_increase = base_decay_per_day * days_since_last_game
+        else:
+            # Standard decay for new players or when adaptive is disabled
+            sigma_increase = base_decay_per_day * days_since_last_game
 
         # Cap sigma at initial value (8.333)
+        old_sigma = player.sigma
         player.sigma = min(player.sigma + sigma_increase, 8.333)
+
+        if player.sigma != old_sigma:
+            logger.debug(
+                f"Decay applied to {player.name}: sigma {old_sigma:.4f} -> {player.sigma:.4f}"
+            )
+
+    @staticmethod
+    def calculate_typical_session_gap(db: Session, player: Player) -> float:
+        """
+        Calculate a player's typical gap between gaming sessions.
+
+        Uses the median gap between matches to represent typical behavior,
+        ignoring outliers (very long breaks).
+
+        Args:
+            db: Database session
+            player: Player to analyze
+
+        Returns:
+            Typical gap in days (0 if not enough data)
+        """
+        # Get player's match history ordered by date
+        match_players = db.query(MatchPlayer).filter(
+            MatchPlayer.player_id == player.id
+        ).join(Match).order_by(Match.played_at).all()
+
+        if len(match_players) < settings.min_games_for_adaptive_decay:
+            return 0.0
+
+        # Calculate gaps between matches
+        gaps = []
+        previous_match_time = None
+
+        for mp in match_players:
+            match = db.query(Match).filter(Match.id == mp.match_id).first()
+            if match and match.played_at:
+                if previous_match_time:
+                    gap_days = (match.played_at - previous_match_time).total_seconds() / 86400
+                    # Only count gaps > 4 hours as session gaps (ignore matches within same session)
+                    if gap_days >= settings.session_gap_hours / 24:
+                        gaps.append(gap_days)
+                previous_match_time = match.played_at
+
+        if not gaps:
+            return 0.0
+
+        # Use median to ignore outliers (long vacations, etc.)
+        gaps.sort()
+        median_idx = len(gaps) // 2
+        if len(gaps) % 2 == 0:
+            typical_gap = (gaps[median_idx - 1] + gaps[median_idx]) / 2
+        else:
+            typical_gap = gaps[median_idx]
+
+        logger.debug(
+            f"Player {player.name}: typical session gap = {typical_gap:.1f} days "
+            f"(from {len(gaps)} session gaps)"
+        )
+
+        return typical_gap
 
     @staticmethod
     def calculate_recency_weight(days_ago: float, reference_date: Optional[datetime] = None) -> float:
@@ -306,13 +418,14 @@ class RatingSystem:
                 db.flush()
             team_2_db.append((player, player_data))
 
-        # Apply skill decay for inactive players
+        # Apply adaptive skill decay for inactive players
+        # Uses per-player typical session gaps to avoid penalizing infrequent players
         current_date = replay_data.played_at
         for player, _ in team_1_db + team_2_db:
             if player.last_played:
                 days_since = (current_date - player.last_played).days
                 if days_since > 0:
-                    RatingSystem.apply_skill_decay(player, days_since)
+                    RatingSystem.apply_skill_decay(player, days_since, db)
 
         # Create TrueSkill Rating objects for each team
         team_1_ratings = [
@@ -415,6 +528,54 @@ class RatingSystem:
             player.last_played = replay_data.played_at
 
         db.commit()
+
+        # =====================================================================
+        # Hybrid MMR System Integration (SPEC-ML-001)
+        # Calculate Performance Impact Modifier and update hybrid_mmr
+        # =====================================================================
+        if settings.hybrid_mmr_enabled:
+            from app.services.pi_calculator import PICalculator
+
+            pi_calculator = PICalculator()
+
+            # Get all match players (need fresh query after commit)
+            all_match_players = db.query(MatchPlayer).filter(
+                MatchPlayer.match_id == match.id
+            ).all()
+
+            # Calculate match averages once for efficiency
+            match_averages = pi_calculator.calculate_match_averages(db, match.id)
+
+            # Process each player
+            for mp in all_match_players:
+                # Calculate raw MMR change
+                raw_mmr_change = RatingSystem.calculate_display_mmr(mp.mu_after) - \
+                                 RatingSystem.calculate_display_mmr(mp.mu_before)
+
+                # Calculate and store PIM + features
+                features = pi_calculator.calculate_and_store_features(
+                    db, mp, raw_mmr_change, match_averages
+                )
+
+                # Update player's hybrid_mmr
+                player = db.query(Player).filter(Player.id == mp.player_id).first()
+                if player:
+                    # Initialize hybrid_mmr if None
+                    if player.hybrid_mmr is None:
+                        player.hybrid_mmr = RatingSystem.calculate_display_mmr(player.mu)
+
+                    # Apply hybrid change
+                    player.hybrid_mmr += features.hybrid_mmr_change
+
+                    # Update rolling average PIM
+                    if player.avg_pim is None:
+                        player.avg_pim = features.pim
+                    else:
+                        # Exponential moving average (more weight to recent)
+                        alpha = 0.2  # Weight for new value
+                        player.avg_pim = alpha * features.pim + (1 - alpha) * player.avg_pim
+
+            db.commit()
 
         # Update recency-weighted ratings for all players in this match
         if RECENCY_ENABLED:

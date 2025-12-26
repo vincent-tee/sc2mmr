@@ -25,6 +25,7 @@ class PlayerInfo:
     mmr: float  # Conservative rating: mu - 3*sigma
     overall_impact: float  # Average overall impact score
     total_games: int
+    aggression_score: float = 50.0  # 0-100, higher = more aggressive playstyle
 
     @classmethod
     def from_player(cls, player: Player) -> 'PlayerInfo':
@@ -35,8 +36,9 @@ class PlayerInfo:
             mu=player.mu,
             sigma=player.sigma,
             mmr=player.mmr,
-            overall_impact=player.avg_overall_impact,
-            total_games=player.total_games
+            overall_impact=player.avg_overall_impact or 50.0,
+            total_games=player.total_games,
+            aggression_score=player.avg_aggression_score or 50.0
         )
 
 
@@ -53,6 +55,7 @@ class TeamSuggestion:
     team_1_avg_impact: float = 0.0  # Average impact score for team 1
     team_2_avg_impact: float = 0.0  # Average impact score for team 2
     impact_balance_score: float = 1.0  # How evenly high/low impact players are distributed
+    playstyle_balance_score: float = 1.0  # How evenly aggression styles are distributed
 
 
 class TeamBalancer:
@@ -174,6 +177,35 @@ class TeamBalancer:
         return team_1_avg, team_2_avg, balance_score
 
     @staticmethod
+    def calculate_playstyle_balance(
+        team_1: List[PlayerInfo],
+        team_2: List[PlayerInfo]
+    ) -> float:
+        """
+        Calculate playstyle balance score based on aggression distribution.
+        
+        Best teams have a mix of aggressive (rushers) and defensive (macro) players.
+        We want each team to have similar overall aggression levels.
+        
+        Args:
+            team_1: List of players on team 1
+            team_2: List of players on team 2
+            
+        Returns:
+            Balance score (0-1), where 1 = perfect playstyle distribution
+        """
+        # Calculate average aggression for each team
+        team_1_aggression = sum(p.aggression_score for p in team_1) / len(team_1) if team_1 else 50
+        team_2_aggression = sum(p.aggression_score for p in team_2) / len(team_2) if team_2 else 50
+        
+        # Calculate balance score (closer = better)
+        # Max difference is 100 (0 vs 100), we normalize to 0-1
+        aggression_diff = abs(team_1_aggression - team_2_aggression)
+        balance_score = 1.0 - (aggression_diff / 100.0)
+        
+        return balance_score
+
+    @staticmethod
     def generate_team_suggestions(
         players: List[PlayerInfo],
         top_n: int = 10
@@ -230,6 +262,9 @@ class TeamBalancer:
             team_1_avg_impact, team_2_avg_impact, impact_balance = TeamBalancer.calculate_impact_balance_score(
                 team_1, team_2
             )
+            
+            # Calculate playstyle balance (rushers vs macro players)
+            playstyle_balance = TeamBalancer.calculate_playstyle_balance(team_1, team_2)
 
             suggestions.append(TeamSuggestion(
                 team_1=team_1,
@@ -241,11 +276,17 @@ class TeamBalancer:
                 match_quality=match_quality,
                 team_1_avg_impact=team_1_avg_impact,
                 team_2_avg_impact=team_2_avg_impact,
-                impact_balance_score=impact_balance
+                impact_balance_score=impact_balance,
+                playstyle_balance_score=playstyle_balance
             ))
 
-        # Sort by match quality (descending) and MMR difference (ascending)
-        suggestions.sort(key=lambda x: (-x.match_quality, x.mmr_difference))
+        # Sort by combined score: 80% match quality + 20% playstyle balance
+        # This keeps MMR as primary factor while considering playstyle compatibility
+        PLAYSTYLE_WEIGHT = 0.20  # 20% weight for playstyle balance
+        suggestions.sort(key=lambda x: (
+            -(x.match_quality * (1 - PLAYSTYLE_WEIGHT) + x.playstyle_balance_score * PLAYSTYLE_WEIGHT),
+            x.mmr_difference
+        ))
 
         return suggestions[:top_n]
 

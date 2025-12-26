@@ -3,14 +3,15 @@ API endpoints for team balancing.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from itertools import combinations
 
 from ..database import get_db
 from ..balancer import TeamBalancer, BalancerStats
 from ..rating_models import RatingModel, RatingModelService, PlayerRating, ModelComparison, get_model_description
-from ..models import Player, MatchPlayer
+from ..models import Player, MatchPlayer, PlayerSynergy
+from ..services.ai_mmr_service import get_ai_mmr, get_all_ai_difficulties
 
 
 router = APIRouter(prefix="/teams", tags=["teams"])
@@ -21,6 +22,8 @@ class BalanceTeamsRequest(BaseModel):
     """Request to balance teams."""
     player_ids: List[int]
     top_n: int = 10
+    ai_difficulty: Optional[str] = None  # "easy", "medium", "hard", "very_hard", "elite"
+
 
 
 class PlayerInfo(BaseModel):
@@ -37,6 +40,8 @@ class TeamInfo(BaseModel):
     players: List[PlayerInfo]
     total_mmr: float
     avg_mmr: float
+    has_ai: bool = False
+    ai_mmr: Optional[float] = None
 
 
 class TeamSuggestionResponse(BaseModel):
@@ -207,6 +212,194 @@ def quick_balance(
 
     return suggestions[0]
 
+
+# =============================================================================
+# AI-Aware Balancing Endpoint
+# =============================================================================
+
+class BalanceWithAIRequest(BaseModel):
+    """Request to balance teams with an AI player."""
+    player_ids: List[int]
+    ai_difficulty: str = "hard"  # "very_easy", "easy", "medium", "hard", "very_hard", "elite"
+
+
+class AIBalanceResponse(BaseModel):
+    """Team balance response with AI placement info."""
+    team_1: TeamInfo
+    team_2: TeamInfo
+    mmr_difference: float
+    match_quality: float
+    win_probability_team_1: float
+    win_probability_team_2: float
+    fairness_rating: str
+    ai_info: dict  # Details about the AI placement
+
+
+@router.post("/balance-with-ai", response_model=AIBalanceResponse)
+def balance_teams_with_ai(
+    request: BalanceWithAIRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Balance teams including an AI player slot.
+    
+    The AI is treated as a virtual player with a fixed MMR based on difficulty.
+    It will be placed on the team that needs it most to balance the match.
+    
+    Args:
+        request: BalanceWithAIRequest with player IDs and AI difficulty
+        db: Database session
+        
+    Returns:
+        AIBalanceResponse with balanced teams and AI placement info
+    """
+    from ..balancer import PlayerInfo as BalancerPlayerInfo
+    
+    # Validate AI difficulty
+    ai_mmr = get_ai_mmr(request.ai_difficulty)
+    available = get_all_ai_difficulties()
+    
+    if request.ai_difficulty.lower() not in available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid AI difficulty. Available: {list(available.keys())}"
+        )
+    
+    # Get human players
+    players = db.query(Player).filter(Player.id.in_(request.player_ids)).all()
+    
+    if len(players) != len(request.player_ids):
+        found_ids = {p.id for p in players}
+        missing = set(request.player_ids) - found_ids
+        raise HTTPException(status_code=404, detail=f"Players not found: {missing}")
+    
+    # Convert to balancer format
+    player_infos = [BalancerPlayerInfo.from_player(p) for p in players]
+    
+    # Calculate total MMR for each potential team split
+    num_total = len(player_infos) + 1  # +1 for AI
+    
+    # Determine team sizes (AI makes it even or stays uneven)
+    if num_total % 2 == 0:
+        team_1_size_humans = num_total // 2
+    else:
+        team_1_size_humans = (num_total // 2) + 1
+    
+    # Try all combinations with AI on each team
+    best_balance = None
+    best_quality = -1
+    best_ai_team = None
+    
+    # Option 1: AI on Team 1
+    for team1_size in range(1, len(player_infos)):
+        for team1_indices in combinations(range(len(player_infos)), team1_size):
+            team1_humans = [player_infos[i] for i in team1_indices]
+            team2_humans = [player_infos[i] for i in range(len(player_infos)) if i not in team1_indices]
+            
+            # Try AI on Team 1
+            team1_mmr_with_ai = sum(p.mmr for p in team1_humans) + ai_mmr
+            team2_mmr = sum(p.mmr for p in team2_humans)
+            diff_ai_t1 = abs(team1_mmr_with_ai - team2_mmr)
+            
+            # Try AI on Team 2
+            team1_mmr = sum(p.mmr for p in team1_humans)
+            team2_mmr_with_ai = sum(p.mmr for p in team2_humans) + ai_mmr
+            diff_ai_t2 = abs(team1_mmr - team2_mmr_with_ai)
+            
+            # Pick better option
+            if diff_ai_t1 < diff_ai_t2:
+                quality = 1.0 / (1.0 + diff_ai_t1 / 1000)  # Simple quality metric
+                if quality > best_quality:
+                    best_quality = quality
+                    best_balance = (team1_humans, team2_humans)
+                    best_ai_team = 1
+            else:
+                quality = 1.0 / (1.0 + diff_ai_t2 / 1000)
+                if quality > best_quality:
+                    best_quality = quality
+                    best_balance = (team1_humans, team2_humans)
+                    best_ai_team = 2
+    
+    if not best_balance:
+        raise HTTPException(status_code=500, detail="Failed to balance teams")
+    
+    team1_humans, team2_humans = best_balance
+    
+    # Calculate final MMRs
+    if best_ai_team == 1:
+        team1_total = sum(p.mmr for p in team1_humans) + ai_mmr
+        team2_total = sum(p.mmr for p in team2_humans)
+        team1_count = len(team1_humans) + 1
+        team2_count = len(team2_humans)
+    else:
+        team1_total = sum(p.mmr for p in team1_humans)
+        team2_total = sum(p.mmr for p in team2_humans) + ai_mmr
+        team1_count = len(team1_humans)
+        team2_count = len(team2_humans) + 1
+    
+    # Calculate win probability (simplified)
+    total_mmr = team1_total + team2_total
+    win_prob_t1 = team1_total / total_mmr if total_mmr > 0 else 0.5
+    
+    # Build response
+    team1_player_infos = [
+        PlayerInfo(id=p.id, name=p.name, mmr=p.mmr, mu=p.mu, sigma=p.sigma)
+        for p in team1_humans
+    ]
+    team2_player_infos = [
+        PlayerInfo(id=p.id, name=p.name, mmr=p.mmr, mu=p.mu, sigma=p.sigma)
+        for p in team2_humans
+    ]
+    
+    mmr_diff = abs(team1_total - team2_total)
+    
+    # Fairness rating
+    if mmr_diff < 50:
+        fairness = "Excellent"
+    elif mmr_diff < 150:
+        fairness = "Good"
+    elif mmr_diff < 300:
+        fairness = "Fair"
+    else:
+        fairness = "Unbalanced"
+    
+    return AIBalanceResponse(
+        team_1=TeamInfo(
+            players=team1_player_infos,
+            total_mmr=team1_total,
+            avg_mmr=team1_total / team1_count,
+            has_ai=(best_ai_team == 1),
+            ai_mmr=ai_mmr if best_ai_team == 1 else None
+        ),
+        team_2=TeamInfo(
+            players=team2_player_infos,
+            total_mmr=team2_total,
+            avg_mmr=team2_total / team2_count,
+            has_ai=(best_ai_team == 2),
+            ai_mmr=ai_mmr if best_ai_team == 2 else None
+        ),
+        mmr_difference=mmr_diff,
+        match_quality=best_quality,
+        win_probability_team_1=round(win_prob_t1 * 100, 1),
+        win_probability_team_2=round((1 - win_prob_t1) * 100, 1),
+        fairness_rating=fairness,
+        ai_info={
+            "difficulty": request.ai_difficulty,
+            "mmr": ai_mmr,
+            "placed_on_team": best_ai_team,
+            "reason": f"AI placed on Team {best_ai_team} to minimize MMR difference"
+        }
+    )
+
+
+@router.get("/ai-difficulties")
+def list_ai_difficulties():
+    """List available AI difficulty levels and their MMR values."""
+    return {
+        "difficulties": get_all_ai_difficulties(),
+        "config_path": "backend/config/ai_mmr.json",
+        "note": "Edit the config file to recalibrate AI MMR values"
+    }
 
 class BalanceWithImpactRequest(BaseModel):
     """Request to balance teams with impact consideration."""
@@ -597,3 +790,250 @@ def list_available_models():
             for model in RatingModel
         ]
     }
+
+
+# =============================================================================
+# Match Prediction Endpoint (Phase 1 Feature)
+# =============================================================================
+
+class PredictMatchRequest(BaseModel):
+    """Request to predict match outcome."""
+    team_1_ids: List[int]
+    team_2_ids: List[int]
+
+
+class SynergyInfo(BaseModel):
+    """Synergy information between two players."""
+    player1_name: str
+    player2_name: str
+    games_together: int
+    win_rate: float
+    synergy_score: float
+
+
+class TeamPredictionInfo(BaseModel):
+    """Detailed team prediction info."""
+    players: List[PlayerInfo]
+    total_mmr: float
+    avg_mmr: float
+    win_probability: float
+    synergies: List[SynergyInfo]
+    avg_synergy_score: float
+    team_chemistry: str  # "Strong", "Average", "Weak", "Unknown"
+
+
+class MatchPredictionResponse(BaseModel):
+    """Enhanced match prediction response."""
+    team_1: TeamPredictionInfo
+    team_2: TeamPredictionInfo
+    predicted_winner: int  # 1 or 2
+    confidence: str  # "High", "Medium", "Low"
+    upset_potential: bool  # True if underdog has good synergy
+    match_quality: float
+    factors: List[str]  # Explanation of prediction factors
+
+
+@router.post("/predict", response_model=MatchPredictionResponse)
+def predict_match(
+    request: PredictMatchRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Predict match outcome with detailed analysis.
+
+    Factors in:
+    - Team MMR difference
+    - Player synergies (historical performance together)
+    - Match quality (how competitive the match should be)
+
+    Args:
+        request: Teams to predict
+        db: Database session
+
+    Returns:
+        Detailed match prediction with confidence and factors
+    """
+    from ..balancer import TeamBalancer
+    from ..balancer import PlayerInfo as BalancerPlayerInfo
+
+    # Get players
+    team_1_players = db.query(Player).filter(Player.id.in_(request.team_1_ids)).all()
+    team_2_players = db.query(Player).filter(Player.id.in_(request.team_2_ids)).all()
+
+    if len(team_1_players) != len(request.team_1_ids):
+        raise HTTPException(status_code=404, detail="Some team 1 players not found")
+    if len(team_2_players) != len(request.team_2_ids):
+        raise HTTPException(status_code=404, detail="Some team 2 players not found")
+
+    # Convert to balancer format
+    t1_info = [BalancerPlayerInfo.from_player(p) for p in team_1_players]
+    t2_info = [BalancerPlayerInfo.from_player(p) for p in team_2_players]
+
+    # Calculate base predictions
+    win_prob_t1 = TeamBalancer.calculate_win_probability(t1_info, t2_info)
+    match_quality = TeamBalancer.calculate_match_quality(t1_info, t2_info)
+
+    # Get synergies for each team
+    def get_team_synergies(players: List[Player]) -> tuple:
+        synergies = []
+        total_score = 0
+        count = 0
+
+        for i, p1 in enumerate(players):
+            for p2 in players[i+1:]:
+                # Ensure player1_id < player2_id for lookup
+                pid1, pid2 = min(p1.id, p2.id), max(p1.id, p2.id)
+                syn = db.query(PlayerSynergy).filter(
+                    PlayerSynergy.player1_id == pid1,
+                    PlayerSynergy.player2_id == pid2
+                ).first()
+
+                if syn and syn.games_together >= 3:
+                    wr = syn.wins_together / syn.games_together if syn.games_together > 0 else 0.5
+                    synergies.append(SynergyInfo(
+                        player1_name=p1.name if p1.id == pid1 else p2.name,
+                        player2_name=p2.name if p2.id == pid2 else p1.name,
+                        games_together=syn.games_together,
+                        win_rate=round(wr * 100, 1),
+                        synergy_score=round(syn.synergy_score, 1)
+                    ))
+                    total_score += syn.synergy_score
+                    count += 1
+
+        avg_score = total_score / count if count > 0 else 50.0
+
+        if avg_score >= 52:
+            chemistry = "Strong"
+        elif avg_score >= 48:
+            chemistry = "Average"
+        elif count > 0:
+            chemistry = "Weak"
+        else:
+            chemistry = "Unknown"
+
+        return synergies, avg_score, chemistry
+
+    t1_synergies, t1_avg_syn, t1_chem = get_team_synergies(team_1_players)
+    t2_synergies, t2_avg_syn, t2_chem = get_team_synergies(team_2_players)
+
+    # Calculate MMR totals
+    t1_total_mmr = sum(p.mmr for p in team_1_players)
+    t2_total_mmr = sum(p.mmr for p in team_2_players)
+    t1_avg_mmr = t1_total_mmr / len(team_1_players)
+    t2_avg_mmr = t2_total_mmr / len(team_2_players)
+
+    # Determine prediction factors
+    factors = []
+
+    mmr_diff = abs(t1_avg_mmr - t2_avg_mmr)
+    if mmr_diff > 200:
+        factors.append(f"Large MMR gap ({mmr_diff:.0f} avg difference)")
+    elif mmr_diff < 50:
+        factors.append("Very close MMR - could go either way")
+
+    if t1_chem == "Strong" and t2_chem != "Strong":
+        factors.append("Team 1 has better synergy")
+    elif t2_chem == "Strong" and t1_chem != "Strong":
+        factors.append("Team 2 has better synergy")
+
+    if match_quality > 0.4:
+        factors.append("High match quality - competitive game expected")
+    elif match_quality < 0.2:
+        factors.append("Low match quality - one-sided match likely")
+
+    # Determine confidence
+    if abs(win_prob_t1 - 0.5) > 0.25:
+        confidence = "High"
+    elif abs(win_prob_t1 - 0.5) > 0.1:
+        confidence = "Medium"
+    else:
+        confidence = "Low"
+
+    # Check for upset potential
+    upset_potential = False
+    if win_prob_t1 < 0.4 and t1_chem == "Strong":
+        upset_potential = True
+        factors.append("⚡ Upset alert: Team 1 underdogs have strong chemistry!")
+    elif win_prob_t1 > 0.6 and t2_chem == "Strong":
+        upset_potential = True
+        factors.append("⚡ Upset alert: Team 2 underdogs have strong chemistry!")
+
+    predicted_winner = 1 if win_prob_t1 >= 0.5 else 2
+
+    # Build response
+    return MatchPredictionResponse(
+        team_1=TeamPredictionInfo(
+            players=[PlayerInfo(id=p.id, name=p.name, mmr=p.mmr, mu=p.mu, sigma=p.sigma) for p in team_1_players],
+            total_mmr=round(t1_total_mmr, 1),
+            avg_mmr=round(t1_avg_mmr, 1),
+            win_probability=round(win_prob_t1 * 100, 1),
+            synergies=t1_synergies,
+            avg_synergy_score=round(t1_avg_syn, 1),
+            team_chemistry=t1_chem
+        ),
+        team_2=TeamPredictionInfo(
+            players=[PlayerInfo(id=p.id, name=p.name, mmr=p.mmr, mu=p.mu, sigma=p.sigma) for p in team_2_players],
+            total_mmr=round(t2_total_mmr, 1),
+            avg_mmr=round(t2_avg_mmr, 1),
+            win_probability=round((1 - win_prob_t1) * 100, 1),
+            synergies=t2_synergies,
+            avg_synergy_score=round(t2_avg_syn, 1),
+            team_chemistry=t2_chem
+        ),
+        predicted_winner=predicted_winner,
+        confidence=confidence,
+        upset_potential=upset_potential,
+        match_quality=round(match_quality, 3),
+        factors=factors if factors else ["Evenly matched teams"]
+    )
+
+
+# =============================================================================
+# ML-Optimized Prediction Endpoint (81.1% Accuracy)
+# =============================================================================
+
+class MLPredictRequest(BaseModel):
+    """Request for ML-optimized prediction."""
+    team_1_ids: List[int]
+    team_2_ids: List[int]
+
+
+@router.post("/predict-ml")
+def predict_match_ml(
+    request: MLPredictRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Predict match outcome using ML-optimized model (81.1% accuracy).
+    
+    This uses a Logistic Regression model trained on match history with
+    optimized feature weights. Features include:
+    - Recent win rate (most important: 1.85 weight)
+    - Win streak momentum (0.54 weight)
+    - Economic score (0.31 weight)
+    - Combat score (0.22 weight)
+    - Overall impact (0.13 weight)
+    - Efficiency (0.13 weight)
+    - Recency MMR (0.05 weight)
+    
+    Args:
+        request: Teams to predict
+        db: Database session
+        
+    Returns:
+        ML prediction with confidence and key factors
+    """
+    from ..services.ml_prediction_service import MLPredictionService
+    
+    try:
+        prediction = MLPredictionService.predict_match(
+            db,
+            request.team_1_ids,
+            request.team_2_ids
+        )
+        return prediction
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+

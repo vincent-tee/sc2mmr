@@ -48,6 +48,7 @@ Architecture:
 """
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, field
+from collections import defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
 import numpy as np
@@ -56,10 +57,41 @@ import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, JSON, ForeignKey, Text
 
-from .models import Match, MatchPlayer, PlayerMatchMetrics, Base
+from .models import Match, MatchPlayer, PlayerMatchMetrics, Base, Player
 from .adaptive_model import PerformanceWeights, AdaptiveModelTuner
+from .config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Session Tracking Model
+# ============================================================================
+
+class PlayerSession(Base):
+    """
+    Tracks player gaming sessions for session-aware learning.
+
+    A session is defined as a continuous period of play with no gaps
+    longer than SESSION_GAP_HOURS between matches.
+    """
+    __tablename__ = "player_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False)
+    session_start = Column(DateTime, nullable=False)
+    session_end = Column(DateTime, nullable=False)
+    match_count = Column(Integer, default=0)
+    wins = Column(Integer, default=0)
+    losses = Column(Integer, default=0)
+
+    # Session statistics
+    avg_performance = Column(Float, nullable=True)
+    session_mmr_change = Column(Float, default=0.0)
+
+    # Learning metadata
+    learning_triggered = Column(Boolean, default=False)
+    learning_triggered_at = Column(DateTime, nullable=True)
 
 
 # ============================================================================
@@ -158,10 +190,26 @@ class FeatureSuggestion(Base):
 
 @dataclass
 class LearningConfig:
-    """Configuration for online learning system."""
-    # Retraining frequency
-    retrain_every_n_matches: int = 50
-    min_matches_for_training: int = 100
+    """
+    Configuration for online learning system.
+
+    Values are loaded from centralized settings for consistency.
+    Optimized for infrequent play patterns (8-10 games per session,
+    weeks between sessions).
+    """
+    # Retraining frequency - optimized for session-based play
+    retrain_every_n_matches: int = field(default_factory=lambda: settings.retrain_threshold)
+    min_matches_for_training: int = field(default_factory=lambda: settings.min_matches_for_training)
+    training_window: int = field(default_factory=lambda: settings.training_window)
+
+    # Session-aware learning
+    session_gap_hours: float = field(default_factory=lambda: settings.session_gap_hours)
+    session_weight_multiplier: float = field(default_factory=lambda: settings.session_weight_multiplier)
+
+    # Bayesian online updating
+    bayesian_online_enabled: bool = field(default_factory=lambda: settings.bayesian_online_enabled)
+    upset_learning_boost: float = field(default_factory=lambda: settings.upset_learning_boost)
+    feature_importance_ema_alpha: float = field(default_factory=lambda: settings.feature_importance_ema_alpha)
 
     # Feature discovery
     feature_discovery_enabled: bool = True
@@ -224,15 +272,24 @@ class OnlineLearningEngine:
 
         This triggers the learning process:
         1. Calculate prediction errors
-        2. Update feature importance
-        3. Check if retraining is needed
-        4. Suggest new features if patterns found
+        2. Perform Bayesian online update (incremental learning)
+        3. Update session tracking
+        4. Check if session ended (triggers session-based learning)
+        5. Update feature importance with EMA
+        6. Check if retraining is needed
+        7. Suggest new features if patterns found
         """
+        # Get the match for session tracking
+        match = self.db.query(Match).filter(Match.id == match_id).first()
+
         # Update prediction logs with actual outcome
         pred_logs = self.db.query(PredictionLog).filter(
             PredictionLog.match_id == match_id,
             PredictionLog.actual_team1_won.is_(None)
         ).all()
+
+        prediction_error = 0.0
+        was_upset = False
 
         for pred_log in pred_logs:
             pred_log.actual_team1_won = team1_won
@@ -240,22 +297,38 @@ class OnlineLearningEngine:
             # Calculate prediction error
             predicted_prob = pred_log.predicted_team1_win_prob if team1_won else pred_log.predicted_team2_win_prob
             pred_log.prediction_error = abs(1.0 - predicted_prob)
+            prediction_error = pred_log.prediction_error
 
-            # Mark upsets
+            # Mark upsets (underdog with <40% win probability wins)
             underdog_won = (team1_won and pred_log.predicted_team1_win_prob < 0.4) or \
                           (not team1_won and pred_log.predicted_team2_win_prob < 0.4)
             pred_log.was_upset = underdog_won
+            was_upset = underdog_won
 
         self.db.commit()
 
-        # Trigger learning pipeline
-        self._check_and_trigger_learning()
+        # Bayesian online update after EVERY match (incremental learning)
+        if self.config.bayesian_online_enabled and pred_logs:
+            self._bayesian_online_update(pred_logs[0], was_upset)
 
-    def _check_and_trigger_learning(self) -> None:
+        # Update session tracking for all players in the match
+        if match:
+            self._update_player_sessions(match)
+
+        # Trigger learning pipeline (may trigger session-end learning)
+        self._check_and_trigger_learning(match)
+
+    def _check_and_trigger_learning(self, current_match: Optional[Match] = None) -> None:
         """
         Check if it's time to retrain and trigger learning if needed.
+
+        Supports two modes:
+        1. Session-based: Trigger at end of gaming session
+        2. Match-count based: Trigger after N matches (fallback)
+
+        Args:
+            current_match: The current match for session boundary detection
         """
-        # Count matches since last training
         total_matches = self.db.query(Match).count()
 
         # Get last model version
@@ -268,40 +341,321 @@ class OnlineLearningEngine:
         else:
             matches_since_training = total_matches
 
+        # Check if session ended (triggers learning at session boundary)
+        session_ended = self._detect_session_end(current_match) if current_match else False
+
         # Should we retrain?
+        # Option 1: Session ended with enough matches
+        # Option 2: Match count threshold reached
         should_retrain = (
-            matches_since_training >= self.config.retrain_every_n_matches and
-            total_matches >= self.config.min_matches_for_training
-        )
+            (session_ended and matches_since_training >= 3) or  # At least 3 matches in session
+            (matches_since_training >= self.config.retrain_every_n_matches)
+        ) and total_matches >= self.config.min_matches_for_training
 
         if should_retrain:
-            logger.info(f"Triggering retraining: {matches_since_training} new matches")
+            trigger_reason = "session end" if session_ended else f"{matches_since_training} new matches"
+            logger.info(f"Triggering retraining: {trigger_reason}")
             self._retrain_model()
 
             if self.config.feature_discovery_enabled:
                 self._discover_new_features()
 
-    def _retrain_model(self) -> ModelVersion:
+    def _detect_session_end(self, current_match: Match) -> bool:
         """
-        Retrain the model on recent data.
+        Detect if a gaming session has ended.
+
+        A session is considered ended if the gap between this match
+        and the next match (if any) exceeds SESSION_GAP_HOURS.
+
+        Since we process matches in order, we detect session end by
+        checking the gap since the previous match.
+
+        Args:
+            current_match: The current match being processed
 
         Returns:
-            New model version
+            True if this match ends a session
         """
-        logger.info("Starting model retraining...")
+        if not current_match or not current_match.played_at:
+            return False
 
-        # Get recent matches for training
+        # Find the previous match
+        previous_match = self.db.query(Match).filter(
+            Match.played_at < current_match.played_at
+        ).order_by(Match.played_at.desc()).first()
+
+        if not previous_match:
+            # First match ever - no session end
+            return False
+
+        # Calculate time gap
+        time_gap = current_match.played_at - previous_match.played_at
+        gap_hours = time_gap.total_seconds() / 3600
+
+        # If gap is larger than session threshold, the PREVIOUS session ended
+        is_new_session = gap_hours >= self.config.session_gap_hours
+
+        if is_new_session:
+            logger.info(
+                f"Session boundary detected: {gap_hours:.1f}h gap "
+                f"(threshold: {self.config.session_gap_hours}h)"
+            )
+
+        return is_new_session
+
+    def _update_player_sessions(self, match: Match) -> None:
+        """
+        Update session tracking for all players in a match.
+
+        Creates or updates PlayerSession records to track gaming sessions.
+
+        Args:
+            match: The match to process
+        """
+        if not match.played_at:
+            return
+
+        # Get all players in this match
+        match_players = self.db.query(MatchPlayer).filter(
+            MatchPlayer.match_id == match.id
+        ).all()
+
+        session_gap = timedelta(hours=self.config.session_gap_hours)
+
+        for mp in match_players:
+            # Find the player's current active session
+            current_session = self.db.query(PlayerSession).filter(
+                PlayerSession.player_id == mp.player_id,
+                PlayerSession.session_end >= match.played_at - session_gap
+            ).order_by(PlayerSession.session_end.desc()).first()
+
+            if current_session:
+                # Extend the existing session
+                current_session.session_end = match.played_at
+                current_session.match_count += 1
+                if mp.won:
+                    current_session.wins += 1
+                else:
+                    current_session.losses += 1
+
+                logger.debug(
+                    f"Extended session for player {mp.player_id}: "
+                    f"{current_session.match_count} matches"
+                )
+            else:
+                # Start a new session
+                new_session = PlayerSession(
+                    player_id=mp.player_id,
+                    session_start=match.played_at,
+                    session_end=match.played_at,
+                    match_count=1,
+                    wins=1 if mp.won else 0,
+                    losses=0 if mp.won else 1
+                )
+                self.db.add(new_session)
+
+                logger.debug(f"Started new session for player {mp.player_id}")
+
+        self.db.commit()
+
+    def _bayesian_online_update(
+        self,
+        pred_log: PredictionLog,
+        was_upset: bool
+    ) -> None:
+        """
+        Perform Bayesian online update after a single match.
+
+        This provides incremental learning without full retraining:
+        1. Update model beliefs based on prediction error
+        2. Weight learning by prediction surprise (upsets teach more)
+        3. Use EMA for feature importance updates
+
+        Args:
+            pred_log: The prediction log with outcome
+            was_upset: Whether this was an upset (unexpected outcome)
+        """
+        if not pred_log or pred_log.prediction_error is None:
+            return
+
+        # Calculate learning rate based on surprise
+        # Higher error = more surprise = more learning
+        base_learning_rate = 0.05
+        surprise_factor = pred_log.prediction_error  # 0.0 to 1.0
+
+        # Boost learning for upsets (they're informative)
+        if was_upset:
+            surprise_factor *= self.config.upset_learning_boost
+
+        learning_rate = base_learning_rate * (1 + surprise_factor)
+        learning_rate = min(learning_rate, 0.15)  # Cap at 15%
+
+        logger.info(
+            f"Bayesian update: error={pred_log.prediction_error:.3f}, "
+            f"upset={was_upset}, learning_rate={learning_rate:.3f}"
+        )
+
+        # Update feature importance using EMA
+        if pred_log.features_json:
+            self._update_feature_importance_ema(
+                pred_log.features_json,
+                pred_log.prediction_error,
+                learning_rate
+            )
+
+        # Update model version statistics
+        model = self.db.query(ModelVersion).filter(
+            ModelVersion.version_name == pred_log.model_version
+        ).first()
+
+        if model:
+            model.total_predictions += 1
+
+            # Track prediction accuracy
+            if pred_log.prediction_error < 0.5:  # Correct prediction
+                model.correct_predictions += 1
+
+            # Update average prediction error using EMA
+            alpha = self.config.feature_importance_ema_alpha
+            if model.avg_prediction_error == 0:
+                model.avg_prediction_error = pred_log.prediction_error
+            else:
+                model.avg_prediction_error = (
+                    alpha * pred_log.prediction_error +
+                    (1 - alpha) * model.avg_prediction_error
+                )
+
+            self.db.commit()
+
+    def _update_feature_importance_ema(
+        self,
+        features: Dict[str, Any],
+        prediction_error: float,
+        learning_rate: float
+    ) -> None:
+        """
+        Update feature importance using Exponential Moving Average.
+
+        Features that correlate with prediction errors are less important.
+        Features that help predict correctly are more important.
+
+        Args:
+            features: Dictionary of feature values used in prediction
+            prediction_error: Error of this prediction (0-1)
+            learning_rate: How much to weight this update
+        """
+        # Get active model
+        active_model = self.db.query(ModelVersion).filter(
+            ModelVersion.is_active == True
+        ).first()
+
+        if not active_model:
+            return
+
+        model_version = active_model.version_name
+
+        for feature_name, feature_value in features.items():
+            if feature_value is None:
+                continue
+
+            # Get or create feature importance record
+            importance = self.db.query(FeatureImportance).filter(
+                FeatureImportance.feature_name == feature_name,
+                FeatureImportance.model_version == model_version
+            ).first()
+
+            if not importance:
+                importance = FeatureImportance(
+                    feature_name=feature_name,
+                    model_version=model_version,
+                    correlation_with_outcome=0.5,  # Start neutral
+                    sample_size=0,
+                    feature_type="existing"
+                )
+                self.db.add(importance)
+
+            # Update correlation using EMA
+            # Lower error = higher correlation with correct outcome
+            outcome_correlation = 1.0 - prediction_error
+            alpha = self.config.feature_importance_ema_alpha
+
+            importance.correlation_with_outcome = (
+                alpha * outcome_correlation +
+                (1 - alpha) * importance.correlation_with_outcome
+            )
+            importance.sample_size += 1
+            importance.calculated_at = datetime.utcnow()
+
+        self.db.commit()
+
+    def get_session_weighted_training_data(
+        self,
+        limit: int = None
+    ) -> List[Tuple[Any, bool, float]]:
+        """
+        Get training data with session-based weighting.
+
+        Recent session matches are weighted higher (2x by default) for
+        faster adaptation to current skill level.
+
+        Args:
+            limit: Maximum number of matches to retrieve
+
+        Returns:
+            List of (metrics, won, weight) tuples
+        """
+        limit = limit or self.config.training_window
+
+        # Get recent matches
         recent_matches = self.db.query(Match).order_by(
             Match.played_at.desc()
-        ).limit(500).all()
+        ).limit(limit).all()
 
-        # Prepare training data
+        # Identify current session boundary
+        current_time = datetime.utcnow()
+        session_cutoff = current_time - timedelta(hours=self.config.session_gap_hours)
+
         training_data = []
         for match in recent_matches:
+            # Determine weight based on session
+            is_current_session = (
+                match.played_at and match.played_at >= session_cutoff
+            )
+            weight = self.config.session_weight_multiplier if is_current_session else 1.0
+
             for match_player in match.players:
                 if match_player.metrics:
                     won = match_player.won == 1
-                    training_data.append((match_player.metrics, won))
+                    training_data.append((match_player.metrics, won, weight))
+
+        logger.info(
+            f"Prepared {len(training_data)} training samples, "
+            f"{sum(1 for d in training_data if d[2] > 1.0)} from current session"
+        )
+
+        return training_data
+
+    def _retrain_model(self) -> ModelVersion:
+        """
+        Retrain the model on recent data with session-aware weighting.
+
+        Uses session-weighted training data where recent session matches
+        count more heavily (2x by default) for faster adaptation.
+
+        Returns:
+            New model version or None if not enough data
+        """
+        logger.info("Starting model retraining with session-weighted data...")
+
+        # Get session-weighted training data
+        weighted_training_data = self.get_session_weighted_training_data(
+            limit=self.config.training_window
+        )
+
+        # Convert to unweighted format for backward compatibility
+        # and prepare weighted samples for optimization
+        training_data = [(metrics, won) for metrics, won, _ in weighted_training_data]
+        sample_weights = [weight for _, _, weight in weighted_training_data]
 
         if len(training_data) < self.config.min_matches_for_training:
             logger.warning(f"Not enough data for training: {len(training_data)} samples")
@@ -317,23 +671,32 @@ class OnlineLearningEngine:
         else:
             current_weights = PerformanceWeights()
 
-        # Optimize weights using AdaptiveModelTuner
+        # Optimize weights using AdaptiveModelTuner with sample weights
         tuner = AdaptiveModelTuner()
         from scipy.optimize import minimize
 
         def objective(weights_array):
             weights = PerformanceWeights.from_array(weights_array)
-            return tuner.evaluate_weights(weights, training_data)
+            # Use weighted evaluation if available
+            return tuner.evaluate_weights_weighted(
+                weights, training_data, sample_weights
+            ) if hasattr(tuner, 'evaluate_weights_weighted') else tuner.evaluate_weights(
+                weights, training_data
+            )
 
-        # Optimize
+        # Optimize with increased iterations for better convergence
         result = minimize(
             objective,
             current_weights.to_array(),
             method='Nelder-Mead',
-            options={'maxiter': 100}
+            options={'maxiter': 150}  # Increased from 100
         )
 
         new_weights = PerformanceWeights.from_array(result.x)
+
+        # Calculate session statistics for notes
+        current_session_samples = sum(1 for w in sample_weights if w > 1.0)
+        total_weight = sum(sample_weights)
 
         # Create new model version
         version_name = f"v{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -348,7 +711,11 @@ class OnlineLearningEngine:
             features_used=['combat_score', 'economic_score', 'team_contribution', 'efficiency_score'],
             is_experimental=True,  # Start as experimental
             parent_version=current_model.version_name if current_model else None,
-            notes=f"Trained on {len(training_data)} samples"
+            notes=(
+                f"Trained on {len(training_data)} samples "
+                f"({current_session_samples} from current session, "
+                f"effective weight: {total_weight:.1f})"
+            )
         )
 
         self.db.add(new_model)
@@ -356,6 +723,10 @@ class OnlineLearningEngine:
 
         logger.info(f"Created new model version: {version_name}")
         logger.info(f"New weights: {new_weights}")
+        logger.info(
+            f"Training used {len(training_data)} samples "
+            f"({current_session_samples} session-weighted at {self.config.session_weight_multiplier}x)"
+        )
 
         return new_model
 
