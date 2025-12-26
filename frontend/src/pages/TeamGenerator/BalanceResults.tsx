@@ -60,12 +60,11 @@ const BalanceResults: React.FC<BalanceResultsProps> = ({
         size="lg"
         mb={6}
         fontFamily="heading"
-        textTransform="uppercase"
         letterSpacing="wider"
         color="brand.400"
         textAlign="center"
       >
-        DEPLOYMENT CONFIGURATIONS
+        Team Configurations
       </Heading>
 
       <VStack spacing={6} align="stretch">
@@ -99,8 +98,8 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
   isRecommended,
   onExport,
 }) => {
-  const labels = ['OPTIMAL BALANCE', 'TACTICAL SYNERGY', 'ALTERNATIVE CONFIG'];
-  const label = labels[index] || `CONFIG ${index + 1}`;
+  const labels = ['Optimal Balance', 'Tactical Synergy', 'Alternative Config'];
+  const label = labels[index] || `Config ${index + 1}`;
 
   const team1WinProb = (suggestion.win_probability_team_1 * 100).toFixed(1);
   const team2WinProb = (suggestion.win_probability_team_2 * 100).toFixed(1);
@@ -152,10 +151,9 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
             px={4}
             py={2}
             fontFamily="heading"
-            textTransform="uppercase"
             boxShadow="0 0 20px rgba(0, 255, 136, 0.5)"
           >
-            RECOMMENDED
+            Recommended
           </Badge>
         )}
 
@@ -165,7 +163,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
             <Heading
               size="lg"
               fontFamily="heading"
-              textTransform="uppercase"
               letterSpacing="wider"
               color="brand.300"
               mb={4}
@@ -180,9 +177,8 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   fontSize="xs"
                   color="gray.500"
                   fontFamily="heading"
-                  textTransform="uppercase"
                 >
-                  TEAM 1 WIN PROB
+                  Team 1 Win Prob
                 </Text>
                 <Text
                   fontSize="4xl"
@@ -201,7 +197,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   fontSize="xs"
                   color="gray.500"
                   fontFamily="heading"
-                  textTransform="uppercase"
                 >
                   VS
                 </Text>
@@ -212,9 +207,8 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   fontSize="xs"
                   color="gray.500"
                   fontFamily="heading"
-                  textTransform="uppercase"
                 >
-                  TEAM 2 WIN PROB
+                  Team 2 Win Prob
                 </Text>
                 <Text
                   fontSize="4xl"
@@ -255,7 +249,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   px={3}
                   py={1}
                   fontFamily="heading"
-                  textTransform="uppercase"
                 >
                   {suggestion.fairness_rating}
                 </Badge>
@@ -263,9 +256,8 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   fontSize="sm"
                   color="gray.400"
                   fontFamily="heading"
-                  textTransform="uppercase"
                 >
-                  MMR DIFF: {formatMMR(suggestion.mmr_difference)}
+                  MMR Diff: {formatMMR(suggestion.mmr_difference)}
                 </Text>
               </HStack>
             </Box>
@@ -295,11 +287,10 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   color="gray.900"
                   letterSpacing="wider"
                 >
-                  TEAM 1
+                  Team 1
                 </Heading>
               </Box>
               <VStack spacing={2} align="stretch">
@@ -320,7 +311,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                     fontSize="xs"
                     color="gray.500"
                     fontFamily="heading"
-                    textTransform="uppercase"
                     mb={1}
                   >
                     Average MMR
@@ -348,7 +338,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                         fontSize="xs"
                         color="gray.500"
                         fontFamily="heading"
-                        textTransform="uppercase"
                         mb={1}
                       >
                         Avg Impact
@@ -384,11 +373,10 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   color="gray.900"
                   letterSpacing="wider"
                 >
-                  TEAM 2
+                  Team 2
                 </Heading>
               </Box>
               <VStack spacing={2} align="stretch">
@@ -409,7 +397,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                     fontSize="xs"
                     color="gray.500"
                     fontFamily="heading"
-                    textTransform="uppercase"
                     mb={1}
                   >
                     Average MMR
@@ -437,7 +424,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                         fontSize="xs"
                         color="gray.500"
                         fontFamily="heading"
-                        textTransform="uppercase"
                         mb={1}
                       >
                         Avg Impact
@@ -473,7 +459,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                       fontSize="sm"
                       color="gray.400"
                       fontFamily="heading"
-                      textTransform="uppercase"
                     >
                       Impact Distribution
                     </Text>
@@ -493,7 +478,7 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                       fontFamily="heading"
                     >
                       {(suggestion.impact_balance_score * 100).toFixed(0)}%
-                      BALANCED
+                      Balanced
                     </Badge>
                   </HStack>
                   <Progress
@@ -536,7 +521,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                 variant="outline"
                 size="md"
                 fontFamily="heading"
-                textTransform="uppercase"
                 borderColor="brand.400"
                 _hover={{
                   bg: 'whiteAlpha.100',
@@ -550,7 +534,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   icon={<FiCopy />}
                   onClick={() => onExport(suggestion, 'text')}
                   fontFamily="heading"
-                  textTransform="uppercase"
                   fontSize="sm"
                   _hover={{ bg: 'whiteAlpha.100' }}
                 >
@@ -560,7 +543,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   icon={<FiDownload />}
                   onClick={() => onExport(suggestion, 'download')}
                   fontFamily="heading"
-                  textTransform="uppercase"
                   fontSize="sm"
                   _hover={{ bg: 'whiteAlpha.100' }}
                 >

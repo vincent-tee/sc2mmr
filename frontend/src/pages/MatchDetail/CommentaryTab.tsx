@@ -61,10 +61,9 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
             size="md"
             mb={3}
             fontFamily="heading"
-            textTransform="uppercase"
             letterSpacing="wider"
           >
-            Mission Overview
+            Match Overview
           </Heading>
           <Text lineHeight="tall">{commentary.overview}</Text>
         </CardBody>
@@ -78,7 +77,6 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
             <Heading
               size="md"
               fontFamily="heading"
-              textTransform="uppercase"
               letterSpacing="wider"
             >
               Critical Moments
@@ -116,10 +114,9 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wider"
                 >
-                  Mission MVP
+                  Match MVP
                 </Heading>
               </HStack>
               <VStack align="stretch" spacing={3}>
@@ -156,10 +153,9 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
             <Heading
               size="md"
               fontFamily="heading"
-              textTransform="uppercase"
               letterSpacing="wider"
             >
-              Operative Performance
+              Player Performance
             </Heading>
           </HStack>
           <VStack align="stretch" spacing={4}>
@@ -189,7 +185,6 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                   size="md"
                   mb={3}
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wider"
                 >
                   Team 1 Analysis
@@ -207,7 +202,6 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                   size="md"
                   mb={3}
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wider"
                 >
                   Team 2 Analysis
@@ -229,7 +223,6 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
             <Heading
               size="md"
               fontFamily="heading"
-              textTransform="uppercase"
               letterSpacing="wider"
             >
               Final Assessment

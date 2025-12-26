@@ -92,12 +92,11 @@ const Players: React.FC = () => {
           <Heading
             size="2xl"
             fontFamily="heading"
-            textTransform="uppercase"
             letterSpacing="wider"
             color="brand.400"
             textAlign="center"
           >
-            OPERATIVE DATABASE
+            Player Database
           </Heading>
           <LoadingState variant="players" count={8} />
         </VStack>
@@ -112,12 +111,11 @@ const Players: React.FC = () => {
           <Heading
             size="2xl"
             fontFamily="heading"
-            textTransform="uppercase"
             letterSpacing="wider"
             color="brand.400"
             textAlign="center"
           >
-            OPERATIVE DATABASE
+            Player Database
           </Heading>
           <EmptyState
             variant="players"
@@ -141,7 +139,6 @@ const Players: React.FC = () => {
               size="2xl"
               fontFamily="heading"
               fontWeight="black"
-              textTransform="uppercase"
               letterSpacing="wider"
               mb={2}
               color="brand.400"
@@ -167,7 +164,7 @@ const Players: React.FC = () => {
                   fontSize: 'xl',
                 }}
               >
-                OPERATIVE DATABASE
+                Player Database
               </Box>
             </Heading>
             <Text
@@ -175,9 +172,8 @@ const Players: React.FC = () => {
               color="gray.400"
               fontFamily="heading"
               letterSpacing="wide"
-              textTransform="uppercase"
             >
-              [ {players.length} ACTIVE OPERATIVES ]
+              [ {players.length} Active Players ]
             </Text>
           </Box>
 
@@ -195,10 +191,9 @@ const Players: React.FC = () => {
                     </InputLeftElement>
                     <Input
                       id="player-search"
-                      placeholder="SEARCH OPERATIVES..."
+                      placeholder="Search players..."
                       value={searchTerm}
                       onChange={handleSearchChange}
-                      textTransform="uppercase"
                       fontFamily="heading"
                       letterSpacing="wide"
                       borderColor="whiteAlpha.200"
@@ -222,7 +217,6 @@ const Players: React.FC = () => {
                     onChange={handleSortChange}
                     maxW="250px"
                     fontFamily="heading"
-                    textTransform="uppercase"
                     letterSpacing="wide"
                     fontSize="sm"
                     borderColor="whiteAlpha.200"
@@ -231,9 +225,9 @@ const Players: React.FC = () => {
                       boxShadow: '0 0 10px rgba(0, 212, 255, 0.3)',
                     }}
                   >
-                    <option value="mmr">SORT BY MMR</option>
-                    <option value="name">SORT BY NAME</option>
-                    <option value="games">SORT BY MISSIONS</option>
+                    <option value="mmr">Sort by MMR</option>
+                    <option value="name">Sort by Name</option>
+                    <option value="games">Sort by Matches</option>
                   </Select>
                 </FormControl>
               </HStack>
@@ -248,11 +242,10 @@ const Players: React.FC = () => {
                 <Text
                   color="gray.500"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wide"
                   fontSize="lg"
                 >
-                  NO OPERATIVES MATCHING "{searchTerm}"
+                  No players matching "{searchTerm}"
                 </Text>
               </Box>
             </TacticalCard>
@@ -310,7 +303,6 @@ const Players: React.FC = () => {
                             fontWeight="black"
                             fontSize="xl"
                             fontFamily="heading"
-                            textTransform="uppercase"
                             letterSpacing="wide"
                             color="brand.300"
                           >
@@ -353,10 +345,9 @@ const Players: React.FC = () => {
                             fontSize="xs"
                             color="gray.500"
                             fontFamily="heading"
-                            textTransform="uppercase"
                             letterSpacing="wider"
                           >
-                            Missions
+                            Matches
                           </Text>
                           <Text
                             fontSize="2xl"
@@ -379,7 +370,6 @@ const Players: React.FC = () => {
                             fontSize="xs"
                             color="gray.500"
                             fontFamily="heading"
-                            textTransform="uppercase"
                             letterSpacing="wider"
                           >
                             Win Rate
@@ -402,7 +392,6 @@ const Players: React.FC = () => {
                             fontSize="xs"
                             color="gray.500"
                             fontFamily="heading"
-                            textTransform="uppercase"
                           >
                             Combat Record
                           </Text>
@@ -426,10 +415,9 @@ const Players: React.FC = () => {
                           fontSize="xs"
                           color="brand.400"
                           fontFamily="heading"
-                          textTransform="uppercase"
                           letterSpacing="wider"
                         >
-                          VIEW PROFILE →
+                          View Profile →
                         </Text>
                       </HStack>
                     </VStack>

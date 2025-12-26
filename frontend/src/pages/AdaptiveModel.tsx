@@ -286,7 +286,7 @@ const AdaptiveModel: React.FC = () => {
               fontWeight="black"
               letterSpacing="tight"
             >
-              LIVING MODEL DASHBOARD
+              Living Model Dashboard
             </Heading>
           </HStack>
           <Text color="gray.400" fontSize="lg" fontWeight="medium">

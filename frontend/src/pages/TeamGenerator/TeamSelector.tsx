@@ -59,11 +59,10 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wider"
                   color="brand.300"
                 >
-                  OPERATIVE SELECTION
+                  Player Selection
                 </Heading>
               </HStack>
               <HStack spacing={3} flexWrap="wrap">
@@ -74,7 +73,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                   py={1}
                   fontFamily="heading"
                 >
-                  {selectedPlayers.length} SELECTED
+                  {selectedPlayers.length} selected
                 </Badge>
                 {selectedPlayers.length >= minPlayers && (
                   <Badge
@@ -89,7 +88,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 )}
                 {needMorePlayers && (
                   <Text fontSize="sm" color="gray.500" fontFamily="heading">
-                    (MIN {minPlayers} REQUIRED)
+                    (min {minPlayers} required)
                   </Text>
                 )}
                 {hasOddPlayers && selectedPlayers.length >= minPlayers && (
@@ -100,7 +99,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                     py={1}
                     fontFamily="heading"
                   >
-                    UNEVEN TEAMS - CONSIDER AI PLAYER
+                    Uneven Teams - Consider AI Player
                   </Badge>
                 )}
               </HStack>
@@ -112,7 +111,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 variant="ghost"
                 onClick={onClearSelection}
                 fontFamily="heading"
-                textTransform="uppercase"
                 leftIcon={<FiX />}
               >
                 Clear
@@ -122,7 +120,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 variant="outline"
                 onClick={onSelectAll}
                 fontFamily="heading"
-                textTransform="uppercase"
                 leftIcon={<FiCheck />}
               >
                 Select All

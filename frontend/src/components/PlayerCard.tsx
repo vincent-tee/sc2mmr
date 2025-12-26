@@ -275,7 +275,6 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
               px={2}
               py={0.5}
               borderRadius="md"
-              textTransform="uppercase"
               letterSpacing="wider"
             >
               New ({player.total_games} games)

@@ -91,7 +91,6 @@ const Home: React.FC = () => {
               size="3xl"
               fontFamily="heading"
               fontWeight="black"
-              textTransform="uppercase"
               letterSpacing="wider"
               mb={2}
               color="brand.400"
@@ -117,7 +116,7 @@ const Home: React.FC = () => {
                   fontSize: '2xl',
                 }}
               >
-                TACTICAL COMMAND
+                Command Center
               </Box>
             </Heading>
 
@@ -127,9 +126,8 @@ const Home: React.FC = () => {
               mb={8}
               fontFamily="heading"
               letterSpacing="wide"
-              textTransform="uppercase"
             >
-              [ MMR TRACKING & TEAM BALANCING SYSTEM ]
+              [ MMR Tracking & Team Balancing System ]
             </Text>
 
             {/* Primary action with dramatic styling */}
@@ -163,7 +161,7 @@ const Home: React.FC = () => {
                   },
                 }}
               >
-                ⚡ GENERATE TEAMS
+                ⚡ Generate Teams
               </Button>
               <Button
                 size="lg"
@@ -174,7 +172,7 @@ const Home: React.FC = () => {
                 px={8}
                 py={7}
               >
-                UPLOAD REPLAYS
+                Upload Replays
               </Button>
             </HStack>
           </Box>
@@ -186,27 +184,26 @@ const Home: React.FC = () => {
               mb={8}
               textAlign="center"
               fontFamily="heading"
-              textTransform="uppercase"
               letterSpacing="wider"
               color="brand.400"
             >
-              — SYSTEM STATUS —
+              — System Status —
             </Heading>
             <SimpleGrid columns={{ base: 1, md: 3 }} spacing={8}>
               <HexagonalStat
-                label="OPERATIVES"
+                label="Players"
                 value={isLoading ? '—' : totalPlayers}
                 subtext="Active Players"
                 color="brand.500"
               />
               <HexagonalStat
-                label="MISSIONS"
+                label="Matches"
                 value={isLoading ? '—' : totalGames}
                 subtext="Completed"
                 color="accent.500"
               />
               <HexagonalStat
-                label="AVG RATING"
+                label="Avg Rating"
                 value={isLoading ? '—' : avgMMR}
                 subtext="MMR Score"
                 color="shield.500"
@@ -220,11 +217,10 @@ const Home: React.FC = () => {
               size="md"
               mb={6}
               fontFamily="heading"
-              textTransform="uppercase"
               letterSpacing="wider"
               color="brand.400"
             >
-              ▸ COMMAND MODULES
+              ▸ Command Modules
             </Heading>
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
               <TacticalCard
@@ -247,13 +243,12 @@ const Home: React.FC = () => {
                         fontWeight="black"
                         fontSize="xl"
                         fontFamily="heading"
-                        textTransform="uppercase"
                         letterSpacing="wide"
                       >
-                        TEAM GENERATOR
+                        Team Generator
                       </Text>
                       <Text fontSize="xs" color="brand.400" fontFamily="heading">
-                        PRIMARY SYSTEM
+                        Primary System
                       </Text>
                     </VStack>
                   </HStack>
@@ -284,13 +279,12 @@ const Home: React.FC = () => {
                         fontWeight="black"
                         fontSize="xl"
                         fontFamily="heading"
-                        textTransform="uppercase"
                         letterSpacing="wide"
                       >
-                        REPLAY UPLOAD
+                        Replay Upload
                       </Text>
                       <Text fontSize="xs" color="accent.400" fontFamily="heading">
-                        DATA PROCESSING
+                        Data Processing
                       </Text>
                     </VStack>
                   </HStack>
@@ -320,13 +314,12 @@ const Home: React.FC = () => {
                         fontWeight="black"
                         fontSize="xl"
                         fontFamily="heading"
-                        textTransform="uppercase"
                         letterSpacing="wide"
                       >
-                        PLAYER ROSTER
+                        Player Roster
                       </Text>
                       <Text fontSize="xs" color="zerg.400" fontFamily="heading">
-                        PERSONNEL DATABASE
+                        Personnel Database
                       </Text>
                     </VStack>
                   </HStack>
@@ -356,13 +349,12 @@ const Home: React.FC = () => {
                         fontWeight="black"
                         fontSize="xl"
                         fontFamily="heading"
-                        textTransform="uppercase"
                         letterSpacing="wide"
                       >
-                        MATCH ARCHIVE
+                        Match Archive
                       </Text>
                       <Text fontSize="xs" color="shield.400" fontFamily="heading">
-                        HISTORICAL DATA
+                        Historical Data
                       </Text>
                     </VStack>
                   </HStack>
@@ -381,11 +373,10 @@ const Home: React.FC = () => {
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wider"
                   color="brand.400"
                 >
-                  ▸ RECENT OPERATIONS
+                  ▸ Recent Matches
                 </Heading>
                 <Button
                   size="sm"
@@ -393,7 +384,7 @@ const Home: React.FC = () => {
                   onClick={() => navigate('/history')}
                   fontFamily="heading"
                 >
-                  VIEW ALL →
+                  View All →
                 </Button>
               </HStack>
               <VStack spacing={3} align="stretch">
@@ -418,7 +409,6 @@ const Home: React.FC = () => {
                           <Text
                             fontWeight="bold"
                             fontFamily="heading"
-                            textTransform="uppercase"
                             letterSpacing="wide"
                           >
                             {match.map_name}

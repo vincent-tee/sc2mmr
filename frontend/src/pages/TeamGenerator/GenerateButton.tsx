@@ -29,14 +29,13 @@ const GenerateButton: React.FC<GenerateButtonProps> = ({
         variant="accent"
         isDisabled={!canGenerate}
         isLoading={isLoading}
-        loadingText="ANALYZING COMBINATIONS..."
+        loadingText="Analyzing combinations..."
         onClick={onGenerate}
         leftIcon={<FiZap />}
         px={16}
         py={8}
         fontSize="2xl"
         fontFamily="heading"
-        textTransform="uppercase"
         letterSpacing="wider"
         position="relative"
         overflow="visible"
@@ -60,7 +59,7 @@ const GenerateButton: React.FC<GenerateButtonProps> = ({
           },
         }}
       >
-        GENERATE TEAMS
+        Generate Teams
       </Button>
 
       {!canGenerate && selectedPlayersCount > 0 && (
@@ -69,10 +68,9 @@ const GenerateButton: React.FC<GenerateButtonProps> = ({
           mt={4}
           fontSize="sm"
           fontFamily="heading"
-          textTransform="uppercase"
         >
-          SELECT {minPlayers - selectedPlayersCount} MORE OPERATIVE
-          {minPlayers - selectedPlayersCount !== 1 ? 'S' : ''}
+          Select {minPlayers - selectedPlayersCount} more player
+          {minPlayers - selectedPlayersCount !== 1 ? 's' : ''}
         </Text>
       )}
 
@@ -82,9 +80,8 @@ const GenerateButton: React.FC<GenerateButtonProps> = ({
             color="purple.400"
             fontSize="sm"
             fontFamily="heading"
-            textTransform="uppercase"
           >
-            UNEVEN TEAMS DETECTED
+            Uneven Teams Detected
           </Text>
           <Text
             color="gray.500"

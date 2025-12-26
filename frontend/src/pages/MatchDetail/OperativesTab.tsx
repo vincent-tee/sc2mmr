@@ -49,7 +49,6 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
           <Heading
             size="lg"
             fontFamily="heading"
-            textTransform="uppercase"
             letterSpacing="wider"
           >
             Team 1
@@ -63,7 +62,7 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
               fontFamily="heading"
             >
               <Icon as={FiAward} mr={1} />
-              VICTORY
+              Victory
             </Badge>
           )}
         </HStack>
@@ -77,16 +76,16 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
-                    <Th fontFamily="heading">OPERATIVE</Th>
-                    <Th fontFamily="heading">RACE</Th>
+                    <Th fontFamily="heading">Player</Th>
+                    <Th fontFamily="heading">Race</Th>
                     <Th isNumeric fontFamily="heading">
-                      MMR BEFORE
+                      MMR Before
                     </Th>
                     <Th isNumeric fontFamily="heading">
-                      MMR AFTER
+                      MMR After
                     </Th>
                     <Th isNumeric fontFamily="heading">
-                      CHANGE
+                      Change
                     </Th>
                   </Tr>
                 </Thead>
@@ -138,7 +137,6 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
           <Heading
             size="lg"
             fontFamily="heading"
-            textTransform="uppercase"
             letterSpacing="wider"
           >
             Team 2
@@ -152,7 +150,7 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
               fontFamily="heading"
             >
               <Icon as={FiAward} mr={1} />
-              VICTORY
+              Victory
             </Badge>
           )}
         </HStack>
@@ -166,16 +164,16 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
-                    <Th fontFamily="heading">OPERATIVE</Th>
-                    <Th fontFamily="heading">RACE</Th>
+                    <Th fontFamily="heading">Player</Th>
+                    <Th fontFamily="heading">Race</Th>
                     <Th isNumeric fontFamily="heading">
-                      MMR BEFORE
+                      MMR Before
                     </Th>
                     <Th isNumeric fontFamily="heading">
-                      MMR AFTER
+                      MMR After
                     </Th>
                     <Th isNumeric fontFamily="heading">
-                      CHANGE
+                      Change
                     </Th>
                   </Tr>
                 </Thead>

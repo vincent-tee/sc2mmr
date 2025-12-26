@@ -147,7 +147,7 @@ const ImpactScoreRadar: React.FC<ImpactScoreRadarProps> = ({
           <HStack justify="space-between">
             <HStack>
               <Icon as={FiTarget} color="brand.400" boxSize={5} />
-              <Heading size="md" fontFamily="heading" textTransform="uppercase">
+              <Heading size="md" fontFamily="heading">
                 Impact Analysis
               </Heading>
             </HStack>
@@ -166,7 +166,7 @@ const ImpactScoreRadar: React.FC<ImpactScoreRadarProps> = ({
             textAlign="center"
           >
             <Text fontSize="sm" color="gray.400" fontFamily="heading">
-              OVERALL IMPACT
+              Overall Impact
             </Text>
             <Text fontSize="4xl" fontWeight="black" color="brand.400" fontFamily="heading">
               {overallImpact.toFixed(1)}

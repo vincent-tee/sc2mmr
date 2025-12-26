@@ -149,7 +149,7 @@ const PlayerMetricsComparison: React.FC<PlayerMetricsComparisonProps> = ({
           <HStack justify="space-between">
             <HStack>
               <Icon as={FiUsers} color="purple.500" boxSize={5} />
-              <Heading size="md" fontFamily="heading" textTransform="uppercase">
+              <Heading size="md" fontFamily="heading">
                 Player Comparison
               </Heading>
             </HStack>
@@ -168,7 +168,7 @@ const PlayerMetricsComparison: React.FC<PlayerMetricsComparisonProps> = ({
             <HStack mb={3}>
               <Icon as={FiTrendingUp} color="purple.400" />
               <Text fontSize="sm" fontWeight="bold" fontFamily="heading">
-                OVERALL IMPACT
+                Overall Impact
               </Text>
             </HStack>
             <Box height="200px" width="100%">
@@ -204,7 +204,7 @@ const PlayerMetricsComparison: React.FC<PlayerMetricsComparisonProps> = ({
                 <HStack mb={3}>
                   <Icon as={FiDollarSign} color="yellow.400" />
                   <Text fontSize="sm" fontWeight="bold" fontFamily="heading">
-                    ECONOMIC
+                    Economic
                   </Text>
                 </HStack>
                 <Box height="180px" width="100%">
@@ -242,7 +242,7 @@ const PlayerMetricsComparison: React.FC<PlayerMetricsComparisonProps> = ({
                 <HStack mb={3}>
                   <Icon as={FiZap} color="red.400" />
                   <Text fontSize="sm" fontWeight="bold" fontFamily="heading">
-                    COMBAT
+                    Combat
                   </Text>
                 </HStack>
                 <Box height="180px" width="100%">

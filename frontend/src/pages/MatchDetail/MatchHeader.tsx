@@ -133,7 +133,6 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                 <Heading
                   size="2xl"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wider"
                 >
                   {match.map_name}
@@ -155,7 +154,7 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
 
             <Stat textAlign="right">
               <StatLabel fontFamily="heading" color="brand.400">
-                MISSION DURATION
+                Match Duration
               </StatLabel>
               <StatNumber fontSize="3xl" fontFamily="heading">
                 {formatDuration(match.duration_seconds)}
@@ -189,7 +188,6 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                       fontWeight="bold"
                       fontSize="lg"
                       fontFamily="heading"
-                      textTransform="uppercase"
                       letterSpacing="wider"
                     >
                       {upsetIndicator}
@@ -205,11 +203,10 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wider"
                   color="brand.400"
                 >
-                  WIN PROBABILITY ANALYSIS
+                  Win Probability Analysis
                 </Heading>
 
                 <Grid
@@ -237,7 +234,6 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                           <Text
                             fontFamily="heading"
                             fontWeight="bold"
-                            textTransform="uppercase"
                             color="brand.400"
                           >
                             Team 1
@@ -245,13 +241,13 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                           {team1Won && (
                             <Badge colorScheme="green" ml="auto">
                               <Icon as={FiAward} mr={1} />
-                              VICTORY
+                              Victory
                             </Badge>
                           )}
                         </HStack>
                         <Stat textAlign="center">
                           <StatLabel fontSize="xs" color="gray.500">
-                            PREDICTED WIN CHANCE
+                            Predicted Win Chance
                           </StatLabel>
                           <StatNumber
                             fontSize="4xl"
@@ -308,7 +304,6 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                           <Text
                             fontFamily="heading"
                             fontWeight="bold"
-                            textTransform="uppercase"
                             color="accent.400"
                           >
                             Team 2
@@ -316,13 +311,13 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                           {!team1Won && (
                             <Badge colorScheme="green" ml="auto">
                               <Icon as={FiAward} mr={1} />
-                              VICTORY
+                              Victory
                             </Badge>
                           )}
                         </HStack>
                         <Stat textAlign="center">
                           <StatLabel fontSize="xs" color="gray.500">
-                            PREDICTED WIN CHANCE
+                            Predicted Win Chance
                           </StatLabel>
                           <StatNumber
                             fontSize="4xl"

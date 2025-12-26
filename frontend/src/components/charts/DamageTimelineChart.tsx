@@ -144,7 +144,7 @@ const DamageTimelineChart: React.FC<DamageTimelineChartProps> = ({
           <HStack justify="space-between">
             <HStack>
               <Icon as={FiZap} color="yellow.500" boxSize={5} />
-              <Heading size="md" fontFamily="heading" textTransform="uppercase">
+              <Heading size="md" fontFamily="heading">
                 Damage Timeline
               </Heading>
             </HStack>
@@ -157,7 +157,7 @@ const DamageTimelineChart: React.FC<DamageTimelineChartProps> = ({
           <HStack spacing={6}>
             <VStack align="start" spacing={0}>
               <Text fontSize="xs" color="gray.500" fontFamily="heading">
-                TOTAL DAMAGE
+                Total Damage
               </Text>
               <Text fontSize="xl" fontWeight="bold" color="brand.400">
                 {timelineData.total_damage?.toLocaleString() || 0}
@@ -166,7 +166,7 @@ const DamageTimelineChart: React.FC<DamageTimelineChartProps> = ({
             {timelineData.first_damage_time && (
               <VStack align="start" spacing={0}>
                 <Text fontSize="xs" color="gray.500" fontFamily="heading">
-                  FIRST STRIKE
+                  First Strike
                 </Text>
                 <HStack>
                   <Icon as={FiClock} color="yellow.500" />
@@ -179,7 +179,7 @@ const DamageTimelineChart: React.FC<DamageTimelineChartProps> = ({
             {timelineData.peak_damage_time && (
               <VStack align="start" spacing={0}>
                 <Text fontSize="xs" color="gray.500" fontFamily="heading">
-                  PEAK DAMAGE
+                  Peak Damage
                 </Text>
                 <Text fontSize="xl" fontWeight="bold" color="red.500">
                   {timelineData.peak_damage_amount?.toLocaleString()} @ {timelineData.peak_damage_time}
@@ -255,7 +255,7 @@ const DamageTimelineChart: React.FC<DamageTimelineChartProps> = ({
           {timingAttacks.length > 0 && (
             <Box>
               <Text fontSize="sm" fontWeight="bold" mb={2} fontFamily="heading">
-                TIMING ATTACKS DETECTED:
+                Timing Attacks Detected:
               </Text>
               <VStack align="stretch" spacing={2}>
                 {timingAttacks.map((attack, idx) => (

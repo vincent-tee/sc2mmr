@@ -76,7 +76,6 @@ const HexagonalStat: React.FC<HexagonalStatProps> = ({
         <Text
           fontSize="xs"
           fontWeight="bold"
-          textTransform="uppercase"
           letterSpacing="wider"
           color="gray.500"
         >

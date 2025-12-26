@@ -166,7 +166,7 @@ const DamageDistributionChart: React.FC<DamageDistributionChartProps> = ({
           <HStack justify="space-between">
             <HStack>
               <Icon as={FiActivity} color="purple.500" boxSize={5} />
-              <Heading size="md" fontFamily="heading" textTransform="uppercase">
+              <Heading size="md" fontFamily="heading">
                 Damage by Phase
               </Heading>
             </HStack>
@@ -185,7 +185,7 @@ const DamageDistributionChart: React.FC<DamageDistributionChartProps> = ({
             textAlign="center"
           >
             <Text fontSize="xs" color="gray.400" fontFamily="heading">
-              PLAY STYLE
+              Play Style
             </Text>
             <Text fontSize="xl" fontWeight="bold" color={`${archetype.color}.400`} fontFamily="heading">
               {archetype.name}
@@ -260,7 +260,7 @@ const DamageDistributionChart: React.FC<DamageDistributionChartProps> = ({
           >
             <HStack justify="space-between">
               <Text fontSize="sm" fontFamily="heading" color="gray.400">
-                TOTAL DAMAGE
+                Total Damage
               </Text>
               <Text fontSize="lg" fontWeight="bold" color="brand.400">
                 {total.toLocaleString()}

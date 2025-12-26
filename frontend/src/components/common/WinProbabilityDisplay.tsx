@@ -70,7 +70,6 @@ const getFairnessRating = (prob1: number): string => {
 const sizeConfig = {
   sm: {
     labelFontSize: 'xs',
-    labelTextTransform: 'uppercase',
     probabilityFontSize: '2xl',
     headingSize: 'sm',
     badgeFontSize: 'xs',
@@ -79,7 +78,6 @@ const sizeConfig = {
   },
   md: {
     labelFontSize: 'xs',
-    labelTextTransform: 'uppercase',
     probabilityFontSize: '4xl',
     headingSize: 'md',
     badgeFontSize: 'md',
@@ -88,7 +86,6 @@ const sizeConfig = {
   },
   lg: {
     labelFontSize: 'sm',
-    labelTextTransform: 'uppercase',
     probabilityFontSize: '5xl',
     headingSize: 'lg',
     badgeFontSize: 'lg',
@@ -137,9 +134,8 @@ const WinProbabilityDisplay: React.FC<WinProbabilityDisplayProps> = ({
             fontSize={config.labelFontSize}
             color="gray.500"
             fontFamily="heading"
-            textTransform={config.labelTextTransform as any}
           >
-            {team1Label} WIN PROB
+            {team1Label} Win Prob
           </Text>
           <Text
             fontSize={config.probabilityFontSize}
@@ -160,7 +156,6 @@ const WinProbabilityDisplay: React.FC<WinProbabilityDisplayProps> = ({
               fontSize={config.labelFontSize}
               color="gray.500"
               fontFamily="heading"
-              textTransform="uppercase"
               mt={1}
             >
               VS
@@ -174,9 +169,8 @@ const WinProbabilityDisplay: React.FC<WinProbabilityDisplayProps> = ({
             fontSize={config.labelFontSize}
             color="gray.500"
             fontFamily="heading"
-            textTransform={config.labelTextTransform as any}
           >
-            {team2Label} WIN PROB
+            {team2Label} Win Prob
           </Text>
           <Text
             fontSize={config.probabilityFontSize}
@@ -214,7 +208,6 @@ const WinProbabilityDisplay: React.FC<WinProbabilityDisplayProps> = ({
               px={3}
               py={1}
               fontFamily="heading"
-              textTransform="uppercase"
               alignSelf="center"
             >
               {fairnessRating}

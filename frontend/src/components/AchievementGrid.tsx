@@ -104,7 +104,6 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = memo(({
           fontWeight="bold"
           fontFamily="heading"
           letterSpacing="wide"
-          textTransform="uppercase"
         >
           {categoryInfo.name}
         </Text>

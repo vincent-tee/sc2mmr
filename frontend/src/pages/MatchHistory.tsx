@@ -228,7 +228,7 @@ const MatchCard: React.FC<{
               borderColor={match.winner_team === 1 ? 'green.400' : 'orange.400'}
               textAlign="center"
             >
-              <Text fontSize="xs" color="gray.400" fontFamily="heading" textTransform="uppercase">
+              <Text fontSize="xs" color="gray.400" fontFamily="heading">
                 Winner
               </Text>
               <Text fontSize="lg" fontWeight="bold" color={match.winner_team === 1 ? 'green.400' : 'orange.400'}>
@@ -242,7 +242,6 @@ const MatchCard: React.FC<{
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  textTransform="uppercase"
                   letterSpacing="wide"
                 >
                   {match.map_name}
@@ -349,7 +348,7 @@ const MatchCard: React.FC<{
                   onNavigate(match.id);
                 }}
               >
-                DETAILS
+                Details
               </Button>
               <IconButton
                 aria-label={isExpanded ? 'Collapse' : 'Expand'}
@@ -389,7 +388,6 @@ const MatchCard: React.FC<{
                 <Icon as={FiUsers} color="cyan.400" />
                 <Text
                   fontFamily="heading"
-                  textTransform="uppercase"
                   fontSize="sm"
                   color={match.winner_team === 1 ? 'green.400' : 'gray.400'}
                 >
@@ -414,7 +412,6 @@ const MatchCard: React.FC<{
                 <Icon as={FiUsers} color="orange.400" />
                 <Text
                   fontFamily="heading"
-                  textTransform="uppercase"
                   fontSize="sm"
                   color={match.winner_team === 2 ? 'green.400' : 'gray.400'}
                 >
@@ -528,12 +525,11 @@ const MatchHistory: React.FC = () => {
                   <Heading
                     size="2xl"
                     fontFamily="heading"
-                    textTransform="uppercase"
                     letterSpacing="wider"
                     color="brand.400"
                     textShadow="0 0 30px rgba(0, 212, 255, 0.5)"
                   >
-                    BATTLE ARCHIVE
+                    Match History
                   </Heading>
                 </HStack>
                 <Text
@@ -541,10 +537,9 @@ const MatchHistory: React.FC = () => {
                   fontFamily="heading"
                   letterSpacing="wide"
                   fontSize="sm"
-                  textTransform="uppercase"
                 >
-                  [ {totalMatches} OPERATIONS RECORDED{totalPages > 1 ? ` • PAGE ${currentPage}/${totalPages}` : ''} ]
-                  {isFetching && !isLoading && ' • UPDATING...'}
+                  [ {totalMatches} matches recorded{totalPages > 1 ? ` • Page ${currentPage}/${totalPages}` : ''} ]
+                  {isFetching && !isLoading && ' • Updating...'}
                 </Text>
               </VStack>
 
@@ -560,9 +555,9 @@ const MatchHistory: React.FC = () => {
                   fontFamily="heading"
                   boxShadow="0 0 20px rgba(0, 212, 255, 0.4)"
                 >
-                  <Icon as={FiTrendingUp} mr={2} />
-                  ACTIVE
-                </Badge>
+<Icon as={FiTrendingUp} mr={2} />
+                    Active
+                  </Badge>
               </HStack>
             </HStack>
 
@@ -595,7 +590,6 @@ const MatchHistory: React.FC = () => {
                   color="gray.500"
                   fontFamily="heading"
                   fontSize="sm"
-                  textTransform="uppercase"
                   letterSpacing="wide"
                 >
                   Page {currentPage} of {totalPages} • Showing {matches.length} of {totalMatches} matches

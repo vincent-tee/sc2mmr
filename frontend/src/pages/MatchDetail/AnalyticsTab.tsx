@@ -75,7 +75,6 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           size="lg"
           mb={4}
           fontFamily="heading"
-          textTransform="uppercase"
           letterSpacing="wider"
         >
           Team 1 Analytics
@@ -139,7 +138,6 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           size="lg"
           mb={4}
           fontFamily="heading"
-          textTransform="uppercase"
           letterSpacing="wider"
         >
           Team 2 Analytics

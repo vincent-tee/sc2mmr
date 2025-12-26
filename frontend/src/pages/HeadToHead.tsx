@@ -82,7 +82,7 @@ const RivalryMeter: React.FC<RivalryMeterProps> = React.memo(({ score, intensity
       <VStack spacing={4}>
         {/* Header */}
         <HStack justify="space-between" w="100%">
-          <Text color="gray.500" fontSize="sm" textTransform="uppercase" letterSpacing="wider">
+          <Text color="gray.500" fontSize="sm" letterSpacing="wider">
             Rivalry Intensity
           </Text>
           <Badge
@@ -170,7 +170,7 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = React.memo(({
 
   return (
     <VStack align="stretch" spacing={2}>
-      <Text color="gray.500" fontSize="sm" fontWeight="bold" textTransform="uppercase">
+      <Text color="gray.500" fontSize="sm" fontWeight="bold">
         {label}
       </Text>
       <Select
@@ -416,7 +416,7 @@ const HeadToHead: React.FC = () => {
                 fontWeight="bold"
                 letterSpacing="wider"
               >
-                COMPARE
+                Compare
               </Button>
             </Flex>
           </Box>

@@ -46,11 +46,10 @@ const BalanceControls: React.FC<BalanceControlsProps> = ({
               <Heading
                 size="md"
                 fontFamily="heading"
-                textTransform="uppercase"
                 letterSpacing="wider"
                 color="purple.300"
               >
-                IMPACT-AWARE BALANCING
+                Impact-Aware Balancing
               </Heading>
             </HStack>
             <Switch
@@ -77,7 +76,6 @@ const BalanceControls: React.FC<BalanceControlsProps> = ({
                     fontSize="sm"
                     color="gray.400"
                     fontFamily="heading"
-                    textTransform="uppercase"
                   >
                     Impact Weight
                   </Text>
@@ -120,7 +118,7 @@ const BalanceControls: React.FC<BalanceControlsProps> = ({
                     fontWeight="bold"
                     fontFamily="heading"
                   >
-                    {impactWeight === 0.5 ? 'BALANCED' : ''}
+                    {impactWeight === 0.5 ? 'Balanced' : ''}
                   </Text>
                   <Text fontSize="xs" color="gray.500" fontFamily="heading">
                     Pure Impact Balance

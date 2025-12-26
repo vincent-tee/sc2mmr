@@ -189,7 +189,7 @@ const MatchDetail: React.FC = () => {
             }}
             transition="all 0.2s"
           >
-            RETURN TO ARCHIVE
+            Return to Archive
           </Button>
 
           {/* Match Header */}
@@ -203,7 +203,6 @@ const MatchDetail: React.FC = () => {
             sx={{
               '& .chakra-tabs__tab': {
                 fontFamily: 'heading',
-                textTransform: 'uppercase',
                 letterSpacing: 'wider',
                 _selected: {
                   bg: 'brand.500',
@@ -217,15 +216,15 @@ const MatchDetail: React.FC = () => {
             <TabList>
               <Tab>
                 <Icon as={FiUsers} mr={2} />
-                OPERATIVES
+                Players
               </Tab>
               <Tab>
                 <Icon as={FiZap} mr={2} />
-                COMMENTARY
+                Commentary
               </Tab>
               <Tab>
                 <Icon as={FiTarget} mr={2} />
-                ANALYTICS
+                Analytics
               </Tab>
             </TabList>
 

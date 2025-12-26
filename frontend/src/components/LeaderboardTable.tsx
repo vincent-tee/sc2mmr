@@ -403,7 +403,6 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
             <Th
               borderColor={borderColor}
               color="gray.400"
-              textTransform="uppercase"
               letterSpacing="wider"
               fontSize="xs"
               w="60px"
@@ -413,7 +412,6 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
             <Th
               borderColor={borderColor}
               color="gray.400"
-              textTransform="uppercase"
               letterSpacing="wider"
               fontSize="xs"
             >
@@ -422,7 +420,6 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
             <Th
               borderColor={borderColor}
               color="gray.400"
-              textTransform="uppercase"
               letterSpacing="wider"
               fontSize="xs"
               isNumeric

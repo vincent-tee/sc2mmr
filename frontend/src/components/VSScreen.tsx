@@ -257,7 +257,7 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
           fontSize="2xl"
           zIndex={2}
         >
-          WINNER
+          Winner
         </Box>
       )}
 
@@ -269,7 +269,6 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
             fontWeight="black"
             fontFamily="heading"
             letterSpacing="wider"
-            textTransform="uppercase"
             color={isWinner ? 'shield.400' : 'brand.400'}
             textShadow={isWinner ? '0 0 20px rgba(245, 158, 11, 0.6)' : '0 0 10px rgba(255, 140, 26, 0.3)'}
           >
@@ -299,7 +298,7 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
         >
           <HStack justify={side === 'left' ? 'flex-end' : 'flex-start'} spacing={4}>
             <VStack spacing={0} align={side === 'left' ? 'flex-end' : 'flex-start'}>
-              <Text fontSize="xs" color="gray.500" textTransform="uppercase" letterSpacing="wider">
+              <Text fontSize="xs" color="gray.500" letterSpacing="wider">
                 Total MMR
               </Text>
               <Text
@@ -314,7 +313,7 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
 
             {team.winProbability !== undefined && (
               <VStack spacing={0} align={side === 'left' ? 'flex-end' : 'flex-start'}>
-                <Text fontSize="xs" color="gray.500" textTransform="uppercase" letterSpacing="wider">
+                <Text fontSize="xs" color="gray.500" letterSpacing="wider">
                   Win Prob
                 </Text>
                 <Text
@@ -353,7 +352,7 @@ const WinProbabilityBar: React.FC<WinProbabilityBarProps> = ({ team1Prob, team2P
         <Text fontSize="xs" color="gray.500" fontWeight="bold">
           {team1Prob.toFixed(1)}%
         </Text>
-        <Text fontSize="xs" color="gray.500" textTransform="uppercase" letterSpacing="wider">
+        <Text fontSize="xs" color="gray.500" letterSpacing="wider">
           Pre-Match Odds
         </Text>
         <Text fontSize="xs" color="gray.500" fontWeight="bold">
@@ -424,7 +423,6 @@ const VSScreen: React.FC<VSScreenProps> = ({
           <Text
             fontSize="sm"
             color="gray.500"
-            textTransform="uppercase"
             letterSpacing="widest"
             fontWeight="bold"
           >
@@ -524,7 +522,6 @@ const VSScreen: React.FC<VSScreenProps> = ({
             fontFamily="heading"
             fontWeight="bold"
             letterSpacing="wider"
-            textTransform="uppercase"
             borderWidth={2}
             _hover={{
               bg: 'brand.500',

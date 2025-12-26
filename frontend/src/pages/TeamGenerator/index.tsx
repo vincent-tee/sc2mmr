@@ -1,5 +1,5 @@
 /**
- * Team Generator Page - TACTICAL DEPLOYMENT SYSTEM
+ * Team Generator Page - Team Balancing System
  * Quick team balancing interface for casual gaming groups
  *
  * This component orchestrates the team generation workflow with proper state management
@@ -139,12 +139,11 @@ const TeamGenerator: React.FC = () => {
           <Heading
             size="2xl"
             fontFamily="heading"
-            textTransform="uppercase"
             letterSpacing="wider"
             color="brand.400"
             textAlign="center"
           >
-            TACTICAL DEPLOYMENT
+            Team Generator
           </Heading>
           <LoadingState variant="players" count={8} />
         </VStack>
@@ -159,12 +158,11 @@ const TeamGenerator: React.FC = () => {
           <Heading
             size="2xl"
             fontFamily="heading"
-            textTransform="uppercase"
             letterSpacing="wider"
             color="brand.400"
             textAlign="center"
           >
-            TACTICAL DEPLOYMENT
+            Team Generator
           </Heading>
           <EmptyState
             variant="players"
@@ -189,7 +187,6 @@ const TeamGenerator: React.FC = () => {
               size="3xl"
               fontFamily="heading"
               fontWeight="black"
-              textTransform="uppercase"
               letterSpacing="wider"
               mb={2}
               color="brand.400"
@@ -215,7 +212,7 @@ const TeamGenerator: React.FC = () => {
                   fontSize: '2xl',
                 }}
               >
-                TACTICAL DEPLOYMENT
+                Team Generator
               </Box>
             </Heading>
             <Text
@@ -223,9 +220,8 @@ const TeamGenerator: React.FC = () => {
               color="gray.400"
               fontFamily="heading"
               letterSpacing="wide"
-              textTransform="uppercase"
             >
-              [ BALANCED TEAM GENERATION SYSTEM ]
+              [ Balanced Team Generation System ]
             </Text>
           </Box>
 
@@ -262,11 +258,10 @@ const TeamGenerator: React.FC = () => {
               <Text
                 fontSize="xl"
                 fontFamily="heading"
-                textTransform="uppercase"
                 color="brand.400"
                 letterSpacing="wider"
               >
-                CALCULATING OPTIMAL CONFIGURATIONS...
+                Calculating optimal configurations...
               </Text>
               <TeamResultSkeleton />
               <TeamResultSkeleton />
