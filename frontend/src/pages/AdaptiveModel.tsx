@@ -54,6 +54,7 @@ import {
   FiZap,
   FiArrowRight,
   FiEdit,
+  FiAward,
 } from 'react-icons/fi';
 import { apiClient } from '../api/client';
 import LoadingState from '../components/LoadingState';
@@ -100,6 +101,25 @@ interface BlendingStats {
   avg_error: number;
   upset_count: number;
   upset_rate: number;
+}
+
+interface ModelAccuracy {
+  model_id: string;
+  model_name: string;
+  accuracy: number;
+  correct_predictions: number;
+  total_predictions: number;
+  improvement_vs_baseline: number;
+  rank: number;
+}
+
+interface AccuracyComparison {
+  total_matches: number;
+  days_analyzed: number;
+  analyzed_at: string;
+  models: ModelAccuracy[];
+  best_model: ModelAccuracy | null;
+  recommendation: string;
 }
 
 interface Feature {
@@ -179,6 +199,16 @@ const AdaptiveModel: React.FC = () => {
     refetchInterval: 30000,
   });
 
+  // Fetch accuracy comparison (TrueSkill vs Hybrid vs ML)
+  const { data: accuracyComparison, refetch: refetchAccuracy } = useQuery<AccuracyComparison>({
+    queryKey: ['accuracy-comparison'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/accuracy-comparison?days=90');
+      return response.data;
+    },
+    refetchInterval: 60000,
+  });
+
   // Fetch feature importance
   const { data: featureImportance, refetch: refetchFeatures } = useQuery<{ features: Feature[] }>({
     queryKey: ['feature-importance'],
@@ -220,6 +250,7 @@ const AdaptiveModel: React.FC = () => {
         refetchVersions(),
         refetchLogs(),
         refetchBlending(),
+        refetchAccuracy(),
         refetchFeatures(),
         refetchSuggestions2(),
       ]);
@@ -400,6 +431,110 @@ const AdaptiveModel: React.FC = () => {
                 </Card>
               ))}
             </HStack>
+          )}
+        </TacticalCard>
+
+        {/* ====================================================================== */}
+        {/* MODEL ACCURACY COMPARISON (TrueSkill vs Hybrid vs ML) */}
+        {/* ====================================================================== */}
+        <TacticalCard>
+          <HStack mb={4} justify="space-between">
+            <HStack>
+              <Icon as={FiAward} boxSize={6} color="gold" />
+              <Heading size="md">Model Accuracy Comparison</Heading>
+            </HStack>
+            {accuracyComparison && (
+              <Badge colorScheme="blue">
+                Last {accuracyComparison.days_analyzed} days • {accuracyComparison.total_matches} matches
+              </Badge>
+            )}
+          </HStack>
+
+          {!accuracyComparison || accuracyComparison.models.length === 0 ? (
+            <Alert status="info" borderRadius="md">
+              <AlertIcon />
+              <Text fontSize="sm">
+                Upload more replays to compare model accuracy. Need matches with predictions.
+              </Text>
+            </Alert>
+          ) : (
+            <VStack spacing={4} align="stretch">
+              {/* Model Rankings */}
+              <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={4}>
+                {accuracyComparison.models.map((model) => (
+                  <Card
+                    key={model.model_id}
+                    bg={model.rank === 1 ? 'green.900' : cardBg}
+                    borderColor={model.rank === 1 ? 'green.500' : borderColor}
+                    borderWidth="2px"
+                  >
+                    <CardBody>
+                      <VStack spacing={3}>
+                        <HStack justify="space-between" w="full">
+                          <Badge
+                            colorScheme={model.rank === 1 ? 'green' : model.rank === 2 ? 'blue' : 'gray'}
+                            fontSize="md"
+                          >
+                            #{model.rank}
+                          </Badge>
+                          {model.rank === 1 && (
+                            <Icon as={FiAward} color="yellow.400" boxSize={5} />
+                          )}
+                        </HStack>
+                        
+                        <Text fontWeight="bold" fontSize="lg" textAlign="center">
+                          {model.model_name}
+                        </Text>
+                        
+                        <Stat textAlign="center">
+                          <StatNumber
+                            fontSize="4xl"
+                            color={model.accuracy >= 70 ? 'green.400' : model.accuracy >= 60 ? 'blue.400' : 'orange.400'}
+                          >
+                            {model.accuracy}%
+                          </StatNumber>
+                          <StatHelpText>
+                            {model.correct_predictions}/{model.total_predictions} correct
+                          </StatHelpText>
+                        </Stat>
+                        
+                        <Progress
+                          value={model.accuracy}
+                          colorScheme={model.accuracy >= 70 ? 'green' : model.accuracy >= 60 ? 'blue' : 'orange'}
+                          size="sm"
+                          borderRadius="md"
+                          w="full"
+                        />
+                        
+                        <Text fontSize="xs" color="gray.500">
+                          {model.improvement_vs_baseline > 0 ? '+' : ''}{model.improvement_vs_baseline}% vs random
+                        </Text>
+                      </VStack>
+                    </CardBody>
+                  </Card>
+                ))}
+              </Grid>
+
+              {/* Recommendation */}
+              {accuracyComparison.recommendation && (
+                <Alert
+                  status={accuracyComparison.best_model && accuracyComparison.best_model.accuracy >= 70 ? 'success' : 'info'}
+                  borderRadius="md"
+                >
+                  <AlertIcon />
+                  <Text fontSize="sm">{accuracyComparison.recommendation}</Text>
+                </Alert>
+              )}
+
+              {/* Explanation */}
+              <Box bg="gray.800" p={3} borderRadius="md">
+                <Text fontSize="xs" color="gray.400">
+                  <strong>TrueSkill:</strong> Base Bayesian rating (mu/sigma) •{' '}
+                  <strong>Recency-Weighted:</strong> Recent matches count more •{' '}
+                  <strong>Hybrid:</strong> TrueSkill + Performance Impact (damage, economy, teamwork)
+                </Text>
+              </Box>
+            </VStack>
           )}
         </TacticalCard>
 
