@@ -10,6 +10,12 @@ export interface MvpAnalysis {
   reasoning: string;
 }
 
+export interface SHAPImpact {
+  feature: string;
+  impact: number;
+  magnitude: number;
+}
+
 export interface MatchCommentary {
   error?: string;
   commentary?: string; // Simple format
@@ -22,6 +28,7 @@ export interface MatchCommentary {
     team_2: string;
   };
   match_summary?: string;
+  shap_impacts?: SHAPImpact[];
 }
 
 // Player metrics response type - flexible to handle API response

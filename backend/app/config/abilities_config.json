@@ -1,0 +1,71 @@
+{
+  "version": "5.0.15",
+  "last_updated": "2025-12-27",
+  "manual_overrides": {
+    "PsionicStorm": 10,
+    "Blink": 10,
+    "Stimpack": 10
+  },
+  "filter_patterns": {
+    "exclude_prefixes": [
+      "Train",
+      "Build",
+      "Research",
+      "Upgrade",
+      "RightClick",
+      "Hold",
+      "Patrol",
+      "SetRally",
+      "Cancel"
+    ],
+    "include_suffixes": [
+      "Execute",
+      "Mode",
+      "Boost",
+      "Warp",
+      "Shift",
+      "Storm"
+    ],
+    "min_priority": 1,
+    "max_priority": 10
+  },
+  "ability_categories": {
+    "high_micro": [
+      "Storm",
+      "EMP",
+      "Fungal",
+      "Blink",
+      "Stim",
+      "Feedback"
+    ],
+    "medium_micro": [
+      "Recharge",
+      "ForceField",
+      "Transfusion",
+      "Abduct"
+    ],
+    "macro": [
+      "Chrono",
+      "ChronoBoost",
+      "SpawnLarva",
+      "MULE",
+      "Warp"
+    ],
+    "movement": [
+      "Blink",
+      "Charge",
+      "Speed",
+      "Jump",
+      "Recall",
+      "PhaseShift"
+    ],
+    "utility": [
+      "Scan",
+      "Shield",
+      "Cloak",
+      "Decloak",
+      "SupplyDrop"
+    ]
+  },
+  "learned_abilities": {}
+}

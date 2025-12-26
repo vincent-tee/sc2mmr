@@ -14,11 +14,12 @@ SPEC-ML-001 Implementation.
 
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 
 from ..models import MatchPlayer, PerformanceFeatures
 from .enhanced_parser import EnhancedReplayParser, EnhancedPlayerFeatures
+from .build_order_classifier import classify_build, get_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class MLFeaturesService:
         db: Session,
         replay_path: str,
         match_id: int,
-    ) -> Dict[str, bool]:
+    ) -> Dict[int, bool]:
         """
         Extract ML features from replay and save to database.
 
@@ -55,24 +56,22 @@ class MLFeaturesService:
             Dictionary mapping player_id -> success boolean
             Example: {1: True, 2: True, 3: False} indicates player 3 failed
         """
-        results = {}
+        results: Dict[int, bool] = {}
 
         try:
             logger.info(f"Extracting ML features from replay: {replay_path}")
 
             # Step 1: Parse replay with enhanced parser
-            enhanced_features = MLFeaturesService._parse_replay_enhanced(
-                replay_path
-            )
+            enhanced_features = MLFeaturesService._parse_replay_enhanced(replay_path)
 
             if not enhanced_features:
                 logger.warning("Enhanced parser returned no features")
                 return results
 
             # Step 2: Find MatchPlayer records for this match
-            match_players = db.query(MatchPlayer).filter(
-                MatchPlayer.match_id == match_id
-            ).all()
+            match_players = (
+                db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).all()
+            )
 
             if not match_players:
                 logger.warning(f"No match_players found for match_id={match_id}")
@@ -97,7 +96,13 @@ class MLFeaturesService:
                     )
                     results[pid] = False
 
-            # Step 4: Commit all changes
+            # Step 4: Calculate and save ML predictions (Win Prob & SHAP)
+            try:
+                MLFeaturesService._calculate_and_save_predictions(db, match_id)
+            except Exception as e:
+                logger.warning(f"Failed to calculate ML predictions: {e}")
+
+            # Step 5: Commit all changes
             try:
                 db.commit()
                 logger.info(
@@ -154,36 +159,26 @@ class MLFeaturesService:
             True if saved successfully, False otherwise
         """
         if not match_player:
-            logger.warning(
-                f"No MatchPlayer found for player {features.player_name}"
-            )
+            logger.warning(f"No MatchPlayer found for player {features.player_name}")
             return False
 
         try:
             # Create or update performance_features record
             perf_features = (
                 db.query(PerformanceFeatures)
-                .filter(
-                    PerformanceFeatures.match_player_id == match_player.id
-                )
+                .filter(PerformanceFeatures.match_player_id == match_player.id)
                 .first()
             )
 
             if not perf_features:
-                perf_features = PerformanceFeatures(
-                    match_player_id=match_player.id
-                )
+                perf_features = PerformanceFeatures(match_player_id=match_player.id)
                 db.add(perf_features)
 
             # Save build order features
-            MLFeaturesService._save_build_order_features(
-                perf_features, features
-            )
+            MLFeaturesService._save_build_order_features(perf_features, features)
 
             # Save upgrade features
-            MLFeaturesService._save_upgrade_features(
-                perf_features, features
-            )
+            MLFeaturesService._save_upgrade_features(perf_features, features)
 
             # Save ability features
             MLFeaturesService._save_ability_features(perf_features, features)
@@ -227,9 +222,30 @@ class MLFeaturesService:
             for event in features.build_order
         ]
 
-        perf_features.build_order_json = build_order_data
+        # Use cast to Any to satisfy type checker for JSON column assignment
+        perf_features.build_order_json = build_order_data  # type: ignore
         perf_features.build_order_hash = features.build_order_hash
-        perf_features.detected_build_type = features.detected_build_type
+
+        # Use BuildOrderClassifier for more accurate classification
+        try:
+            from .build_order_classifier import get_classifier
+
+            classifier = get_classifier()
+            archetype, confidence = classifier.classify(
+                build_order_data,
+                features.race,
+                match_player_id=perf_features.match_player_id,
+                player_name=features.player_name,
+            )
+            perf_features.detected_build_type = archetype
+            logger.info(
+                f"Classified build for {features.player_name}: {archetype} ({confidence:.2f})"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Build classification failed for {features.player_name}: {e}"
+            )
+            perf_features.detected_build_type = features.detected_build_type
 
     @staticmethod
     def _save_upgrade_features(
@@ -250,13 +266,10 @@ class MLFeaturesService:
             for event in features.upgrades
         ]
 
-        perf_features.upgrades_json = upgrades_data
-        perf_features.first_attack_upgrade_second = (
-            features.first_attack_upgrade_second
-        )
-        perf_features.first_armor_upgrade_second = (
-            features.first_armor_upgrade_second
-        )
+        # Use cast to Any to satisfy type checker for JSON column assignment
+        perf_features.upgrades_json = upgrades_data  # type: ignore
+        perf_features.first_attack_upgrade_second = features.first_attack_upgrade_second
+        perf_features.first_armor_upgrade_second = features.first_armor_upgrade_second
         perf_features.upgrade_timing_score = features.upgrade_timing_score
 
     @staticmethod
@@ -268,11 +281,9 @@ class MLFeaturesService:
         if features.ability_usage.total_abilities == 0:
             return
 
-        perf_features.abilities_json = features.ability_usage.abilities
+        perf_features.abilities_json = features.ability_usage.abilities  # type: ignore
         perf_features.total_abilities = features.ability_usage.total_abilities
-        perf_features.abilities_per_minute = (
-            features.ability_usage.abilities_per_minute
-        )
+        perf_features.abilities_per_minute = features.ability_usage.abilities_per_minute
 
     @staticmethod
     def _save_macro_features(
@@ -282,9 +293,7 @@ class MLFeaturesService:
         """Save macro management features to database."""
         perf_features.supply_block_seconds = features.supply_block_seconds
         perf_features.early_worker_losses = features.early_worker_losses
-        perf_features.harassment_response_score = (
-            features.harassment_response_score
-        )
+        perf_features.harassment_response_score = features.harassment_response_score
 
     @staticmethod
     def get_features_for_match_player(
@@ -305,3 +314,44 @@ class MLFeaturesService:
             .filter(PerformanceFeatures.match_player_id == match_player_id)
             .first()
         )
+
+    @staticmethod
+    def _calculate_and_save_predictions(db: Session, match_id: int) -> None:
+        """Calculate and save ML win probability and SHAP values."""
+        try:
+            from .xgboost_predictor import get_xgboost_predictor
+
+            match_players = (
+                db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).all()
+            )
+
+            team1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
+            team2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]
+
+            if not team1_ids or not team2_ids:
+                return
+
+            predictor = get_xgboost_predictor()
+            prediction = predictor.predict(db, team1_ids, team2_ids)
+
+            team1_prob = prediction.get("team_1_win_probability", 50.0) / 100.0
+            shap_impacts = prediction.get("shap_impacts", [])
+
+            for mp in match_players:
+                perf_features = (
+                    db.query(PerformanceFeatures)
+                    .filter(PerformanceFeatures.match_player_id == mp.id)
+                    .first()
+                )
+                if perf_features:
+                    if mp.team_number == 1:
+                        perf_features.ml_win_probability = team1_prob
+                    else:
+                        perf_features.ml_win_probability = 1.0 - team1_prob
+
+                    # Store SHAP impacts as JSON
+                    perf_features.ml_shap_values = shap_impacts  # type: ignore
+
+            logger.info(f"Saved ML predictions for match {match_id}")
+        except Exception as e:
+            logger.error(f"Error in ML prediction calculation: {e}", exc_info=True)

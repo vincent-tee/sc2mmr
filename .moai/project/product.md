@@ -1,0 +1,144 @@
+# SC2 MMR Tracker - Product Documentation
+
+## PROJECT OVERVIEW
+
+**Project Name**: SC2 MMR Tracker
+**Version**: 2.1.0
+**Created**: 2025-12-05
+**Owner**: @user
+**Mode**: Personal Project
+
+---
+
+## MISSION
+
+Build a comprehensive StarCraft 2 replay tracking and analysis system for casual gaming groups, enabling fair team balancing and competitive skill tracking through TrueSkill-based MMR ratings.
+
+### Why This Matters
+
+Casual gaming groups often struggle with unbalanced matches that reduce enjoyment for all players. This system provides data-driven team balancing to create more competitive and enjoyable matches, while tracking player improvement over time.
+
+---
+
+## USERS & PERSONAS
+
+### Primary Users
+
+1. **Casual SC2 Players**
+   - Members of gaming groups who play team games (2v2, 3v3, 4v4)
+   - Want balanced matches for better gameplay experience
+   - Interested in tracking personal improvement
+
+2. **Match Organizers**
+   - People who set up game sessions
+   - Need quick team balancing tools
+   - Want to see player availability and skill levels
+
+3. **Group Administrators**
+   - Manage player roster and statistics
+   - Upload and process replay files
+   - Monitor overall group activity
+
+### Core Scenarios
+
+- **Quick Team Balance**: Select 4-10 players, get balanced team suggestions in under 30 seconds
+- **Post-Match Analysis**: Upload replay after a game, view detailed performance metrics
+- **Skill Tracking**: Check player rankings and individual improvement trends
+
+---
+
+## PROBLEMS SOLVED
+
+### Problem 1: Unbalanced Matches (Priority: HIGH)
+**Current State**: Manual team selection often creates lopsided matches
+**Solution**: TrueSkill-based MMR system with algorithmic team balancing
+**Success Indicator**: Match quality scores averaging 0.6+ (Good or better)
+
+### Problem 2: No Performance Tracking (Priority: HIGH)
+**Current State**: No persistent record of player skill or improvement
+**Solution**: Comprehensive statistics tracking including MMR, win rate, race preferences
+**Success Indicator**: Complete historical data for all matches and players
+
+### Problem 3: Stale Skill Estimates (Priority: MEDIUM)
+**Current State**: Inactive players' skill estimates become outdated
+**Solution**: Recency-weighted MMR with configurable decay (60-day half-life)
+**Success Indicator**: More accurate predictions for returning players
+
+### Problem 4: Complex Replay Processing (Priority: MEDIUM)
+**Current State**: Manual extraction of game statistics is tedious
+**Solution**: Automated replay parsing with advanced metrics extraction
+**Success Indicator**: One-click upload with full statistics extraction
+
+---
+
+## STRATEGY & DIFFERENTIATION
+
+### Unique Value Proposition
+
+1. **TrueSkill Integration**: Bayesian skill rating system designed for team games
+2. **Recency Weighting**: Recent performance weighted more heavily for accurate current skill
+3. **Advanced Metrics**: Economic scores, combat efficiency, player impact analysis
+4. **Team Synergy Detection**: Tracks how well player pairs perform together
+5. **Uneven Team Support**: Handles 3v2, 4v3, etc. for flexible group sizes
+
+### Key Features
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Team Generator | PRIMARY | Grid-based player selection with balance suggestions |
+| Replay Upload | Core | Drag-drop SC2Replay processing with duplicate detection |
+| Player Rankings | Core | Leaderboard with MMR, win rate, favorite race |
+| Match History | Core | Detailed match records with player performance |
+| Player Profiles | Core | Individual statistics and performance trends |
+| Impact Scoring | Advanced | Economic, combat, and efficiency metrics |
+| Lineup Predictor | Advanced | Predict match outcomes for proposed teams |
+
+---
+
+## SUCCESS METRICS
+
+### Key Performance Indicators
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| Match Balance Quality | 0.60+ average | TrueSkill match_quality score |
+| Prediction Accuracy | 60%+ | Pre-match win probability vs actual outcome |
+| Upload Success Rate | 95%+ | Successful replay processing rate |
+| Team Generation Time | <5 seconds | Time from player selection to suggestions |
+
+### Quality Gates
+
+- All matches processed with valid player data
+- No duplicate replay processing
+- Rating updates applied consistently
+
+---
+
+## ROADMAP
+
+### Current (v2.x)
+- [x] TrueSkill MMR system
+- [x] Recency-weighted ratings
+- [x] Team balancing algorithm
+- [x] Advanced replay metrics
+- [x] Player synergy tracking
+- [x] Uneven team support
+
+### Future Considerations
+- [ ] Seasonal statistics reset
+- [ ] Tournament bracket generation
+- [ ] Public API for external tools
+- [ ] Mobile-friendly responsive design
+- [ ] Discord bot integration
+
+---
+
+## HISTORY
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2025-12-05 | Initial product documentation created | project-manager |
+
+---
+
+*Document generated by MoAI-ADK Project Manager*

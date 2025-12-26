@@ -15,13 +15,14 @@ Design Principles:
 - Uses centralized settings from app.config
 - Integrates with RatingService for recalculation
 """
+
 import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any, cast
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -260,16 +261,20 @@ class MatchService:
             query = self._filter_by_player(query, player_id)
 
         total_count = query.count()
-        matches = query.order_by(Match.played_at.desc()).limit(limit).offset(offset).all()
+        matches = (
+            query.order_by(Match.played_at.desc()).limit(limit).offset(offset).all()
+        )
 
         match_list = [self._format_match_summary(m) for m in matches]
         return match_list, total_count
 
     def _filter_by_player(self, query, player_id: int):
         """Filter matches by player participation."""
-        match_ids = self.db.query(MatchPlayer.match_id).filter(
-            MatchPlayer.player_id == player_id
-        ).subquery()
+        match_ids = (
+            select(MatchPlayer.match_id)
+            .where(MatchPlayer.player_id == player_id)
+            .scalar_subquery()
+        )
         return query.filter(Match.id.in_(match_ids))
 
     def _format_match_summary(self, match: Match) -> Dict:
@@ -311,9 +316,9 @@ class MatchService:
 
     def _delete_match_records(self, match: Match) -> List[int]:
         """Delete match and related records, return affected player IDs."""
-        match_players = self.db.query(MatchPlayer).filter(
-            MatchPlayer.match_id == match.id
-        ).all()
+        match_players = (
+            self.db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
+        )
         player_ids = [mp.player_id for mp in match_players]
 
         # Delete metrics first (foreign key constraint)
@@ -323,9 +328,7 @@ class MatchService:
             ).delete()
 
         # Delete match players
-        self.db.query(MatchPlayer).filter(
-            MatchPlayer.match_id == match.id
-        ).delete()
+        self.db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).delete()
 
         # Delete match
         self.db.delete(match)
@@ -374,17 +377,19 @@ class MatchService:
 
     def _calculate_team_statistics(self, match_id: int) -> Dict:
         """Calculate aggregate statistics for each team."""
-        match_players = self.db.query(MatchPlayer).filter(
-            MatchPlayer.match_id == match_id
-        ).all()
+        match_players = (
+            self.db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).all()
+        )
 
         team1 = {"damage": 0, "resources": 0, "impacts": []}
         team2 = {"damage": 0, "resources": 0, "impacts": []}
 
         for mp in match_players:
-            metrics = self.db.query(PlayerMatchMetrics).filter(
-                PlayerMatchMetrics.match_player_id == mp.id
-            ).first()
+            metrics = (
+                self.db.query(PlayerMatchMetrics)
+                .filter(PlayerMatchMetrics.match_player_id == mp.id)
+                .first()
+            )
 
             target = team1 if mp.team_number == 1 else team2
 
@@ -412,20 +417,24 @@ class MatchService:
 
     def _find_mvp(self, match_id: int) -> Dict:
         """Find the MVP (highest overall impact) of the match."""
-        match_players = self.db.query(MatchPlayer, PlayerMatchMetrics).outerjoin(
-            PlayerMatchMetrics,
-            MatchPlayer.id == PlayerMatchMetrics.match_player_id
-        ).filter(
-            MatchPlayer.match_id == match_id
-        ).all()
+        match_players = (
+            self.db.query(MatchPlayer, PlayerMatchMetrics)
+            .outerjoin(
+                PlayerMatchMetrics, MatchPlayer.id == PlayerMatchMetrics.match_player_id
+            )
+            .filter(MatchPlayer.match_id == match_id)
+            .all()
+        )
 
-        mvp_info = {"player_id": None, "player_name": None, "impact_score": 0.0}
+        mvp_info: Dict[str, Any] = {
+            "player_id": None,
+            "player_name": None,
+            "impact_score": 0.0,
+        }
 
         for mp, metrics in match_players:
             if metrics and (metrics.overall_impact or 0) > mvp_info["impact_score"]:
-                player = self.db.query(Player).filter(
-                    Player.id == mp.player_id
-                ).first()
+                player = self.db.query(Player).filter(Player.id == mp.player_id).first()
                 mvp_info = {
                     "player_id": mp.player_id,
                     "player_name": player.name if player else "Unknown",
@@ -441,9 +450,7 @@ class MatchService:
         Higher score = more balanced match.
         Based on damage and impact differentials.
         """
-        damage_diff = abs(
-            team_stats["team1"]["damage"] - team_stats["team2"]["damage"]
-        )
+        damage_diff = abs(team_stats["team1"]["damage"] - team_stats["team2"]["damage"])
         total_damage = team_stats["team1"]["damage"] + team_stats["team2"]["damage"]
 
         if total_damage == 0:
@@ -502,9 +509,9 @@ class MatchService:
 
     def _get_failed_upload_or_raise(self, upload_id: int) -> FailedUpload:
         """Get failed upload or raise MatchNotFoundError."""
-        failed_upload = self.db.query(FailedUpload).filter(
-            FailedUpload.id == upload_id
-        ).first()
+        failed_upload = (
+            self.db.query(FailedUpload).filter(FailedUpload.id == upload_id).first()
+        )
 
         if not failed_upload:
             raise MatchNotFoundError(upload_id)
@@ -513,16 +520,17 @@ class MatchService:
 
     def _validate_replay_file_exists(self, failed_upload: FailedUpload) -> None:
         """Validate that the replay file exists on disk."""
-        if not failed_upload.replay_file_path:
+        path = failed_upload.replay_file_path
+        if not path:
             raise ValidationError(
                 message="Replay file not found",
                 detail="Original file may not have been saved.",
             )
 
-        if not os.path.exists(failed_upload.replay_file_path):
+        if not os.path.exists(path):
             raise ValidationError(
                 message="Replay file not found",
-                detail=f"File missing at: {failed_upload.replay_file_path}",
+                detail=f"File missing at: {path}",
             )
 
     def _process_manual_winner(
@@ -533,11 +541,12 @@ class MatchService:
     ) -> ManualWinnerResult:
         """Process failed upload with manual winner determination."""
         start_time = time.time()
+        path = failed_upload.replay_file_path
+        if not path:
+            raise ValidationError("Replay file path is missing")
 
         # Parse replay with manual winner
-        parse_result = self._parse_replay_with_winner(
-            failed_upload.replay_file_path, winner_team
-        )
+        parse_result = self._parse_replay_with_winner(path, winner_team)
 
         # Check for existing match (duplicate)
         existing = self._check_duplicate(parse_result["replay_hash"])
@@ -551,9 +560,7 @@ class MatchService:
             failed_upload, parse_result, winner_team, reason, start_time
         )
 
-    def _parse_replay_with_winner(
-        self, replay_path: str, winner_team: int
-    ) -> Dict:
+    def _parse_replay_with_winner(self, replay_path: str, winner_team: int) -> Dict:
         """Parse replay file with manual winner specification."""
         from ..advanced_parser import parse_replay_advanced
         from ..replay_parser import validate_replay_data
@@ -584,9 +591,7 @@ class MatchService:
 
     def _check_duplicate(self, replay_hash: str) -> Optional[Match]:
         """Check if replay already exists as a match."""
-        return self.db.query(Match).filter(
-            Match.replay_hash == replay_hash
-        ).first()
+        return self.db.query(Match).filter(Match.replay_hash == replay_hash).first()
 
     def _handle_existing_match(
         self,
@@ -628,9 +633,12 @@ class MatchService:
         """Create a new match from manually resolved upload."""
         basic_data = parse_result["basic_data"]
         advanced_data = parse_result["advanced_data"]
+        path = failed_upload.replay_file_path
+        if not path:
+            raise ValidationError("Replay file path is missing")
 
         # Create match record
-        match = self._create_match_record(basic_data, failed_upload.replay_file_path)
+        match = self._create_match_record(basic_data, path)
 
         # Update ratings
         rating_start = time.time()
@@ -680,17 +688,23 @@ class MatchService:
 
         try:
             for player_metrics in advanced_data.player_metrics:
-                player = self.db.query(Player).filter(
-                    Player.name == player_metrics.player_name
-                ).first()
+                player = (
+                    self.db.query(Player)
+                    .filter(Player.name == player_metrics.player_name)
+                    .first()
+                )
 
                 if not player:
                     continue
 
-                match_player = self.db.query(MatchPlayer).filter(
-                    MatchPlayer.match_id == match.id,
-                    MatchPlayer.player_id == player.id,
-                ).first()
+                match_player = (
+                    self.db.query(MatchPlayer)
+                    .filter(
+                        MatchPlayer.match_id == match.id,
+                        MatchPlayer.player_id == player.id,
+                    )
+                    .first()
+                )
 
                 if match_player:
                     ImpactService.save_match_metrics(
@@ -715,15 +729,14 @@ class MatchService:
             raise MatchNotFoundError(match_id)
         return match
 
-    def _get_match_players_with_details(
-        self, match_id: int
-    ) -> List[MatchPlayerData]:
+    def _get_match_players_with_details(self, match_id: int) -> List[MatchPlayerData]:
         """Get all match players with their details."""
-        match_players_with_player = self.db.query(MatchPlayer, Player).join(
-            Player, MatchPlayer.player_id == Player.id
-        ).filter(
-            MatchPlayer.match_id == match_id
-        ).all()
+        match_players_with_player = (
+            self.db.query(MatchPlayer, Player)
+            .join(Player, MatchPlayer.player_id == Player.id)
+            .filter(MatchPlayer.match_id == match_id)
+            .all()
+        )
 
         result = []
         for mp, player in match_players_with_player:

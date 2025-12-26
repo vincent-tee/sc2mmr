@@ -324,6 +324,60 @@ export const impactApi: ImpactApi = {
 };
 
 // =============================================================================
+// Adaptive & ML API
+// =============================================================================
+
+export interface AccuracyTrend {
+  date: string;
+  trueskill_accuracy: number;
+  hybrid_accuracy: number;
+  trueskill_total: number;
+  hybrid_total: number;
+}
+
+export interface ShapImportance {
+  feature: string;
+  importance: number;
+}
+
+export interface AdaptiveApi {
+  getAccuracyComparison: (days?: number) => Promise<AxiosResponse<{
+    total_matches: number;
+    results: Record<string, { correct: number; total: number }>;
+    trends: AccuracyTrend[];
+  }>>;
+  getShapImportance: () => Promise<AxiosResponse<{ features: ShapImportance[] }>>;
+  trainXGBoost: () => Promise<AxiosResponse<{
+    status: string;
+    model_type: string;
+    train_samples: number;
+    test_samples: number;
+    train_accuracy: number;
+    test_accuracy: number;
+    feature_importance: Record<string, number>;
+  }>>;
+  getMLModelsStatus: () => Promise<AxiosResponse<{
+    xgboost: { is_trained: boolean; accuracy: number | null };
+    build_classifier: { use_clustering: boolean };
+  }>>;
+}
+
+export const adaptiveApi: AdaptiveApi = {
+  getAccuracyComparison: (days = 90) => {
+    return apiClient.get('/adaptive/accuracy-comparison', { params: { days } });
+  },
+  getShapImportance: () => {
+    return apiClient.get('/adaptive/shap-importance');
+  },
+  trainXGBoost: () => {
+    return apiClient.post('/adaptive/train-xgboost');
+  },
+  getMLModelsStatus: () => {
+    return apiClient.get('/adaptive/ml-models-status');
+  }
+};
+
+// =============================================================================
 // Health check
 // =============================================================================
 

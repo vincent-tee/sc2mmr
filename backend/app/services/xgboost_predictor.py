@@ -51,7 +51,7 @@ class TeamFeatures:
     min_mmr: float = 0.0
     mmr_std: float = 0.0
     team_size: int = 0
-    avg_win_streak: int = 0
+    avg_win_streak: float = 0.0
 
 
 class FeatureExtractor:
@@ -130,16 +130,17 @@ class FeatureExtractor:
             win_streaks.append(win_streak)
 
         n = len(players)
-        features.avg_mmr /= n
-        features.avg_recency_mmr /= n
-        features.avg_hybrid_mmr /= n
-        features.avg_combat_score /= n
-        features.avg_economic_score /= n
-        features.avg_efficiency_score /= n
-        features.avg_overall_impact /= n
-        features.avg_win_rate /= n
-        features.avg_recent_win_rate /= n
-        features.avg_win_streak = sum(win_streaks) / n if win_streaks else 0
+        if n > 0:
+            features.avg_mmr /= n
+            features.avg_recency_mmr /= n
+            features.avg_hybrid_mmr /= n
+            features.avg_combat_score /= n
+            features.avg_economic_score /= n
+            features.avg_efficiency_score /= n
+            features.avg_overall_impact /= n
+            features.avg_win_rate /= n
+            features.avg_recent_win_rate /= n
+            features.avg_win_streak = sum(win_streaks) / n if win_streaks else 0
 
         features.max_mmr = max(mmrs) if mmrs else 0
         features.min_mmr = min(mmrs) if mmrs else 0
@@ -184,23 +185,22 @@ class FeatureExtractor:
 class XGBoostPredictor:
     """
     XGBoost-based match predictor with training and prediction capabilities.
-
-    Falls back to logistic regression if XGBoost is not available.
     """
 
     MODEL_PATH = Path("data/xgboost_model.pkl")
 
     def __init__(self):
-        self.model = None
+        self.model: Any = None
         self.is_xgboost = False
         self.is_trained = False
         self.training_accuracy = 0.0
         self.feature_importance: Dict[str, float] = {}
+        self.shap_importance: Dict[str, float] = {}
 
     def _get_model(self):
         """Get XGBoost or fallback model."""
         try:
-            from xgboost import XGBClassifier
+            from xgboost import XGBClassifier  # type: ignore
 
             self.is_xgboost = True
             return XGBClassifier(
@@ -215,7 +215,7 @@ class XGBoostPredictor:
             )
         except ImportError:
             logger.warning("XGBoost not available, using LogisticRegression")
-            from sklearn.linear_model import LogisticRegression
+            from sklearn.linear_model import LogisticRegression  # type: ignore
 
             self.is_xgboost = False
             return LogisticRegression(max_iter=1000, random_state=42)
@@ -223,13 +223,6 @@ class XGBoostPredictor:
     def train(self, db: Session, min_matches: int = 50) -> Dict[str, Any]:
         """
         Train the model on historical match data.
-
-        Args:
-            db: Database session
-            min_matches: Minimum matches required for training
-
-        Returns:
-            Training statistics
         """
         # Get completed matches
         matches = (
@@ -281,14 +274,14 @@ class XGBoostPredictor:
                 "required": min_matches,
             }
 
-        X = np.array(X)
-        y = np.array(y)
+        X_arr = np.array(X)
+        y_arr = np.array(y)
 
         # Train/test split
-        from sklearn.model_selection import train_test_split
+        from sklearn.model_selection import train_test_split  # type: ignore
 
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
+            X_arr, y_arr, test_size=0.2, random_state=42
         )
 
         # Train model
@@ -298,7 +291,7 @@ class XGBoostPredictor:
         # Evaluate
         train_accuracy = self.model.score(X_train, y_train)
         test_accuracy = self.model.score(X_test, y_test)
-        self.training_accuracy = test_accuracy
+        self.training_accuracy = float(test_accuracy)
         self.is_trained = True
 
         # Feature importance
@@ -324,9 +317,29 @@ class XGBoostPredictor:
                 zip(feature_names, self.model.feature_importances_.tolist())
             )
         elif hasattr(self.model, "coef_"):
+            # Use coefficients for linear model importance
             self.feature_importance = dict(
                 zip(feature_names, np.abs(self.model.coef_[0]).tolist())
             )
+
+        # Advanced Feature Importance (SHAP)
+        try:
+            from .shap_feature_importance import SHAPFeatureImportance
+
+            shap_analyzer = SHAPFeatureImportance(self.model, feature_names)
+            shap_analyzer.fit(X_train)
+            shap_values = shap_analyzer.explain(X_test, output_format="array")
+            importance_df = shap_analyzer.get_feature_importance(shap_values)
+
+            # Store SHAP importance
+            self.shap_importance = {
+                str(row["feature"]): float(row["importance"])
+                for _, row in importance_df.iterrows()
+            }
+            logger.info("Global SHAP importance calculated successfully")
+        except Exception as e:
+            logger.warning(f"Could not calculate global SHAP importance: {e}")
+            self.shap_importance = {}
 
         # Save model
         self._save_model()
@@ -336,29 +349,92 @@ class XGBoostPredictor:
             "model_type": "XGBoost" if self.is_xgboost else "LogisticRegression",
             "train_samples": len(X_train),
             "test_samples": len(X_test),
-            "train_accuracy": round(train_accuracy * 100, 1),
-            "test_accuracy": round(test_accuracy * 100, 1),
+            "train_accuracy": round(float(train_accuracy) * 100, 1),
+            "test_accuracy": round(float(test_accuracy) * 100, 1),
             "feature_importance": {
                 k: round(v, 4)
                 for k, v in sorted(
-                    self.feature_importance.items(), key=lambda x: -x[1]
+                    (
+                        self.shap_importance
+                        if self.shap_importance
+                        else self.feature_importance
+                    ).items(),
+                    key=lambda x: -x[1],
                 )[:5]
             },
         }
+
+    def explain_prediction(self, feature_vector: np.ndarray) -> List[Dict[str, Any]]:
+        """
+        Explain a single prediction using SHAP values.
+        """
+        if not self.is_trained or self.model is None:
+            return []
+
+        try:
+            from .shap_feature_importance import SHAPFeatureImportance
+
+            feature_names = [
+                "mmr_diff",
+                "recency_mmr_diff",
+                "hybrid_mmr_diff",
+                "combat_diff",
+                "economic_diff",
+                "efficiency_diff",
+                "impact_diff",
+                "win_rate_diff",
+                "recent_wr_diff",
+                "win_streak_diff",
+                "max_mmr_diff",
+                "min_mmr_diff",
+                "mmr_std_diff",
+                "games_diff",
+            ]
+
+            explainer = SHAPFeatureImportance(self.model, feature_names)
+
+            # Initialize explainer based on model type
+            import shap  # type: ignore
+
+            if self.is_xgboost:
+                explainer.explainer = shap.TreeExplainer(self.model)
+            else:
+                explainer.explainer = shap.Explainer(self.model, feature_vector)
+
+            shap_values = explainer.explain(feature_vector, output_format="array")
+
+            # Handle different SHAP output formats
+            if len(shap_values.shape) == 3:  # Explicit classes
+                impacts_arr = shap_values[0, :, 1]
+            elif len(shap_values.shape) == 2:
+                impacts_arr = shap_values[0]
+            else:
+                impacts_arr = shap_values
+
+            # Combine with names
+            results = []
+            for name, val in zip(feature_names, impacts_arr):
+                results.append(
+                    {
+                        "feature": name,
+                        "impact": float(val),
+                        "magnitude": abs(float(val)),
+                    }
+                )
+
+            # Sort by magnitude
+            results.sort(key=lambda x: x["magnitude"], reverse=True)
+            return results
+
+        except Exception as e:
+            logger.error(f"SHAP explanation failed: {e}")
+            return []
 
     def predict(
         self, db: Session, team1_ids: List[int], team2_ids: List[int]
     ) -> Dict[str, Any]:
         """
         Predict match outcome.
-
-        Args:
-            db: Database session
-            team1_ids: Player IDs for team 1
-            team2_ids: Player IDs for team 2
-
-        Returns:
-            Prediction result with probabilities
         """
         if not self.is_trained:
             self._load_model()
@@ -381,16 +457,26 @@ class XGBoostPredictor:
         # Predict
         if hasattr(self.model, "predict_proba"):
             proba = self.model.predict_proba(feature_vector)[0]
-            team1_prob = proba[1] * 100  # Probability of class 1 (team 1 wins)
+            team1_prob = float(proba[1]) * 100
         else:
             prediction = self.model.predict(feature_vector)[0]
             team1_prob = 100.0 if prediction == 1 else 0.0
 
-        predicted_winner = 1 if team1_prob >= 50 else 2
         confidence = abs(team1_prob - 50) / 50  # 0-1 scale
 
+        # Add SHAP explanations
+        shap_explanations = self.explain_prediction(feature_vector)
+
+        # Format key factors from SHAP
+        key_factors = []
+        for exp in shap_explanations[:3]:
+            if exp["magnitude"] > 0.01:
+                team = "Team 1" if exp["impact"] > 0 else "Team 2"
+                factor = exp["feature"].replace("_diff", "").replace("_", " ").title()
+                key_factors.append(f"{team} has advantage in {factor}")
+
         return {
-            "predicted_winner": predicted_winner,
+            "predicted_winner": 1 if team1_prob >= 50 else 2,
             "team_1_win_probability": round(team1_prob, 1),
             "team_2_win_probability": round(100 - team1_prob, 1),
             "confidence": "High"
@@ -400,6 +486,8 @@ class XGBoostPredictor:
             else "Low",
             "model": f"{'XGBoost' if self.is_xgboost else 'LogisticRegression'} ({self.training_accuracy * 100:.1f}% accuracy)",
             "model_accuracy": round(self.training_accuracy * 100, 1),
+            "key_factors": key_factors if key_factors else ["Evenly matched"],
+            "shap_impacts": shap_explanations[:5],
         }
 
     def _save_model(self) -> None:
@@ -413,6 +501,7 @@ class XGBoostPredictor:
                         "is_xgboost": self.is_xgboost,
                         "training_accuracy": self.training_accuracy,
                         "feature_importance": self.feature_importance,
+                        "shap_importance": self.shap_importance,
                     },
                     f,
                 )
@@ -430,6 +519,7 @@ class XGBoostPredictor:
                     self.is_xgboost = data["is_xgboost"]
                     self.training_accuracy = data["training_accuracy"]
                     self.feature_importance = data.get("feature_importance", {})
+                    self.shap_importance = data.get("shap_importance", {})
                     self.is_trained = True
                 logger.info(f"Model loaded from {self.MODEL_PATH}")
                 return True
@@ -437,10 +527,6 @@ class XGBoostPredictor:
             logger.error(f"Failed to load model: {e}")
         return False
 
-
-# ============================================================================
-# Singleton Instance
-# ============================================================================
 
 _predictor_instance: Optional[XGBoostPredictor] = None
 

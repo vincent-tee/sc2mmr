@@ -16,7 +16,7 @@ SPEC-ML-001 Implementation.
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, cast
 from collections import Counter
 
 import numpy as np
@@ -31,9 +31,11 @@ logger = logging.getLogger(__name__)
 # Data Classes
 # ============================================================================
 
+
 @dataclass
 class BuildFeatures:
     """Extracted features from a build order for clustering."""
+
     match_player_id: int
     player_name: str
     race: str
@@ -59,6 +61,7 @@ class BuildFeatures:
 @dataclass
 class BuildArchetype:
     """Represents a build archetype cluster."""
+
     name: str
     description: str
     centroid: np.ndarray  # Cluster center
@@ -100,16 +103,31 @@ BUILD_TYPE_RULES = {
 # Feature Extraction
 # ============================================================================
 
+
 class BuildFeatureExtractor:
     """Extracts ML-ready features from build order JSON."""
 
     # Tech buildings by race
     TECH_BUILDINGS = {
         "Terran": {"Factory", "Starport", "GhostAcademy", "Armory", "FusionCore"},
-        "Protoss": {"CyberneticsCore", "TwilightCouncil", "RoboticsFacility",
-                    "Stargate", "TemplarArchive", "DarkShrine", "FleetBeacon"},
-        "Zerg": {"RoachWarren", "BanelingNest", "HydraliskDen", "LurkerDen",
-                 "InfestationPit", "Spire", "UltraliskCavern"},
+        "Protoss": {
+            "CyberneticsCore",
+            "TwilightCouncil",
+            "RoboticsFacility",
+            "Stargate",
+            "TemplarArchive",
+            "DarkShrine",
+            "FleetBeacon",
+        },
+        "Zerg": {
+            "RoachWarren",
+            "BanelingNest",
+            "HydraliskDen",
+            "LurkerDen",
+            "InfestationPit",
+            "Spire",
+            "UltraliskCavern",
+        },
     }
 
     # Expansion buildings
@@ -121,7 +139,7 @@ class BuildFeatureExtractor:
     @classmethod
     def extract_features(
         cls,
-        build_order_json: List[Dict],
+        build_order_json: List[Dict[str, Any]],
         race: str,
         match_player_id: int,
         player_name: str,
@@ -129,16 +147,6 @@ class BuildFeatureExtractor:
     ) -> BuildFeatures:
         """
         Extract clustering features from build order.
-
-        Args:
-            build_order_json: List of build events from enhanced parser
-            race: Player's race
-            match_player_id: MatchPlayer ID
-            player_name: Player name
-            build_hash: Build order hash
-
-        Returns:
-            BuildFeatures for clustering
         """
         features = BuildFeatures(
             match_player_id=match_player_id,
@@ -159,24 +167,28 @@ class BuildFeatureExtractor:
         tech_buildings = cls.TECH_BUILDINGS.get(race, set())
 
         for event in build_order_json:
-            unit_type = event.get("unit_type", "")
-            second = event.get("second", 0)
-            is_building = event.get("is_building", False)
-            is_worker = event.get("is_worker", False) or unit_type in cls.WORKERS
+            unit_type = str(event.get("unit_type", ""))
+            second = int(event.get("second", 0))
+            is_building = bool(event.get("is_building", False))
+            is_worker = bool(event.get("is_worker", False)) or unit_type in cls.WORKERS
 
             # First army unit timing
-            if not is_worker and not is_building and features.first_army_unit_time == 999:
-                features.first_army_unit_time = second
+            if (
+                not is_worker
+                and not is_building
+                and features.first_army_unit_time == 999
+            ):
+                features.first_army_unit_time = float(second)
 
             # First expansion timing
             if unit_type in cls.EXPANSION_BUILDINGS:
                 base_count += 1
                 if base_count == 2 and features.first_expansion_time == 999:
-                    features.first_expansion_time = second
+                    features.first_expansion_time = float(second)
 
             # First tech building timing
             if unit_type in tech_buildings and features.first_tech_time == 999:
-                features.first_tech_time = second
+                features.first_tech_time = float(second)
 
             # Early game counts (first 5 minutes = 300 seconds)
             if second <= 300:
@@ -198,15 +210,10 @@ class BuildFeatureExtractor:
 # Rule-Based Classification (Fallback)
 # ============================================================================
 
+
 def classify_by_rules(features: BuildFeatures) -> Tuple[str, float]:
     """
     Classify build using rule-based approach.
-
-    Args:
-        features: Extracted build features
-
-    Returns:
-        Tuple of (archetype_name, confidence)
     """
     # Check each rule set
     if features.first_army_unit_time < 90:
@@ -228,21 +235,13 @@ def classify_by_rules(features: BuildFeatures) -> Tuple[str, float]:
 # K-Means Clustering (When Enough Data)
 # ============================================================================
 
+
 class BuildOrderClusterer:
     """
     K-Means clustering for build order classification.
-
-    Uses scikit-learn when available, falls back to simple implementation.
     """
 
     def __init__(self, n_clusters: int = 5, min_samples: int = 10):
-        """
-        Initialize clusterer.
-
-        Args:
-            n_clusters: Number of clusters (build archetypes)
-            min_samples: Minimum samples required for clustering
-        """
         self.n_clusters = n_clusters
         self.min_samples = min_samples
         self.centroids: Optional[np.ndarray] = None
@@ -251,24 +250,20 @@ class BuildOrderClusterer:
 
     def _features_to_vector(self, features: BuildFeatures) -> np.ndarray:
         """Convert BuildFeatures to feature vector for clustering."""
-        return np.array([
-            features.first_army_unit_time / 600,  # Normalize to 10 min
-            features.first_expansion_time / 600,
-            features.first_tech_time / 600,
-            features.early_worker_count / 30,  # Normalize to ~30 workers
-            features.early_army_count / 20,
-            features.early_building_count / 10,
-        ])
+        return np.array(
+            [
+                features.first_army_unit_time / 600,  # Normalize to 10 min
+                features.first_expansion_time / 600,
+                features.first_tech_time / 600,
+                features.early_worker_count / 30,  # Normalize to ~30 workers
+                features.early_army_count / 20,
+                features.early_building_count / 10,
+            ]
+        )
 
     def fit(self, features_list: List[BuildFeatures]) -> bool:
         """
         Fit clustering model on build features.
-
-        Args:
-            features_list: List of BuildFeatures to cluster
-
-        Returns:
-            True if fitting succeeded, False if not enough data
         """
         if len(features_list) < self.min_samples:
             logger.info(
@@ -286,7 +281,7 @@ class BuildOrderClusterer:
             kmeans = KMeans(
                 n_clusters=min(self.n_clusters, len(features_list)),
                 random_state=42,
-                n_init=10,
+                n_init=10,  # type: ignore
             )
             self.labels_ = kmeans.fit_predict(X)
             self.centroids = kmeans.cluster_centers_
@@ -295,18 +290,14 @@ class BuildOrderClusterer:
             return True
 
         except ImportError:
-            logger.warning("scikit-learn not available, using rule-based classification")
+            logger.warning(
+                "scikit-learn not available, using rule-based classification"
+            )
             return False
 
     def predict(self, features: BuildFeatures) -> Tuple[int, float]:
         """
         Predict cluster for a single build.
-
-        Args:
-            features: BuildFeatures to classify
-
-        Returns:
-            Tuple of (cluster_id, confidence)
         """
         if not self.fitted or self.centroids is None:
             return -1, 0.0
@@ -319,7 +310,6 @@ class BuildOrderClusterer:
         min_distance = distances[cluster_id]
 
         # Confidence based on distance (closer = higher confidence)
-        # Max distance ~2.5 (all features at max), confidence = 1 - normalized_distance
         confidence = max(0.0, 1.0 - min_distance / 2.5)
 
         return cluster_id, confidence
@@ -329,12 +319,10 @@ class BuildOrderClusterer:
 # Main Classifier Service
 # ============================================================================
 
+
 class BuildOrderClassifier:
     """
     Main service for build order classification.
-
-    Combines rule-based classification (for small datasets) with
-    K-means clustering (when enough data is available).
     """
 
     # Cluster ID to archetype name mapping (updated during training)
@@ -353,28 +341,30 @@ class BuildOrderClassifier:
     def train(self, db: Session) -> Dict[str, Any]:
         """
         Train classifier on all available build data.
-
-        Args:
-            db: Database session
-
-        Returns:
-            Training statistics
         """
         # Get all performance features with build orders
-        features_records = db.query(PerformanceFeatures).filter(
-            PerformanceFeatures.build_order_json.isnot(None)
-        ).all()
+        features_records = (
+            db.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.build_order_json.isnot(None))
+            .all()
+        )
 
         if not features_records:
             logger.warning("No build order data available for training")
             return {"status": "no_data", "samples": 0}
 
         # Extract features
-        build_features = []
+        build_features: List[BuildFeatures] = []
         for pf in features_records:
-            mp = db.query(MatchPlayer).filter(
-                MatchPlayer.id == pf.match_player_id
-            ).first()
+            # 1. Validate and Narrow (Recursive Type Resolution Pattern)
+            if not isinstance(pf.build_order_json, list):
+                continue
+
+            mp = (
+                db.query(MatchPlayer)
+                .filter(MatchPlayer.id == pf.match_player_id)
+                .first()
+            )
 
             if not mp:
                 continue
@@ -383,12 +373,15 @@ class BuildOrderClassifier:
             if not player:
                 continue
 
+            # 2. Cast and Process
+            build_data = cast(List[Dict[str, Any]], pf.build_order_json)
+
             features = BuildFeatureExtractor.extract_features(
-                build_order_json=pf.build_order_json or [],
-                race=mp.race.value if hasattr(mp.race, 'value') else str(mp.race),
-                match_player_id=pf.match_player_id,
-                player_name=player.name,
-                build_hash=pf.build_order_hash or "",
+                build_order_json=build_data,
+                race=mp.race.value if hasattr(mp.race, "value") else str(mp.race),
+                match_player_id=int(pf.match_player_id),
+                player_name=str(player.name),
+                build_hash=str(pf.build_order_hash or ""),
             )
             build_features.append(features)
 
@@ -398,7 +391,6 @@ class BuildOrderClassifier:
         self.use_clustering = self.clusterer.fit(build_features)
 
         if self.use_clustering:
-            # Analyze clusters to determine archetype names
             self._analyze_clusters(build_features)
             return {
                 "status": "clustering",
@@ -406,7 +398,6 @@ class BuildOrderClassifier:
                 "clusters": self.clusterer.n_clusters,
             }
         else:
-            # Fall back to rule-based
             return {
                 "status": "rule_based",
                 "samples": len(build_features),
@@ -452,22 +443,13 @@ class BuildOrderClassifier:
 
     def classify(
         self,
-        build_order_json: List[Dict],
+        build_order_json: List[Dict[str, Any]],
         race: str,
         match_player_id: int = 0,
         player_name: str = "",
     ) -> Tuple[str, float]:
         """
         Classify a build order.
-
-        Args:
-            build_order_json: Build order events
-            race: Player race
-            match_player_id: Optional MatchPlayer ID
-            player_name: Optional player name
-
-        Returns:
-            Tuple of (archetype_name, confidence)
         """
         features = BuildFeatureExtractor.extract_features(
             build_order_json=build_order_json,
@@ -486,19 +468,14 @@ class BuildOrderClassifier:
     def classify_from_db(self, db: Session, match_player_id: int) -> Tuple[str, float]:
         """
         Classify a build from database records.
-
-        Args:
-            db: Database session
-            match_player_id: MatchPlayer ID
-
-        Returns:
-            Tuple of (archetype_name, confidence)
         """
-        pf = db.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == match_player_id
-        ).first()
+        pf = (
+            db.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == match_player_id)
+            .first()
+        )
 
-        if not pf or not pf.build_order_json:
+        if not pf or not isinstance(pf.build_order_json, list):
             return "unknown", 0.0
 
         mp = db.query(MatchPlayer).filter(MatchPlayer.id == match_player_id).first()
@@ -506,13 +483,15 @@ class BuildOrderClassifier:
             return "unknown", 0.0
 
         player = db.query(Player).filter(Player.id == mp.player_id).first()
-        race = mp.race.value if hasattr(mp.race, 'value') else str(mp.race)
+        race = mp.race.value if hasattr(mp.race, "value") else str(mp.race)
 
+        # Recursive Type Resolution
+        build_json = cast(List[Dict[str, Any]], pf.build_order_json)
         return self.classify(
-            build_order_json=pf.build_order_json,
+            build_order_json=build_json,
             race=race,
-            match_player_id=match_player_id,
-            player_name=player.name if player else "",
+            match_player_id=int(match_player_id),
+            player_name=str(player.name if player else ""),
         )
 
 

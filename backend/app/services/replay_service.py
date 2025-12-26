@@ -10,9 +10,10 @@ Usage:
     service = ReplayService(db)
     result = service.process_replay(file_content, filename)
 """
+
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict, Any
 import hashlib
 import logging
 import os
@@ -343,13 +344,21 @@ class ReplayService:
         if advanced_data:
             self._save_advanced_metrics(match, advanced_data)
 
+        # Trigger Online Learning Engine (Self-Improving Model)
+        self._trigger_online_learning(match, replay_data)
+
         rating_time_ms = (time.time() - rating_start) * 1000
         total_time_ms = (time.time() - start_time) * 1000
 
         return self._build_result(
-            match, replay_data, advanced_data,
-            parse_time_ms, validation_time_ms,
-            duplicate_check_time_ms, rating_time_ms, total_time_ms
+            match,
+            replay_data,
+            advanced_data,
+            parse_time_ms,
+            validation_time_ms,
+            duplicate_check_time_ms,
+            rating_time_ms,
+            total_time_ms,
         )
 
     def _validate_and_check(self, replay_data: ReplayData) -> Tuple[float, float]:
@@ -421,9 +430,7 @@ class ReplayService:
             )
             return advanced_data.basic_data, advanced_data
         else:
-            basic_data = parse_replay(
-                file_path, manual_winner_team=manual_winner_team
-            )
+            basic_data = parse_replay(file_path, manual_winner_team=manual_winner_team)
             return basic_data, None
 
     def _validate_replay(self, replay_data: ReplayData) -> None:
@@ -451,9 +458,7 @@ class ReplayService:
             DuplicateReplayError: If replay already exists
         """
         existing_match = (
-            self.db.query(Match)
-            .filter(Match.replay_hash == replay_hash)
-            .first()
+            self.db.query(Match).filter(Match.replay_hash == replay_hash).first()
         )
 
         if existing_match:
@@ -617,6 +622,30 @@ class ReplayService:
                 exc_info=True,
             )
 
+    def _trigger_online_learning(self, match: Match, replay_data: ReplayData) -> None:
+        """
+        Trigger the Online Learning Engine to record match outcome and improve models.
+
+        Args:
+            match: The created match record
+            replay_data: Parsed replay data
+        """
+        try:
+            from ..online_learning import OnlineLearningEngine
+
+            # Determine if team 1 won
+            team1_won = any(p.won for p in replay_data.players if p.team == 1)
+
+            logger.info(f"Triggering OnlineLearningEngine for match_id={match.id}")
+            engine = OnlineLearningEngine(self.db)
+            engine.record_outcome(match.id, team1_won)
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to trigger OnlineLearningEngine for match_id={match.id}: {e}",
+                exc_info=True,
+            )
+
     def _trigger_optimization(self) -> None:
         """Trigger auto-optimization if threshold reached."""
         try:
@@ -669,7 +698,11 @@ class ReplayService:
             error_message=str(error),
             error_detail=traceback.format_exc(),
             replay_file_path=saved_path,
-            **metadata,
+            replay_hash=metadata.get("replay_hash"),
+            map_name=metadata.get("map_name"),
+            game_mode=metadata.get("game_mode"),
+            duration_seconds=metadata.get("duration_seconds"),
+            num_players=metadata.get("num_players"),
         )
 
     def _handle_parse_error(
@@ -720,7 +753,7 @@ class ReplayService:
             exc_info=True,
         )
 
-        extra_kwargs = {}
+        extra_kwargs: Dict[str, Any] = {}
         if replay_data:
             extra_kwargs = self._extract_metadata_from_replay_data(replay_data)
 
@@ -735,7 +768,7 @@ class ReplayService:
 
     def _extract_replay_metadata(
         self, file_path: str, replay_data: Optional[ReplayData]
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """
         Extract metadata from replay file or parsed data.
 
@@ -751,9 +784,9 @@ class ReplayService:
 
         # Try to extract minimal metadata from file
         try:
-            import sc2reader
+            import sc2reader  # type: ignore
 
-            replay = sc2reader.load_replay(file_path, load_level=2)
+            replay = sc2reader.load_replay(file_path, load_level=2)  # type: ignore
             replay_hash = calculate_replay_hash(file_path)
             human_players = [p for p in replay.players if p.is_human]
             num_players = len(human_players)
@@ -773,7 +806,9 @@ class ReplayService:
         except Exception:
             return {}
 
-    def _extract_metadata_from_replay_data(self, replay_data: ReplayData) -> dict:
+    def _extract_metadata_from_replay_data(
+        self, replay_data: ReplayData
+    ) -> Dict[str, Any]:
         """
         Extract metadata from parsed replay data.
 
@@ -827,12 +862,12 @@ class ReplayService:
         error_type: UploadErrorType,
         error_message: str,
         error_detail: str,
-        replay_hash: str = None,
-        map_name: str = None,
-        game_mode: str = None,
-        duration_seconds: int = None,
-        num_players: int = None,
-        replay_file_path: str = None,
+        replay_hash: Optional[str] = None,
+        map_name: Optional[str] = None,
+        game_mode: Optional[str] = None,
+        duration_seconds: Optional[int] = None,
+        num_players: Optional[int] = None,
+        replay_file_path: Optional[str] = None,
     ) -> None:
         """
         Log a failed replay upload to the database.
@@ -931,11 +966,7 @@ class ReplayService:
         Returns:
             Match object if found, None otherwise
         """
-        return (
-            self.db.query(Match)
-            .filter(Match.replay_hash == replay_hash)
-            .first()
-        )
+        return self.db.query(Match).filter(Match.replay_hash == replay_hash).first()
 
     def delete_failed_upload(self, upload_id: int) -> bool:
         """
@@ -948,9 +979,7 @@ class ReplayService:
             True if deleted, False if not found
         """
         failed_upload = (
-            self.db.query(FailedUpload)
-            .filter(FailedUpload.id == upload_id)
-            .first()
+            self.db.query(FailedUpload).filter(FailedUpload.id == upload_id).first()
         )
 
         if not failed_upload:

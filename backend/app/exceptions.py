@@ -14,6 +14,8 @@ Usage:
         raise HTTPException(status_code=400, detail=str(e))
 """
 
+from typing import Optional
+
 
 class SC2MMRException(Exception):
     """
@@ -22,7 +24,9 @@ class SC2MMRException(Exception):
     All custom exceptions should inherit from this class.
     """
 
-    def __init__(self, message: str, detail: str = None):
+    def __init__(
+        self, message: str = "SC2 MMR Tracker Error", detail: Optional[str] = None
+    ):
         self.message = message
         self.detail = detail
         super().__init__(self.message)
@@ -42,6 +46,7 @@ class ReplayParseError(SC2MMRException):
     - Unsupported replay version
     - Invalid file format
     """
+
     pass
 
 
@@ -54,6 +59,7 @@ class WinnerDeterminationError(SC2MMRException):
     - All players appear to have left
     - Game ended in an unusual way
     """
+
     pass
 
 
@@ -66,6 +72,7 @@ class RatingCalculationError(SC2MMRException):
     - TrueSkill library error
     - Mathematical overflow/underflow
     """
+
     pass
 
 
@@ -74,7 +81,9 @@ class PlayerNotFoundError(SC2MMRException):
     Raised when a requested player is not found in the database.
     """
 
-    def __init__(self, player_id: int = None, player_name: str = None):
+    def __init__(
+        self, player_id: Optional[int] = None, player_name: Optional[str] = None
+    ):
         if player_id:
             message = f"Player with ID {player_id} not found"
         elif player_name:
@@ -89,8 +98,11 @@ class MatchNotFoundError(SC2MMRException):
     Raised when a requested match is not found in the database.
     """
 
-    def __init__(self, match_id: int):
-        super().__init__(f"Match with ID {match_id} not found")
+    def __init__(self, match_id: Optional[int] = None):
+        if match_id is not None:
+            super().__init__(f"Match with ID {match_id} not found")
+        else:
+            super().__init__("Match not found")
 
 
 class DuplicateReplayError(SC2MMRException):
@@ -98,7 +110,7 @@ class DuplicateReplayError(SC2MMRException):
     Raised when attempting to upload a replay that already exists.
     """
 
-    def __init__(self, replay_hash: str, match_id: int = None):
+    def __init__(self, replay_hash: str, match_id: Optional[int] = None):
         message = f"Replay already exists (hash: {replay_hash[:16]}...)"
         if match_id:
             message += f" - associated with match ID {match_id}"
@@ -114,6 +126,7 @@ class TeamBalanceError(SC2MMRException):
     - Invalid player IDs
     - Balancing algorithm fails
     """
+
     pass
 
 
@@ -121,6 +134,7 @@ class ValidationError(SC2MMRException):
     """
     Raised when input validation fails.
     """
+
     pass
 
 
@@ -130,6 +144,7 @@ class DatabaseError(SC2MMRException):
 
     Wraps SQLAlchemy errors with more context.
     """
+
     pass
 
 
@@ -137,4 +152,5 @@ class ConfigurationError(SC2MMRException):
     """
     Raised when there's a configuration problem.
     """
+
     pass

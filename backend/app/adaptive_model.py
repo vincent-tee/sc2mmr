@@ -9,6 +9,7 @@ The system:
 3. Validates changes to prevent overfitting
 4. Suggests weight updates when confidence is high
 """
+
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import numpy as np
@@ -21,6 +22,7 @@ from .models import PlayerMatchMetrics, MatchPlayer, Match
 @dataclass
 class PerformanceWeights:
     """Weights for calculating overall_impact."""
+
     combat_weight: float = 0.40
     economic_weight: float = 0.20
     team_contribution_weight: float = 0.30
@@ -28,15 +30,17 @@ class PerformanceWeights:
 
     def to_array(self) -> np.ndarray:
         """Convert to numpy array for optimization."""
-        return np.array([
-            self.combat_weight,
-            self.economic_weight,
-            self.team_contribution_weight,
-            self.efficiency_weight
-        ])
+        return np.array(
+            [
+                self.combat_weight,
+                self.economic_weight,
+                self.team_contribution_weight,
+                self.efficiency_weight,
+            ]
+        )
 
     @classmethod
-    def from_array(cls, arr: np.ndarray) -> 'PerformanceWeights':
+    def from_array(cls, arr: np.ndarray) -> "PerformanceWeights":
         """Create from numpy array."""
         # Ensure weights sum to 1.0
         arr = arr / np.sum(arr)
@@ -44,23 +48,26 @@ class PerformanceWeights:
             combat_weight=float(arr[0]),
             economic_weight=float(arr[1]),
             team_contribution_weight=float(arr[2]),
-            efficiency_weight=float(arr[3])
+            efficiency_weight=float(arr[3]),
         )
 
     def validate(self) -> bool:
         """Ensure weights are valid."""
-        total = sum([
-            self.combat_weight,
-            self.economic_weight,
-            self.team_contribution_weight,
-            self.efficiency_weight
-        ])
-        return abs(total - 1.0) < 0.001 and all(
-            w >= 0 for w in [
+        total = sum(
+            [
                 self.combat_weight,
                 self.economic_weight,
                 self.team_contribution_weight,
-                self.efficiency_weight
+                self.efficiency_weight,
+            ]
+        )
+        return abs(total - 1.0) < 0.001 and all(
+            w >= 0
+            for w in [
+                self.combat_weight,
+                self.economic_weight,
+                self.team_contribution_weight,
+                self.efficiency_weight,
             ]
         )
 
@@ -68,6 +75,7 @@ class PerformanceWeights:
 @dataclass
 class ModelPerformance:
     """Performance metrics for the model."""
+
     win_prediction_accuracy: float  # How well high performance predicts wins
     correlation_strength: float  # Correlation between performance and winning
     sample_size: int
@@ -88,8 +96,7 @@ class AdaptiveModelTuner:
 
     @staticmethod
     def calculate_overall_impact_custom(
-        metrics: PlayerMatchMetrics,
-        weights: PerformanceWeights
+        metrics: PlayerMatchMetrics, weights: PerformanceWeights
     ) -> float:
         """
         Calculate overall_impact with custom weights.
@@ -107,16 +114,15 @@ class AdaptiveModelTuner:
         team_contribution_score = (participation_score + team_fight_effectiveness) / 2
 
         return (
-            metrics.combat_score * weights.combat_weight +
-            metrics.economic_score * weights.economic_weight +
-            team_contribution_score * weights.team_contribution_weight +
-            metrics.efficiency_score * weights.efficiency_weight
+            metrics.combat_score * weights.combat_weight
+            + metrics.economic_score * weights.economic_weight
+            + team_contribution_score * weights.team_contribution_weight
+            + metrics.efficiency_score * weights.efficiency_weight
         )
 
     @staticmethod
     def evaluate_weights(
-        weights: PerformanceWeights,
-        data: List[Tuple[PlayerMatchMetrics, bool]]
+        weights: PerformanceWeights, data: List[Tuple[PlayerMatchMetrics, bool]]
     ) -> float:
         """
         Evaluate how well weights predict wins.
@@ -135,7 +141,9 @@ class AdaptiveModelTuner:
         outcomes = []
 
         for metrics, won in data:
-            impact = AdaptiveModelTuner.calculate_overall_impact_custom(metrics, weights)
+            impact = AdaptiveModelTuner.calculate_overall_impact_custom(
+                metrics, weights
+            )
             impacts.append(impact)
             outcomes.append(1.0 if won else 0.0)
 
@@ -150,8 +158,7 @@ class AdaptiveModelTuner:
 
     @staticmethod
     def fetch_training_data(
-        db: Session,
-        limit: int = 1000
+        db: Session, limit: int = 1000
     ) -> List[Tuple[PlayerMatchMetrics, bool]]:
         """
         Fetch recent match data for training.
@@ -164,26 +171,20 @@ class AdaptiveModelTuner:
             List of (metrics, won) tuples
         """
         # Get recent matches with metrics
-        results = db.query(
-            PlayerMatchMetrics,
-            MatchPlayer.won
-        ).join(
-            MatchPlayer,
-            PlayerMatchMetrics.match_player_id == MatchPlayer.id
-        ).join(
-            Match,
-            MatchPlayer.match_id == Match.id
-        ).order_by(
-            Match.played_at.desc()
-        ).limit(limit).all()
+        results = (
+            db.query(PlayerMatchMetrics, MatchPlayer.won)
+            .join(MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id)
+            .join(Match, MatchPlayer.match_id == Match.id)
+            .order_by(Match.played_at.desc())
+            .limit(limit)
+            .all()
+        )
 
         return [(metrics, bool(won)) for metrics, won in results]
 
     @staticmethod
     def calculate_match_prediction_accuracy(
-        db: Session,
-        weights: PerformanceWeights,
-        limit: int = 1000
+        db: Session, weights: PerformanceWeights, limit: int = 1000
     ) -> Tuple[float, int, int]:
         """
         Calculate how accurately team performance predicts match winners.
@@ -202,9 +203,7 @@ class AdaptiveModelTuner:
             Tuple of (accuracy, correct_predictions, total_matches)
         """
         # Get recent matches with metrics
-        matches = db.query(Match).order_by(
-            Match.played_at.desc()
-        ).limit(limit).all()
+        matches = db.query(Match).order_by(Match.played_at.desc()).limit(limit).all()
 
         if not matches:
             return 0.0, 0, 0
@@ -214,9 +213,9 @@ class AdaptiveModelTuner:
 
         for match in matches:
             # Get all players in this match
-            match_players = db.query(MatchPlayer).filter(
-                MatchPlayer.match_id == match.id
-            ).all()
+            match_players = (
+                db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
+            )
 
             if len(match_players) < 2:
                 continue
@@ -224,15 +223,19 @@ class AdaptiveModelTuner:
             # Get metrics for all players
             player_metrics = {}
             for mp in match_players:
-                metrics = db.query(PlayerMatchMetrics).filter(
-                    PlayerMatchMetrics.match_player_id == mp.id
-                ).first()
+                metrics = (
+                    db.query(PlayerMatchMetrics)
+                    .filter(PlayerMatchMetrics.match_player_id == mp.id)
+                    .first()
+                )
 
                 if metrics:
                     player_metrics[mp.id] = (
-                        AdaptiveModelTuner.calculate_overall_impact_custom(metrics, weights),
+                        AdaptiveModelTuner.calculate_overall_impact_custom(
+                            metrics, weights
+                        ),
                         mp.team_number,
-                        mp.won
+                        mp.won,
                     )
 
             if not player_metrics:
@@ -253,12 +256,11 @@ class AdaptiveModelTuner:
 
             # Calculate average team performance
             team_avg_scores = {
-                team: sum(scores) / len(scores)
-                for team, scores in team_scores.items()
+                team: sum(scores) / len(scores) for team, scores in team_scores.items()
             }
 
             # Predict winner: team with highest average performance
-            predicted_winner = max(team_avg_scores, key=team_avg_scores.get)
+            predicted_winner = max(team_avg_scores, key=lambda k: team_avg_scores[k])
 
             # Get actual winner
             actual_winner = None
@@ -277,8 +279,7 @@ class AdaptiveModelTuner:
 
     @staticmethod
     def optimize_weights(
-        db: Session,
-        current_weights: Optional[PerformanceWeights] = None
+        db: Session, current_weights: Optional[PerformanceWeights] = None
     ) -> Tuple[PerformanceWeights, ModelPerformance]:
         """
         Optimize weights using recent match data.
@@ -301,10 +302,10 @@ class AdaptiveModelTuner:
                 current_weights = PerformanceWeights()
 
             # Calculate accuracy even with limited data
-            match_accuracy, correct, total = AdaptiveModelTuner.calculate_match_prediction_accuracy(
-                db,
-                current_weights,
-                limit=1000
+            match_accuracy, correct, total = (
+                AdaptiveModelTuner.calculate_match_prediction_accuracy(
+                    db, current_weights, limit=1000
+                )
             )
 
             return (
@@ -313,14 +314,17 @@ class AdaptiveModelTuner:
                     win_prediction_accuracy=match_accuracy,
                     correlation_strength=0.0,
                     sample_size=len(all_data),
-                    confidence_score=0.0
-                )
+                    confidence_score=0.0,
+                ),
             )
 
         # Split into training and validation
         # Set random seed for reproducibility
-        np.random.seed(42)
-        np.random.shuffle(all_data)
+        import random
+
+        random.seed(42)
+        random.shuffle(all_data)
+
         split_idx = int(len(all_data) * (1 - AdaptiveModelTuner.VALIDATION_SPLIT))
         training_data = all_data[:split_idx]
         validation_data = all_data[split_idx:]
@@ -338,19 +342,18 @@ class AdaptiveModelTuner:
         # Bounds: each weight must be between 0 and 1
         bounds = [(0.0, 1.0) for _ in range(4)]
 
-        constraints = {'type': 'eq', 'fun': constraint}
+        constraints = {"type": "eq", "fun": constraint}
 
         # Optimize
         result = minimize(
             lambda x: AdaptiveModelTuner.evaluate_weights(
-                PerformanceWeights.from_array(x),
-                training_data
+                PerformanceWeights.from_array(x), training_data
             ),
             x0=x0,
-            method='SLSQP',
+            method="SLSQP",
             bounds=bounds,
             constraints=constraints,
-            options={'maxiter': 100}
+            options={"maxiter": 100},
         )
 
         # Get optimized weights
@@ -358,15 +361,14 @@ class AdaptiveModelTuner:
 
         # Evaluate on validation set (correlation)
         validation_score = -AdaptiveModelTuner.evaluate_weights(
-            optimized_weights,
-            validation_data
+            optimized_weights, validation_data
         )
 
         # Calculate REAL match prediction accuracy
-        match_accuracy, correct, total = AdaptiveModelTuner.calculate_match_prediction_accuracy(
-            db,
-            optimized_weights,
-            limit=1000
+        match_accuracy, correct, total = (
+            AdaptiveModelTuner.calculate_match_prediction_accuracy(
+                db, optimized_weights, limit=1000
+            )
         )
 
         # Calculate confidence (based on sample size and correlation)
@@ -374,9 +376,9 @@ class AdaptiveModelTuner:
 
         performance = ModelPerformance(
             win_prediction_accuracy=match_accuracy,  # Real accuracy: % of correct match predictions
-            correlation_strength=validation_score,    # Correlation: player performance vs wins
+            correlation_strength=validation_score,  # Correlation: player performance vs wins
             sample_size=len(all_data),
-            confidence_score=confidence
+            confidence_score=confidence,
         )
 
         return optimized_weights, performance
@@ -394,46 +396,48 @@ class AdaptiveModelTuner:
         """
         current_weights = PerformanceWeights()  # Get current from config
         optimized_weights, performance = AdaptiveModelTuner.optimize_weights(
-            db,
-            current_weights
+            db, current_weights
         )
 
         # Only suggest if we're confident
         if performance.confidence_score < AdaptiveModelTuner.CONFIDENCE_THRESHOLD:
             return {
-                'suggestion': 'insufficient_data',
-                'reason': f'Need more matches (have {performance.sample_size}, need {AdaptiveModelTuner.MIN_SAMPLES_FOR_TUNING}+)',
-                'confidence': performance.confidence_score,
-                'current_weights': current_weights,
-                'sample_size': performance.sample_size
+                "suggestion": "insufficient_data",
+                "reason": f"Need more matches (have {performance.sample_size}, need {AdaptiveModelTuner.MIN_SAMPLES_FOR_TUNING}+)",
+                "confidence": performance.confidence_score,
+                "current_weights": current_weights,
+                "sample_size": performance.sample_size,
             }
 
         # Calculate weight changes
         changes = {
-            'combat': optimized_weights.combat_weight - current_weights.combat_weight,
-            'economic': optimized_weights.economic_weight - current_weights.economic_weight,
-            'team_contribution': optimized_weights.team_contribution_weight - current_weights.team_contribution_weight,
-            'efficiency': optimized_weights.efficiency_weight - current_weights.efficiency_weight
+            "combat": optimized_weights.combat_weight - current_weights.combat_weight,
+            "economic": optimized_weights.economic_weight
+            - current_weights.economic_weight,
+            "team_contribution": optimized_weights.team_contribution_weight
+            - current_weights.team_contribution_weight,
+            "efficiency": optimized_weights.efficiency_weight
+            - current_weights.efficiency_weight,
         }
 
         # Check if changes are significant
         max_change = max(abs(v) for v in changes.values())
         if max_change < 0.05:
             return {
-                'suggestion': 'no_change_needed',
-                'reason': 'Current weights are already optimal',
-                'confidence': performance.confidence_score,
-                'current_weights': current_weights,
-                'sample_size': performance.sample_size
+                "suggestion": "no_change_needed",
+                "reason": "Current weights are already optimal",
+                "confidence": performance.confidence_score,
+                "current_weights": current_weights,
+                "sample_size": performance.sample_size,
             }
 
         return {
-            'suggestion': 'update_recommended',
-            'reason': f'Found {performance.correlation_strength:.1%} correlation improvement',
-            'confidence': performance.confidence_score,
-            'current_weights': current_weights,
-            'suggested_weights': optimized_weights,
-            'changes': changes,
-            'sample_size': performance.sample_size,
-            'performance': performance
+            "suggestion": "update_recommended",
+            "reason": f"Found {performance.correlation_strength:.1%} correlation improvement",
+            "confidence": performance.confidence_score,
+            "current_weights": current_weights,
+            "suggested_weights": optimized_weights,
+            "changes": changes,
+            "sample_size": performance.sample_size,
+            "performance": performance,
         }

@@ -600,6 +600,12 @@ class PerformanceFeatures(Base):
     ml_predicted_pim: Mapped[Optional[float]] = mapped_column(
         Float, nullable=True
     )  # ML model prediction
+    ml_win_probability: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # ML model win probability
+    ml_shap_values: Mapped[Optional[dict]] = mapped_column(
+        JSON, nullable=True
+    )  # SHAP feature importance values
 
     # =========================================================================
     # Metadata

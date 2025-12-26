@@ -22,7 +22,7 @@ import {
   Text,
   Badge,
 } from '@chakra-ui/react';
-import { FiMenu, FiZap, FiUpload, FiUsers, FiBarChart2, FiHome, FiInfo, FiAlertCircle, FiCpu, FiTarget } from 'react-icons/fi';
+import { FiMenu, FiZap, FiUpload, FiUsers, FiBarChart2, FiHome, FiInfo, FiAlertCircle, FiCpu, FiTarget, FiTrendingUp } from 'react-icons/fi';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { IconType } from 'react-icons';
@@ -63,6 +63,7 @@ const Navigation: React.FC = () => {
     { path: '/history', label: 'History', icon: FiBarChart2 },
     { path: '/rating-system', label: 'Info', icon: FiInfo },
     { path: '/adaptive-model', label: 'AI Model', icon: FiCpu },
+    { path: '/ml-intelligence', label: 'ML Intel', icon: FiTrendingUp },
   ];
 
   const isActive = (path: string): boolean => {

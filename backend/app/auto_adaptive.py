@@ -5,7 +5,8 @@ Automatically triggers weight optimization after every N matches.
 For small datasets (200-300 matches/year), this provides continuous
 improvement without excessive computation.
 """
-from typing import Optional
+
+from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import logging
@@ -18,44 +19,35 @@ logger = logging.getLogger(__name__)
 
 class AutoAdaptiveConfig:
     """Configuration for auto-adaptive system."""
+
     # Trigger optimization after every N matches
-    # With 200-300 matches/year, 5-10 is reasonable
-    MATCHES_PER_OPTIMIZATION = 5
+    MATCHES_PER_OPTIMIZATION: int = 5
 
     # Minimum matches before first optimization
-    MIN_MATCHES_FOR_FIRST_RUN = 50
+    MIN_MATCHES_FOR_FIRST_RUN: int = 50
 
     # Enable/disable auto-optimization
-    ENABLED = True
+    ENABLED: bool = True
 
 
 class AutoAdaptiveTracker:
     """
     Tracks when to trigger adaptive model optimization.
-
-    Automatically optimizes weights after every N matches,
-    providing continuous improvement without manual intervention.
     """
 
-    _last_optimization_count = 0
+    _last_optimization_count: int = 0
     _current_weights: Optional[PerformanceWeights] = None
 
     @classmethod
     def should_optimize(cls, db: Session) -> bool:
         """
         Check if we should trigger optimization.
-
-        Args:
-            db: Database session
-
-        Returns:
-            True if optimization should run
         """
         if not AutoAdaptiveConfig.ENABLED:
             return False
 
         # Get total match count
-        total_matches = db.query(func.count(Match.id)).scalar()
+        total_matches = db.query(func.count(Match.id)).scalar() or 0
 
         # Need minimum matches before first run
         if total_matches < AutoAdaptiveConfig.MIN_MATCHES_FOR_FIRST_RUN:
@@ -74,15 +66,9 @@ class AutoAdaptiveTracker:
         return False
 
     @classmethod
-    def optimize_if_needed(cls, db: Session) -> Optional[dict]:
+    def optimize_if_needed(cls, db: Session) -> Optional[Dict[str, Any]]:
         """
         Optimize weights if threshold reached.
-
-        Args:
-            db: Database session
-
-        Returns:
-            Optimization result dict or None if not needed
         """
         if not cls.should_optimize(db):
             return None
@@ -91,7 +77,7 @@ class AutoAdaptiveTracker:
             logger.info("Running auto-adaptive optimization...")
 
             # Get current match count
-            total_matches = db.query(func.count(Match.id)).scalar()
+            total_matches = db.query(func.count(Match.id)).scalar() or 0
 
             # Run optimization
             suggestion = AdaptiveModelTuner.suggest_weight_update(db)
@@ -101,8 +87,8 @@ class AutoAdaptiveTracker:
                 cls._last_optimization_count = total_matches
 
                 # Cache weights if suggested
-                if 'suggested_weights' in suggestion:
-                    cls._current_weights = suggestion['suggested_weights']
+                if "suggested_weights" in suggestion:
+                    cls._current_weights = suggestion["suggested_weights"]
                     logger.info(
                         f"Auto-adaptive optimization complete: {suggestion['suggestion']}"
                     )
@@ -126,34 +112,25 @@ class AutoAdaptiveTracker:
     def get_current_weights(cls) -> PerformanceWeights:
         """
         Get current optimized weights or defaults.
-
-        Returns:
-            Current PerformanceWeights
         """
         return cls._current_weights or PerformanceWeights()
 
     @classmethod
-    def force_optimization(cls, db: Session) -> dict:
+    def force_optimization(cls, db: Session) -> Dict[str, Any]:
         """
         Force optimization regardless of threshold.
-
-        Args:
-            db: Database session
-
-        Returns:
-            Optimization result dict
         """
         logger.info("Forcing auto-adaptive optimization...")
-        total_matches = db.query(func.count(Match.id)).scalar()
+        total_matches = db.query(func.count(Match.id)).scalar() or 0
 
         suggestion = AdaptiveModelTuner.suggest_weight_update(db)
 
         if suggestion:
             cls._last_optimization_count = total_matches
-            if 'suggested_weights' in suggestion:
-                cls._current_weights = suggestion['suggested_weights']
+            if "suggested_weights" in suggestion:
+                cls._current_weights = suggestion["suggested_weights"]
 
-        return suggestion
+        return suggestion or {}
 
     @classmethod
     def reset(cls):
@@ -164,16 +141,8 @@ class AutoAdaptiveTracker:
 
 
 # Convenience function to call from upload endpoint
-def trigger_auto_optimization(db: Session) -> Optional[dict]:
+def trigger_auto_optimization(db: Session) -> Optional[Dict[str, Any]]:
     """
     Convenience function to trigger auto-optimization.
-
-    Call this after successfully saving a match.
-
-    Args:
-        db: Database session
-
-    Returns:
-        Optimization result or None if not triggered
     """
     return AutoAdaptiveTracker.optimize_if_needed(db)

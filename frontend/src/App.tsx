@@ -51,6 +51,7 @@ const AdaptiveModel = lazy(() => import('./pages/AdaptiveModel'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Achievements = lazy(() => import('./pages/Achievements'));
 const HeadToHead = lazy(() => import('./pages/HeadToHead'));
+const MLIntelligence = lazy(() => import('./pages/MLIntelligence'));
 
 /**
  * Loading fallback component for Suspense boundaries
@@ -198,6 +199,14 @@ function App(): React.ReactElement {
                 element={
                   <ErrorBoundary>
                     <HeadToHead />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/ml-intelligence"
+                element={
+                  <ErrorBoundary>
+                    <MLIntelligence />
                   </ErrorBoundary>
                 }
               />

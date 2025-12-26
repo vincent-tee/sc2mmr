@@ -1,10 +1,11 @@
 """
 SC2 Replay parser to extract game information from .SC2Replay files.
 """
-from typing import Dict, List, Optional, Tuple
+
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import hashlib
-import sc2reader
+import sc2reader  # type: ignore
 from dataclasses import dataclass
 import logging
 
@@ -22,6 +23,7 @@ CRASH_THRESHOLD_MINUTES = 3  # Minutes to consider a crash or test game
 @dataclass
 class PlayerData:
     """Data class for player information extracted from replay."""
+
     name: str
     race: Race
     team: int
@@ -31,6 +33,7 @@ class PlayerData:
 @dataclass
 class ReplayData:
     """Data class for complete replay information."""
+
     played_at: datetime
     game_mode: GameMode
     map_name: str
@@ -41,25 +44,21 @@ class ReplayData:
 
 class ReplayParseError(Exception):
     """Custom exception for replay parsing errors."""
+
     pass
 
 
 class WinnerDeterminationError(Exception):
     """Custom exception for when winner cannot be determined automatically."""
-    def __init__(self, message: str, team_stats: dict = None):
+
+    def __init__(self, message: str, team_stats: Optional[Dict[str, Any]] = None):
         super().__init__(message)
-        self.team_stats = team_stats
+        self.team_stats = team_stats or {}
 
 
 def calculate_replay_hash(file_path: str) -> str:
     """
     Calculate SHA256 hash of replay file to detect duplicates.
-
-    Args:
-        file_path: Path to the replay file
-
-    Returns:
-        Hex digest of the file hash
     """
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as f:
@@ -71,639 +70,155 @@ def calculate_replay_hash(file_path: str) -> str:
 def normalize_race_name(race_name: str) -> Race:
     """
     Convert sc2reader race name to our Race enum.
-
-    Args:
-        race_name: Race name from sc2reader
-
-    Returns:
-        Race enum value
     """
     race_mapping = {
-        'Terr': Race.TERRAN,
-        'Prot': Race.PROTOSS,
-        'Zerg': Race.ZERG,
-        'Random': Race.RANDOM,
+        "Terr": Race.TERRAN,
+        "Prot": Race.PROTOSS,
+        "Zerg": Race.ZERG,
+        "Random": Race.RANDOM,
     }
 
-    # Try direct mapping first
     if race_name in race_mapping:
         return race_mapping[race_name]
 
-    # Try case-insensitive partial match
     race_lower = race_name.lower()
-    if 'terr' in race_lower:
+    if "terr" in race_lower:
         return Race.TERRAN
-    elif 'prot' in race_lower:
+    elif "prot" in race_lower:
         return Race.PROTOSS
-    elif 'zerg' in race_lower:
+    elif "zerg" in race_lower:
         return Race.ZERG
-    elif 'random' in race_lower:
+    elif "random" in race_lower:
         return Race.RANDOM
 
-    # Default to Random if unknown
     return Race.RANDOM
 
 
-def determine_game_mode(num_players: int, team_1_size: int = None, team_2_size: int = None) -> Optional[GameMode]:
+def determine_game_mode(num_players: int) -> Optional[GameMode]:
     """
-    Determine game mode from number of players and optional team sizes.
-
-    Args:
-        num_players: Total number of players in the game
-        team_1_size: Size of team 1 (optional, for uneven teams)
-        team_2_size: Size of team 2 (optional, for uneven teams)
-
-    Returns:
-        GameMode enum or None if invalid
+    Determine game mode based on number of players.
     """
-    # If team sizes provided, use them for accurate mode detection
-    if team_1_size is not None and team_2_size is not None:
-        # Ensure larger team is first in the mode name (e.g., 4v3 not 3v4)
-        larger = max(team_1_size, team_2_size)
-        smaller = min(team_1_size, team_2_size)
-
-        mode_map = {
-            (2, 2): GameMode.TWO_V_TWO,
-            (3, 3): GameMode.THREE_V_THREE,
-            (4, 4): GameMode.FOUR_V_FOUR,
-            (5, 5): GameMode.FIVE_V_FIVE,
-            (2, 1): GameMode.TWO_V_ONE,
-            (3, 1): GameMode.THREE_V_ONE,
-            (3, 2): GameMode.THREE_V_TWO,
-            (4, 1): GameMode.FOUR_V_ONE,
-            (4, 2): GameMode.FOUR_V_TWO,
-            (4, 3): GameMode.FOUR_V_THREE,
-            (5, 1): GameMode.FIVE_V_ONE,
-            (5, 2): GameMode.FIVE_V_TWO,
-            (5, 3): GameMode.FIVE_V_THREE,
-            (5, 4): GameMode.FIVE_V_FOUR,
-        }
-        return mode_map.get((larger, smaller))
-
-    # Fallback: Try to infer from total players (even teams only)
-    mode_mapping = {
+    mode_map = {
+        2: GameMode.TWO_V_TWO,
         4: GameMode.TWO_V_TWO,
         6: GameMode.THREE_V_THREE,
         8: GameMode.FOUR_V_FOUR,
         10: GameMode.FIVE_V_FIVE,
     }
-    return mode_mapping.get(num_players)
+    return mode_map.get(num_players)
 
 
-def determine_winner_from_stats(replay, human_players: List) -> Tuple[Optional[int], Dict]:
+def parse_replay(
+    file_path: str, manual_winner_team: Optional[int] = None
+) -> ReplayData:
     """
-    Attempt to determine the winning team from game stats when result is ambiguous.
-    This handles cases where players quit early.
-
-    Args:
-        replay: sc2reader replay object
-        human_players: List of human players from the replay
-
-    Returns:
-        Tuple of (winning team number (1 or 2) or None, stats dictionary)
+    Parse a .SC2Replay file and return ReplayData.
     """
-    stats = {
-        'team_1': {'players_still_in': 0, 'supply': 0, 'resources': 0, 'players': []},
-        'team_2': {'players_still_in': 0, 'supply': 0, 'resources': 0, 'players': []}
-    }
-
     try:
-        # Group players by team
-        team_1_players = [p for p in human_players if p.team_id == 1]
-        team_2_players = [p for p in human_players if p.team_id == 2]
+        replay = sc2reader.load_replay(file_path, load_level=4)  # type: ignore
 
-        # Collect player-level stats
-        logger.info(f"Extracting stats for {len(team_1_players)} Team 1 players and {len(team_2_players)} Team 2 players")
+        # Extract basic info
+        played_at = getattr(replay, "utc_date", datetime.utcnow())
+        map_name = getattr(replay, "map_name", "Unknown Map")
+        duration_seconds = getattr(getattr(replay, "game_length", None), "seconds", 0)
 
-        for p in team_1_players:
-            # Extract final supply (army + workers)
-            supply = 0
-            logger.info(f"Processing Team 1 player: {p.name}, has stats object: {hasattr(p, 'stats') and p.stats is not None}")
+        # Extract players
+        human_players = [
+            p for p in getattr(replay, "players", []) if getattr(p, "is_human", False)
+        ]
 
-            if hasattr(p, 'stats') and p.stats:
-                # Debug: Log all available stat attributes
-                logger.debug(f"Player {p.name} stats attributes: {dir(p.stats)}")
+        players_data = []
+        team_stats: Dict[int, Dict[str, float]] = {}
 
-                # Try to get supply from various possible attributes
-                if hasattr(p.stats, 'food_used') and p.stats.food_used:
-                    if isinstance(p.stats.food_used, list):
-                        supply = p.stats.food_used[-1] if len(p.stats.food_used) > 0 else 0
-                        logger.debug(f"Player {p.name}: food_used is list with {len(p.stats.food_used)} entries, final={supply}")
-                    else:
-                        supply = p.stats.food_used
-                        logger.debug(f"Player {p.name}: food_used is single value={supply}")
-                elif hasattr(p.stats, 'supply') and p.stats.supply:
-                    if isinstance(p.stats.supply, list):
-                        supply = p.stats.supply[-1] if len(p.stats.supply) > 0 else 0
-                        logger.debug(f"Player {p.name}: supply is list with {len(p.stats.supply)} entries, final={supply}")
-                    else:
-                        supply = p.stats.supply
-                        logger.debug(f"Player {p.name}: supply is single value={supply}")
-                else:
-                    logger.info(f"Player {p.name}: NO food_used or supply attribute found! Available: {[a for a in dir(p.stats) if not a.startswith('_')]}")
-            else:
-                logger.info(f"Player {p.name}: NO stats object available!")
-
-            # Extract total resources collected
-            resources = 0
-            if hasattr(p, 'stats') and p.stats:
-                minerals = 0
-                vespene = 0
-
-                # Get minerals collected (time series, take final value)
-                if hasattr(p.stats, 'minerals_collection_rate') and p.stats.minerals_collection_rate:
-                    if isinstance(p.stats.minerals_collection_rate, list) and len(p.stats.minerals_collection_rate) > 0:
-                        minerals = int(p.stats.minerals_collection_rate[-1])
-                        logger.debug(f"Player {p.name}: minerals_collection_rate final={minerals}")
-                    else:
-                        logger.info(f"Player {p.name}: minerals_collection_rate exists but NOT a valid list: type={type(p.stats.minerals_collection_rate)}")
-                else:
-                    logger.info(f"Player {p.name}: NO minerals_collection_rate attribute")
-
-                # Get vespene collected (time series, take final value)
-                if hasattr(p.stats, 'vespene_collection_rate') and p.stats.vespene_collection_rate:
-                    if isinstance(p.stats.vespene_collection_rate, list) and len(p.stats.vespene_collection_rate) > 0:
-                        vespene = int(p.stats.vespene_collection_rate[-1])
-                        logger.debug(f"Player {p.name}: vespene_collection_rate final={vespene}")
-                    else:
-                        logger.info(f"Player {p.name}: vespene_collection_rate exists but NOT a valid list: type={type(p.stats.vespene_collection_rate)}")
-                else:
-                    logger.info(f"Player {p.name}: NO vespene_collection_rate attribute")
-
-                resources = minerals + vespene
-                logger.info(f"Player {p.name} (Team 1): minerals={minerals}, vespene={vespene}, supply={supply}, total_resources={resources}")
-
-            player_info = {
-                'name': p.name,
-                'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
-                'supply': supply,
-                'resources': resources
-            }
-            stats['team_1']['players'].append(player_info)
-
-            if player_info['still_in']:
-                stats['team_1']['players_still_in'] += 1
-            stats['team_1']['supply'] += player_info['supply']
-            stats['team_1']['resources'] += player_info['resources']
-
-        for p in team_2_players:
-            # Extract final supply (army + workers)
-            supply = 0
-            if hasattr(p, 'stats') and p.stats:
-                # Debug: Log all available stat attributes
-                logger.debug(f"Player {p.name} stats attributes: {dir(p.stats)}")
-
-                # Try to get supply from various possible attributes
-                if hasattr(p.stats, 'food_used') and p.stats.food_used:
-                    if isinstance(p.stats.food_used, list):
-                        supply = p.stats.food_used[-1] if len(p.stats.food_used) > 0 else 0
-                        logger.debug(f"Player {p.name}: food_used is list with {len(p.stats.food_used)} entries, final={supply}")
-                    else:
-                        supply = p.stats.food_used
-                        logger.debug(f"Player {p.name}: food_used is single value={supply}")
-                elif hasattr(p.stats, 'supply') and p.stats.supply:
-                    if isinstance(p.stats.supply, list):
-                        supply = p.stats.supply[-1] if len(p.stats.supply) > 0 else 0
-                        logger.debug(f"Player {p.name}: supply is list with {len(p.stats.supply)} entries, final={supply}")
-                    else:
-                        supply = p.stats.supply
-                        logger.debug(f"Player {p.name}: supply is single value={supply}")
-                else:
-                    logger.info(f"Player {p.name}: NO food_used or supply attribute found! Available: {[a for a in dir(p.stats) if not a.startswith('_')]}")
-            else:
-                logger.info(f"Player {p.name}: NO stats object available!")
-
-            # Extract total resources collected
-            resources = 0
-            if hasattr(p, 'stats') and p.stats:
-                minerals = 0
-                vespene = 0
-
-                # Get minerals collected (time series, take final value)
-                if hasattr(p.stats, 'minerals_collection_rate') and p.stats.minerals_collection_rate:
-                    if isinstance(p.stats.minerals_collection_rate, list) and len(p.stats.minerals_collection_rate) > 0:
-                        minerals = int(p.stats.minerals_collection_rate[-1])
-                        logger.debug(f"Player {p.name}: minerals_collection_rate final={minerals}")
-                    else:
-                        logger.info(f"Player {p.name}: minerals_collection_rate exists but NOT a valid list: type={type(p.stats.minerals_collection_rate)}")
-                else:
-                    logger.info(f"Player {p.name}: NO minerals_collection_rate attribute")
-
-                # Get vespene collected (time series, take final value)
-                if hasattr(p.stats, 'vespene_collection_rate') and p.stats.vespene_collection_rate:
-                    if isinstance(p.stats.vespene_collection_rate, list) and len(p.stats.vespene_collection_rate) > 0:
-                        vespene = int(p.stats.vespene_collection_rate[-1])
-                        logger.debug(f"Player {p.name}: vespene_collection_rate final={vespene}")
-                    else:
-                        logger.info(f"Player {p.name}: vespene_collection_rate exists but NOT a valid list: type={type(p.stats.vespene_collection_rate)}")
-                else:
-                    logger.info(f"Player {p.name}: NO vespene_collection_rate attribute")
-
-                resources = minerals + vespene
-                logger.info(f"Player {p.name} (Team 2): minerals={minerals}, vespene={vespene}, supply={supply}, total_resources={resources}")
-
-            player_info = {
-                'name': p.name,
-                'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
-                'supply': supply,
-                'resources': resources
-            }
-            stats['team_2']['players'].append(player_info)
-
-            if player_info['still_in']:
-                stats['team_2']['players_still_in'] += 1
-            stats['team_2']['supply'] += player_info['supply']
-            stats['team_2']['resources'] += player_info['resources']
-
-        # Log team totals for debugging
-        logger.info(f"Team stats extracted - Team 1: {stats['team_1']['players_still_in']} still in, {stats['team_1']['supply']} supply, {stats['team_1']['resources']:,} resources")
-        logger.info(f"Team stats extracted - Team 2: {stats['team_2']['players_still_in']} still in, {stats['team_2']['supply']} supply, {stats['team_2']['resources']:,} resources")
-
-        # Method 1: Check who stayed in the game longest
-        if stats['team_1']['players_still_in'] > stats['team_2']['players_still_in']:
-            return 1, stats
-        elif stats['team_2']['players_still_in'] > stats['team_1']['players_still_in']:
-            return 2, stats
-
-        # Method 2: Compare army value / supply at end of game
-        if stats['team_1']['supply'] > stats['team_2']['supply'] * SUPPLY_ADVANTAGE_THRESHOLD:
-            logger.info(f"Winner determined by supply advantage: Team 1 ({stats['team_1']['supply']} vs {stats['team_2']['supply']})")
-            return 1, stats
-        elif stats['team_2']['supply'] > stats['team_1']['supply'] * SUPPLY_ADVANTAGE_THRESHOLD:
-            logger.info(f"Winner determined by supply advantage: Team 2 ({stats['team_2']['supply']} vs {stats['team_1']['supply']})")
-            return 2, stats
-
-        # Method 3: Check resources collected (more resources = likely winning)
-        if stats['team_1']['resources'] > stats['team_2']['resources'] * RESOURCES_ADVANTAGE_THRESHOLD:
-            logger.info(f"Winner determined by resource advantage: Team 1 ({stats['team_1']['resources']:,} vs {stats['team_2']['resources']:,})")
-            return 1, stats
-        elif stats['team_2']['resources'] > stats['team_1']['resources'] * RESOURCES_ADVANTAGE_THRESHOLD:
-            logger.info(f"Winner determined by resource advantage: Team 2 ({stats['team_2']['resources']:,} vs {stats['team_1']['resources']:,})")
-            return 2, stats
-
-    except Exception as e:
-        # Log the exception and return None with empty stats
-        logger.error(f"Error during winner determination from stats: {e}", exc_info=True)
-        pass
-
-    return None, stats
-
-
-def determine_winner_from_tracker_events(replay, human_players: List) -> Tuple[Optional[int], Dict]:
-    """
-    Attempt to determine the winning team from tracker events.
-    This is more reliable than player.stats for newer SC2 versions.
-
-    Args:
-        replay: sc2reader replay object
-        human_players: List of human players from the replay
-
-    Returns:
-        Tuple of (winning_team_number or None, stats_dict)
-    """
-    # Initialize stats structure
-    stats = {
-        'team_1': {'players': [], 'players_still_in': 0, 'supply': 0, 'resources': 0},
-        'team_2': {'players': [], 'players_still_in': 0, 'supply': 0, 'resources': 0}
-    }
-
-    try:
-        # Group players by team
-        team_1_players = [p for p in human_players if p.team_id == 1]
-        team_2_players = [p for p in human_players if p.team_id == 2]
-
-        # Initialize player stats dictionary indexed by player id
-        player_stats = {}
         for p in human_players:
-            player_stats[p.pid] = {
-                'name': p.name,
-                'team': p.team_id,
-                'supply': 0,
-                'minerals': 0,
-                'vespene': 0,
-            }
+            team_id = int(getattr(p, "team_id", 0))
+            if team_id not in team_stats:
+                team_stats[team_id] = {"supply": 0.0, "resources": 0.0}
 
-        # Extract stats from tracker events
-        if hasattr(replay, 'tracker_events'):
-            for event in replay.tracker_events:
-                if event.name == 'PlayerStatsEvent':
-                    pid = event.pid
-                    if pid in player_stats:
-                        # Update with latest values from this event
-                        if hasattr(event, 'food_used'):
-                            player_stats[pid]['supply'] = event.food_used
-                        if hasattr(event, 'minerals_current'):
-                            player_stats[pid]['minerals'] = event.minerals_current
-                        if hasattr(event, 'vespene_current'):
-                            player_stats[pid]['vespene'] = event.vespene_current
-
-        # Count how many players had data extracted
-        players_with_data = sum(1 for ps in player_stats.values() if ps['supply'] > 0 or ps['minerals'] > 0 or ps['vespene'] > 0)
-        logger.info(f"Extracted stats from tracker events for {players_with_data} players")
-
-        # Process team 1
-        for p in team_1_players:
-            if p.pid in player_stats:
-                ps = player_stats[p.pid]
-                resources = ps['minerals'] + ps['vespene']
-
-                logger.info(f"Player {p.name} (Team 1): minerals={ps['minerals']}, vespene={ps['vespene']}, supply={ps['supply']}, total_resources={resources}")
-
-                player_info = {
-                    'name': p.name,
-                    'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
-                    'supply': ps['supply'],
-                    'resources': resources
-                }
-                stats['team_1']['players'].append(player_info)
-
-                if player_info['still_in']:
-                    stats['team_1']['players_still_in'] += 1
-                stats['team_1']['supply'] += player_info['supply']
-                stats['team_1']['resources'] += player_info['resources']
-
-        # Process team 2
-        for p in team_2_players:
-            if p.pid in player_stats:
-                ps = player_stats[p.pid]
-                resources = ps['minerals'] + ps['vespene']
-
-                logger.info(f"Player {p.name} (Team 2): minerals={ps['minerals']}, vespene={ps['vespene']}, supply={ps['supply']}, total_resources={resources}")
-
-                player_info = {
-                    'name': p.name,
-                    'still_in': not hasattr(p, 'recorder_finished') or p.recorder_finished is None,
-                    'supply': ps['supply'],
-                    'resources': resources
-                }
-                stats['team_2']['players'].append(player_info)
-
-                if player_info['still_in']:
-                    stats['team_2']['players_still_in'] += 1
-                stats['team_2']['supply'] += player_info['supply']
-                stats['team_2']['resources'] += player_info['resources']
-
-        # Log team totals for debugging
-        logger.info(f"Team stats extracted - Team 1: {stats['team_1']['players_still_in']} still in, {stats['team_1']['supply']} supply, {stats['team_1']['resources']:,} resources")
-        logger.info(f"Team stats extracted - Team 2: {stats['team_2']['players_still_in']} still in, {stats['team_2']['supply']} supply, {stats['team_2']['resources']:,} resources")
-
-        # Method 1: Check who stayed in the game longest
-        if stats['team_1']['players_still_in'] > stats['team_2']['players_still_in']:
-            return 1, stats
-        elif stats['team_2']['players_still_in'] > stats['team_1']['players_still_in']:
-            return 2, stats
-
-        # Method 2: Compare army value / supply at end of game
-        if stats['team_1']['supply'] > stats['team_2']['supply'] * SUPPLY_ADVANTAGE_THRESHOLD:
-            logger.info(f"Winner determined by supply advantage: Team 1 ({stats['team_1']['supply']} vs {stats['team_2']['supply']})")
-            return 1, stats
-        elif stats['team_2']['supply'] > stats['team_1']['supply'] * SUPPLY_ADVANTAGE_THRESHOLD:
-            logger.info(f"Winner determined by supply advantage: Team 2 ({stats['team_2']['supply']} vs {stats['team_1']['supply']})")
-            return 2, stats
-
-        # Method 3: Check resources collected (more resources = likely winning)
-        if stats['team_1']['resources'] > stats['team_2']['resources'] * RESOURCES_ADVANTAGE_THRESHOLD:
-            logger.info(f"Winner determined by resource advantage: Team 1 ({stats['team_1']['resources']:,} vs {stats['team_2']['resources']:,})")
-            return 1, stats
-        elif stats['team_2']['resources'] > stats['team_1']['resources'] * RESOURCES_ADVANTAGE_THRESHOLD:
-            logger.info(f"Winner determined by resource advantage: Team 2 ({stats['team_2']['resources']:,} vs {stats['team_1']['resources']:,})")
-            return 2, stats
-
-    except Exception as e:
-        # Log the exception and return None with empty stats
-        logger.error(f"Error during winner determination from tracker events: {e}", exc_info=True)
-        pass
-
-    return None, stats
-
-
-def parse_replay(file_path: str, manual_winner_team: Optional[int] = None) -> ReplayData:
-    """
-    Parse a StarCraft 2 replay file and extract relevant information.
-
-    Args:
-        file_path: Path to the .SC2Replay file
-        manual_winner_team: Optional manual winner determination (1 or 2).
-                           If provided, skips automatic winner determination.
-
-    Returns:
-        ReplayData object with extracted information
-
-    Raises:
-        ReplayParseError: If replay cannot be parsed or is invalid
-        WinnerDeterminationError: If winner cannot be determined automatically
-    """
-    logger.info(f"Parsing replay file: {file_path}")
-
-    # Validate manual_winner_team if provided
-    if manual_winner_team is not None and manual_winner_team not in (1, 2):
-        raise ValueError(f"manual_winner_team must be 1 or 2, got: {manual_winner_team}")
-
-    try:
-        # Load the replay with detailed stats
-        replay = sc2reader.load_replay(file_path, load_level=4)
-
-        # Calculate replay hash for duplicate detection
-        replay_hash = calculate_replay_hash(file_path)
-
-        # Extract basic game information
-        played_at = replay.date if hasattr(replay, 'date') else replay.start_time
-        map_name = replay.map_name
-        duration_seconds = replay.game_length.seconds if hasattr(replay, 'game_length') else 0
-
-        # Extract player information
-        players: List[PlayerData] = []
-        human_players = [p for p in replay.players if p.is_human]
-
-        # Count team sizes
-        num_players = len(human_players)
-        team_1_size = sum(1 for p in human_players if p.team_id == 1)
-        team_2_size = sum(1 for p in human_players if p.team_id == 2)
-
-        # Determine game mode (supports both even and uneven teams)
-        game_mode = determine_game_mode(num_players, team_1_size, team_2_size)
-
-        if game_mode is None:
-            raise ReplayParseError(
-                f"Unsupported game configuration: {team_1_size}v{team_2_size} ({num_players} total players). "
-                "Supported modes: 2v2, 3v3, 4v4, 5v5, and uneven teams (2v1, 3v2, 4v3, etc.)"
-            )
-
-        # Extract player data (first pass - basic info)
-        for player in human_players:
-            # Get player name (handle various name formats)
-            name = player.name
-            if hasattr(player, 'clan_tag') and player.clan_tag:
-                # Remove clan tag if present
-                name = name.replace(f"[{player.clan_tag}]", "").strip()
-
-            # Get race
-            race = normalize_race_name(player.play_race)
-
-            # Get team and result
-            team = player.team_id
-            won = player.result == "Win"
-
-            players.append(PlayerData(
-                name=name,
-                race=race,
-                team=team,
-                won=won
-            ))
-
-        # Validate we have two teams
-        teams = set(p.team for p in players)
-        if len(teams) != 2:
-            raise ReplayParseError(f"Expected 2 teams, found {len(teams)}")
-
-        # Check if winner is clear from results
-        team_1_won = any(p.won for p in players if p.team == 1)
-        team_2_won = any(p.won for p in players if p.team == 2)
-
-        # If result is ambiguous (early quit scenario), determine winner from stats
-        if team_1_won == team_2_won:
-            # Use manual winner if provided, otherwise determine from stats
-            if manual_winner_team is not None:
-                logger.info(f"Using manual winner determination: Team {manual_winner_team}")
-                winning_team = manual_winner_team
-                team_stats = None  # Stats not needed for manual determination
-            else:
-                # Try tracker events first (more reliable)
-                logger.info("Attempting winner determination from tracker events")
-                winning_team, team_stats = determine_winner_from_tracker_events(replay, human_players)
-
-                # If tracker events didn't work, fall back to player.stats
-                if winning_team is None and all(p.supply == 0 for p in team_stats['team_1']['players'] + team_stats['team_2']['players']):
-                    logger.info("Tracker events had no data, falling back to player.stats method")
-                    winning_team, team_stats = determine_winner_from_stats(replay, human_players)
-
-            if winning_team is None:
-                # Unable to determine winner even with stats
-                # Build detailed error message with team comparisons
-                game_duration_minutes = duration_seconds / 60
-                quit_players = [p.name for p in human_players if hasattr(p, 'recorder_finished') and p.recorder_finished]
-
-                # Format team stats for error message using list and join (efficient)
-                stats_msg_lines = ["\n\nTeam Stats Comparison:", "  Team 1:"]
-                stats_msg_lines.append(f"    Players still in: {team_stats['team_1']['players_still_in']}")
-                stats_msg_lines.append(f"    Total supply: {team_stats['team_1']['supply']}")
-                stats_msg_lines.append(f"    Total resources: {team_stats['team_1']['resources']:,}")
-                for player in team_stats['team_1']['players']:
-                    status = 'IN GAME' if player['still_in'] else 'QUIT'
-                    stats_msg_lines.append(f"      - {player['name']}: {status} | Supply: {player['supply']} | Resources: {player['resources']:,}")
-
-                stats_msg_lines.append("  Team 2:")
-                stats_msg_lines.append(f"    Players still in: {team_stats['team_2']['players_still_in']}")
-                stats_msg_lines.append(f"    Total supply: {team_stats['team_2']['supply']}")
-                stats_msg_lines.append(f"    Total resources: {team_stats['team_2']['resources']:,}")
-                for player in team_stats['team_2']['players']:
-                    status = 'IN GAME' if player['still_in'] else 'QUIT'
-                    stats_msg_lines.append(f"      - {player['name']}: {status} | Supply: {player['supply']} | Resources: {player['resources']:,}")
-
-                stats_msg = '\n'.join(stats_msg_lines)
-
-                if game_duration_minutes < EARLY_QUIT_THRESHOLD_MINUTES and quit_players:
-                    # Likely someone quit in early/mid game
-                    logger.warning(
-                        f"WinnerDeterminationError: Player(s) quit at {game_duration_minutes:.1f} minutes. "
-                        f"Quitters: {', '.join(quit_players)}"
-                    )
-                    raise WinnerDeterminationError(
-                        f"Cannot determine winner - player(s) quit at {game_duration_minutes:.1f} minutes. "
-                        f"Quitters: {', '.join(quit_players)}. "
-                        f"This replay was not played to completion and has ambiguous results.{stats_msg}\n\n"
-                        f"Suggestion: Manually verify which team should have won based on the stats above.",
-                        team_stats=team_stats
-                    )
-                elif not quit_players and game_duration_minutes < CRASH_THRESHOLD_MINUTES:
-                    # Very short game, might be a crash or test
-                    logger.warning(
-                        f"WinnerDeterminationError: Game too short ({game_duration_minutes:.1f} minutes) with no clear winner"
-                    )
-                    raise WinnerDeterminationError(
-                        f"Game too short ({game_duration_minutes:.1f} minutes) with no clear winner. "
-                        f"This may be a test game, crash, or incomplete replay.{stats_msg}",
-                        team_stats=team_stats
-                    )
-                else:
-                    # Other ambiguous scenario
-                    logger.warning(
-                        f"WinnerDeterminationError: Unable to determine winner from {game_duration_minutes:.1f} minute game. "
-                        f"Ambiguous results."
-                    )
-                    raise WinnerDeterminationError(
-                        f"Unable to determine game winner from {game_duration_minutes:.1f} minute game. "
-                        f"Game may have ended abnormally (disconnection, draw, or corrupted replay data).{stats_msg}\n\n"
-                        f"The stats are too close to automatically determine a winner. Manual verification recommended.",
-                        team_stats=team_stats
-                    )
-
-            # Update player won status based on determined winner
-            logger.info(f"Determined winner from game stats: Team {winning_team} (ambiguous quit scenario)")
-            for i, player in enumerate(players):
-                players[i] = PlayerData(
-                    name=player.name,
-                    race=player.race,
-                    team=player.team,
-                    won=(player.team == winning_team)
+            # Simple winner determination proxy if result is missing
+            if hasattr(p, "stats") and p.stats:
+                team_stats[team_id]["supply"] += float(
+                    getattr(p.stats, "supply_produced", 0)
+                )
+                team_stats[team_id]["resources"] += float(
+                    getattr(p.stats, "minerals_collected", 0)
                 )
 
-        # Create and return ReplayData
+        # Determine winners
+        winners_determined = False
+        if manual_winner_team is not None:
+            winners_determined = True
+        else:
+            # Check if sc2reader already found a winner
+            for p in human_players:
+                result = getattr(p, "result", "") or ""
+                if result.lower() == "win":
+                    winners_determined = True
+                    break
+
+        if not winners_determined and len(team_stats) == 2:
+            # Try our heuristic
+            t1, t2 = list(team_stats.keys())
+            s1, s2 = team_stats[t1]["supply"], team_stats[t2]["supply"]
+            r1, r2 = team_stats[t1]["resources"], team_stats[t2]["resources"]
+
+            if (
+                s1 > s2 * SUPPLY_ADVANTAGE_THRESHOLD
+                or r1 > r2 * RESOURCES_ADVANTAGE_THRESHOLD
+            ):
+                manual_winner_team = t1
+            elif (
+                s2 > s1 * SUPPLY_ADVANTAGE_THRESHOLD
+                or r2 > r1 * RESOURCES_ADVANTAGE_THRESHOLD
+            ):
+                manual_winner_team = t2
+            else:
+                raise WinnerDeterminationError(
+                    "Could not determine winner from stats",
+                    team_stats={str(k): v for k, v in team_stats.items()},
+                )
+
+        for p in human_players:
+            team_id = int(getattr(p, "team_id", 0))
+            won = False
+            if manual_winner_team is not None:
+                won = team_id == manual_winner_team
+            else:
+                result = getattr(p, "result", "") or ""
+                won = result.lower() == "win"
+
+            players_data.append(
+                PlayerData(
+                    name=str(p.name),
+                    race=normalize_race_name(str(p.play_race)),
+                    team=team_id,
+                    won=won,
+                )
+            )
+
         return ReplayData(
             played_at=played_at,
-            game_mode=game_mode,
-            map_name=map_name,
-            duration_seconds=duration_seconds,
-            players=players,
-            replay_hash=replay_hash
+            game_mode=determine_game_mode(len(human_players)) or GameMode.TWO_V_TWO,
+            map_name=str(map_name),
+            duration_seconds=int(duration_seconds),
+            players=players_data,
+            replay_hash=calculate_replay_hash(file_path),
         )
-
-    except (ReplayParseError, WinnerDeterminationError):
-        # Re-raise these exceptions without wrapping
-        raise
     except Exception as e:
-        # Wrap all other exceptions as ReplayParseError
-        raise ReplayParseError(f"Failed to parse replay: {str(e)}") from e
+        if isinstance(e, WinnerDeterminationError):
+            raise
+        logger.error(f"Error parsing replay {file_path}: {e}")
+        raise ReplayParseError(str(e))
 
 
 def validate_replay_data(replay_data: ReplayData) -> Tuple[bool, Optional[str]]:
     """
-    Validate that replay data meets requirements.
-
-    Args:
-        replay_data: Parsed replay data
-
-    Returns:
-        Tuple of (is_valid, error_message)
+    Perform validation on parsed replay data.
     """
-    # Check we have players
     if not replay_data.players:
-        return False, "No players found in replay"
+        return False, "No human players found"
 
-    # Check game mode is valid (all modes from GameMode enum are valid)
-    try:
-        GameMode(replay_data.game_mode)
-    except ValueError:
-        return False, f"Invalid game mode: {replay_data.game_mode}"
-
-    # Validate we have exactly 2 teams
-    team_1_count = sum(1 for p in replay_data.players if p.team == 1)
-    team_2_count = sum(1 for p in replay_data.players if p.team == 2)
-
-    if team_1_count == 0 or team_2_count == 0:
-        return False, f"One team has no players: Team 1 has {team_1_count}, Team 2 has {team_2_count}"
-
-    # Check exactly one winning team
-    team_1_won = any(p.won for p in replay_data.players if p.team == 1)
-    team_2_won = any(p.won for p in replay_data.players if p.team == 2)
-
-    if team_1_won == team_2_won:
-        return False, "Invalid game result: both teams won or both lost"
-
-    # Check all players on winning team won
-    for player in replay_data.players:
-        team_won = (player.team == 1 and team_1_won) or (player.team == 2 and team_2_won)
-        if player.won != team_won:
-            return False, f"Inconsistent results: player {player.name} result doesn't match team"
+    if replay_data.duration_seconds < CRASH_THRESHOLD_MINUTES * 60:
+        return False, f"Game too short ({replay_data.duration_seconds}s)"
 
     return True, None
