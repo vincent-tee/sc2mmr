@@ -11,6 +11,7 @@ The pipeline consists of:
 
 SPEC-ML-001 Integration Tests.
 """
+
 import pytest
 import json
 import math
@@ -19,14 +20,24 @@ from unittest.mock import Mock, MagicMock, patch
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Base, Player, Match, MatchPlayer, PlayerMatchMetrics,
-    PerformanceFeatures, GameMode, Race
+    Base,
+    Player,
+    Match,
+    MatchPlayer,
+    PlayerMatchMetrics,
+    PerformanceFeatures,
+    GameMode,
+    Race,
 )
 from app.services.pi_calculator import PICalculator, MatchAverages, PIMBreakdown
 from app.services.ml_features_service import MLFeaturesService
 from app.services.enhanced_parser import (
-    EnhancedReplayParser, EnhancedPlayerFeatures, BuildOrderEvent,
-    UpgradeEvent, AbilityUsage, ResourceCheckpoint
+    EnhancedReplayParser,
+    EnhancedPlayerFeatures,
+    BuildOrderEvent,
+    UpgradeEvent,
+    AbilityUsage,
+    ResourceCheckpoint,
 )
 
 
@@ -34,13 +45,14 @@ from app.services.enhanced_parser import (
 # Test Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_enhanced_features():
     """Create mock enhanced features for testing."""
     ability_usage = AbilityUsage(
         total_abilities=25,
         abilities={"Stim": 15, "EMP": 5, "ScannerSweep": 5},
-        abilities_per_minute=5.0
+        abilities_per_minute=5.0,
     )
 
     features = EnhancedPlayerFeatures(
@@ -51,32 +63,71 @@ def mock_enhanced_features():
         won=True,
         build_order=[
             BuildOrderEvent(second=24, unit_type="SCV", supply=13, is_worker=True),
-            BuildOrderEvent(second=60, unit_type="SupplyDepot", supply=13, is_building=True),
-            BuildOrderEvent(second=90, unit_type="Barracks", supply=15, is_building=True),
+            BuildOrderEvent(
+                second=60, unit_type="SupplyDepot", supply=13, is_building=True
+            ),
+            BuildOrderEvent(
+                second=90, unit_type="Barracks", supply=15, is_building=True
+            ),
             BuildOrderEvent(second=120, unit_type="Marine", supply=15),
             BuildOrderEvent(second=150, unit_type="Marine", supply=17),
-            BuildOrderEvent(second=180, unit_type="CommandCenter", supply=19, is_building=True),
-            BuildOrderEvent(second=240, unit_type="Factory", supply=21, is_building=True),
+            BuildOrderEvent(
+                second=180, unit_type="CommandCenter", supply=19, is_building=True
+            ),
+            BuildOrderEvent(
+                second=240, unit_type="Factory", supply=21, is_building=True
+            ),
         ],
         build_order_hash="abc123def456",
         detected_build_type="macro",
         upgrades=[
-            UpgradeEvent(second=420, upgrade_name="TerranInfantryWeaponsLevel1", upgrade_category="attack"),
-            UpgradeEvent(second=480, upgrade_name="TerranInfantryArmorsLevel1", upgrade_category="armor"),
-            UpgradeEvent(second=600, upgrade_name="TerranInfantryWeaponsLevel2", upgrade_category="attack"),
+            UpgradeEvent(
+                second=420,
+                upgrade_name="TerranInfantryWeaponsLevel1",
+                upgrade_category="attack",
+            ),
+            UpgradeEvent(
+                second=480,
+                upgrade_name="TerranInfantryArmorsLevel1",
+                upgrade_category="armor",
+            ),
+            UpgradeEvent(
+                second=600,
+                upgrade_name="TerranInfantryWeaponsLevel2",
+                upgrade_category="attack",
+            ),
         ],
         upgrade_timing_score=1.5,
         first_attack_upgrade_second=420,
         first_armor_upgrade_second=480,
         ability_usage=ability_usage,
-        ability_efficiency=0.15,
         resource_checkpoints=[
-            ResourceCheckpoint(second=60, minerals=100, vespene=0, workers=13, supply_used=13, supply_cap=15),
-            ResourceCheckpoint(second=180, minerals=200, vespene=50, workers=14, supply_used=19, supply_cap=23),
-            ResourceCheckpoint(second=600, minerals=500, vespene=200, workers=18, supply_used=50, supply_cap=60),
+            ResourceCheckpoint(
+                second=60,
+                minerals=100,
+                vespene=0,
+                workers=13,
+                supply_used=13,
+                supply_cap=15,
+            ),
+            ResourceCheckpoint(
+                second=180,
+                minerals=200,
+                vespene=50,
+                workers=14,
+                supply_used=19,
+                supply_cap=23,
+            ),
+            ResourceCheckpoint(
+                second=600,
+                minerals=500,
+                vespene=200,
+                workers=18,
+                supply_used=50,
+                supply_cap=60,
+            ),
         ],
         early_worker_losses=2,
-        early_worker_loss_rate=0.167,
         harassment_response_score=80.0,
         supply_block_seconds=45,
     )
@@ -206,19 +257,20 @@ def match_with_players(db_session: Session):
     db_session.flush()
 
     return {
-        'match': match,
-        'player1': player1,
-        'player2': player2,
-        'mp1': mp1,
-        'mp2': mp2,
-        'metrics1': metrics1,
-        'metrics2': metrics2,
+        "match": match,
+        "player1": player1,
+        "player2": player2,
+        "mp1": mp1,
+        "mp2": mp2,
+        "metrics1": metrics1,
+        "metrics2": metrics2,
     }
 
 
 # ============================================================================
 # Tests: ML Features Extraction
 # ============================================================================
+
 
 class TestMLFeaturesExtraction:
     """Tests for ML features extraction from enhanced parser."""
@@ -248,7 +300,9 @@ class TestMLFeaturesExtraction:
         assert features.upgrade_timing_score == 1.5
 
         # Check upgrade details
-        attack_upgrades = [u for u in features.upgrades if u.upgrade_category == "attack"]
+        attack_upgrades = [
+            u for u in features.upgrades if u.upgrade_category == "attack"
+        ]
         armor_upgrades = [u for u in features.upgrades if u.upgrade_category == "armor"]
 
         assert len(attack_upgrades) == 2
@@ -287,24 +341,41 @@ class TestMLFeaturesExtraction:
 # Tests: Performance Features Storage
 # ============================================================================
 
+
 class TestPerformanceFeaturesStorage:
     """Tests for saving ML features to database."""
 
-    def test_save_performance_features(self, db_session: Session, match_with_players, mock_enhanced_features):
+    def test_save_performance_features(
+        self, db_session: Session, match_with_players, mock_enhanced_features
+    ):
         """Verify performance features are saved to database."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         # Create performance features
         perf_features = PerformanceFeatures(
             match_player_id=mp1.id,
             build_order_json=[
-                {"second": 24, "unit_type": "SCV", "is_building": False, "is_worker": True},
-                {"second": 60, "unit_type": "SupplyDepot", "is_building": True, "is_worker": False},
+                {
+                    "second": 24,
+                    "unit_type": "SCV",
+                    "is_building": False,
+                    "is_worker": True,
+                },
+                {
+                    "second": 60,
+                    "unit_type": "SupplyDepot",
+                    "is_building": True,
+                    "is_worker": False,
+                },
             ],
             build_order_hash=mock_enhanced_features.build_order_hash,
             detected_build_type=mock_enhanced_features.detected_build_type,
             upgrades_json=[
-                {"second": 420, "upgrade_name": "TerranInfantryWeaponsLevel1", "category": "attack"},
+                {
+                    "second": 420,
+                    "upgrade_name": "TerranInfantryWeaponsLevel1",
+                    "category": "attack",
+                },
             ],
             first_attack_upgrade_second=420,
             first_armor_upgrade_second=480,
@@ -320,9 +391,11 @@ class TestPerformanceFeaturesStorage:
         db_session.commit()
 
         # Retrieve and verify
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved is not None
         assert retrieved.detected_build_type == "macro"
@@ -331,7 +404,7 @@ class TestPerformanceFeaturesStorage:
 
     def test_build_order_json_storage(self, db_session: Session, match_with_players):
         """Verify build order JSON is stored correctly."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         build_order_data = [
             {"second": 24, "unit_type": "SCV", "is_building": False},
@@ -347,9 +420,11 @@ class TestPerformanceFeaturesStorage:
         db_session.add(perf_features)
         db_session.commit()
 
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved.build_order_json == build_order_data
         assert len(retrieved.build_order_json) == 3
@@ -357,7 +432,7 @@ class TestPerformanceFeaturesStorage:
 
     def test_abilities_json_storage(self, db_session: Session, match_with_players):
         """Verify abilities JSON is stored correctly."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         abilities_data = {
             "Stim": 15,
@@ -375,9 +450,11 @@ class TestPerformanceFeaturesStorage:
         db_session.add(perf_features)
         db_session.commit()
 
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved.abilities_json == abilities_data
         assert retrieved.total_abilities == 23
@@ -385,12 +462,24 @@ class TestPerformanceFeaturesStorage:
 
     def test_upgrades_json_storage(self, db_session: Session, match_with_players):
         """Verify upgrades JSON is stored correctly."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         upgrades_data = [
-            {"second": 420, "upgrade_name": "TerranInfantryWeaponsLevel1", "category": "attack"},
-            {"second": 480, "upgrade_name": "TerranInfantryArmorsLevel1", "category": "armor"},
-            {"second": 600, "upgrade_name": "TerranInfantryWeaponsLevel2", "category": "attack"},
+            {
+                "second": 420,
+                "upgrade_name": "TerranInfantryWeaponsLevel1",
+                "category": "attack",
+            },
+            {
+                "second": 480,
+                "upgrade_name": "TerranInfantryArmorsLevel1",
+                "category": "armor",
+            },
+            {
+                "second": 600,
+                "upgrade_name": "TerranInfantryWeaponsLevel2",
+                "category": "attack",
+            },
         ]
 
         perf_features = PerformanceFeatures(
@@ -404,9 +493,11 @@ class TestPerformanceFeaturesStorage:
         db_session.add(perf_features)
         db_session.commit()
 
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved.upgrades_json == upgrades_data
         assert len(retrieved.upgrades_json) == 3
@@ -417,6 +508,7 @@ class TestPerformanceFeaturesStorage:
 # Tests: PIM Calculation
 # ============================================================================
 
+
 class TestPIMCalculation:
     """Tests for Performance Impact Modifier calculation."""
 
@@ -425,8 +517,8 @@ class TestPIMCalculation:
         calculator = PICalculator()
         match_averages = MatchAverages()
 
-        metrics1 = match_with_players['metrics1']
-        mp1 = match_with_players['mp1']
+        metrics1 = match_with_players["metrics1"]
+        mp1 = match_with_players["mp1"]
 
         # Create z-scores (above average)
         pim, breakdown = calculator.calculate_pim(metrics1, match_averages)
@@ -446,7 +538,7 @@ class TestPIMCalculation:
         calculator = PICalculator()
         match_averages = MatchAverages()
 
-        metrics1 = match_with_players['metrics1']
+        metrics1 = match_with_players["metrics1"]
 
         # Even though player lost, they had above-average performance
         # Create custom metrics with loss but good performance
@@ -471,7 +563,9 @@ class TestPIMCalculation:
         adjusted_loss = calculator.apply_pim_to_mmr_change(base_loss, pim)
 
         # With positive PIM, loss should be less severe
-        assert abs(adjusted_loss) < abs(base_loss), "Positive PIM reduces loss magnitude"
+        assert abs(adjusted_loss) < abs(base_loss), (
+            "Positive PIM reduces loss magnitude"
+        )
 
     def test_pim_bounded_values(self):
         """Verify PIM stays within [-0.5, 0.5] bounds."""
@@ -533,18 +627,18 @@ class TestPIMCalculation:
         pim, breakdown = calculator.calculate_pim(metrics, match_averages)
 
         # Check all categories exist
-        assert hasattr(breakdown, 'combat')
-        assert hasattr(breakdown, 'economic')
-        assert hasattr(breakdown, 'team')
-        assert hasattr(breakdown, 'efficiency')
-        assert hasattr(breakdown, 'total')
+        assert hasattr(breakdown, "combat")
+        assert hasattr(breakdown, "economic")
+        assert hasattr(breakdown, "team")
+        assert hasattr(breakdown, "efficiency")
+        assert hasattr(breakdown, "total")
 
         # Total should be sum of weighted components
         expected_total = (
-            breakdown.combat * 0.4 +
-            breakdown.economic * 0.25 +
-            breakdown.team * 0.25 +
-            breakdown.efficiency * 0.1
+            breakdown.combat * 0.4
+            + breakdown.economic * 0.25
+            + breakdown.team * 0.25
+            + breakdown.efficiency * 0.1
         )
         # Account for clamping
         assert abs(pim - breakdown.total) < 0.01
@@ -554,12 +648,15 @@ class TestPIMCalculation:
 # Tests: Hybrid MMR Integration
 # ============================================================================
 
+
 class TestHybridMMRIntegration:
     """Tests for hybrid MMR system with PIM integration."""
 
-    def test_performance_features_linked_to_match_player(self, db_session: Session, match_with_players):
+    def test_performance_features_linked_to_match_player(
+        self, db_session: Session, match_with_players
+    ):
         """Verify performance features are properly linked to match players."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         perf_features = PerformanceFeatures(
             match_player_id=mp1.id,
@@ -572,9 +669,9 @@ class TestHybridMMRIntegration:
         db_session.commit()
 
         # Retrieve via relationship (backref creates a list, get first item)
-        retrieved_mp = db_session.query(MatchPlayer).filter(
-            MatchPlayer.id == mp1.id
-        ).first()
+        retrieved_mp = (
+            db_session.query(MatchPlayer).filter(MatchPlayer.id == mp1.id).first()
+        )
 
         assert retrieved_mp.performance_features is not None
         assert len(retrieved_mp.performance_features) > 0
@@ -582,7 +679,7 @@ class TestHybridMMRIntegration:
 
     def test_raw_vs_hybrid_mmr_change(self, db_session: Session, match_with_players):
         """Verify raw MMR change vs hybrid MMR change difference."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         # Create performance features with PIM
         perf_features = PerformanceFeatures(
@@ -595,9 +692,11 @@ class TestHybridMMRIntegration:
         db_session.add(perf_features)
         db_session.commit()
 
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         # Verify relationship: hybrid = raw * (1 + PIM)
         expected_hybrid = retrieved.raw_mmr_change * (1 + retrieved.pim)
@@ -605,7 +704,7 @@ class TestHybridMMRIntegration:
 
     def test_pim_with_loss(self, db_session: Session, match_with_players):
         """Verify PIM correctly modifies losses."""
-        mp2 = match_with_players['mp2']  # This player lost
+        mp2 = match_with_players["mp2"]  # This player lost
 
         # Good performance even in loss gives positive PIM
         perf_features = PerformanceFeatures(
@@ -618,16 +717,18 @@ class TestHybridMMRIntegration:
         db_session.add(perf_features)
         db_session.commit()
 
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp2.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp2.id)
+            .first()
+        )
 
         # Loss with positive PIM should be less severe
         assert abs(retrieved.hybrid_mmr_change) < abs(retrieved.raw_mmr_change)
 
     def test_zero_pim_unchanged_mmr(self, db_session: Session, match_with_players):
         """Verify zero PIM doesn't change raw MMR."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         perf_features = PerformanceFeatures(
             match_player_id=mp1.id,
@@ -639,9 +740,11 @@ class TestHybridMMRIntegration:
         db_session.add(perf_features)
         db_session.commit()
 
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved.hybrid_mmr_change == retrieved.raw_mmr_change
 
@@ -650,12 +753,15 @@ class TestHybridMMRIntegration:
 # Tests: Re-processing Idempotency
 # ============================================================================
 
+
 class TestReprocessingIdempotency:
     """Tests for idempotent re-processing of replays."""
 
-    def test_reprocess_updates_not_duplicates(self, db_session: Session, match_with_players):
+    def test_reprocess_updates_not_duplicates(
+        self, db_session: Session, match_with_players
+    ):
         """Verify re-processing updates existing records instead of creating duplicates."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         # Initial save
         perf_features = PerformanceFeatures(
@@ -669,9 +775,11 @@ class TestReprocessingIdempotency:
         initial_id = perf_features.id
 
         # Re-process (update)
-        existing = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        existing = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert existing is not None
         existing.pim = 0.2
@@ -679,16 +787,20 @@ class TestReprocessingIdempotency:
         db_session.commit()
 
         # Verify only one record exists
-        count = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).count()
+        count = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .count()
+        )
 
         assert count == 1
 
         # Verify record was updated
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved.id == initial_id
         assert retrieved.pim == 0.2
@@ -696,8 +808,8 @@ class TestReprocessingIdempotency:
 
     def test_multiple_players_same_match(self, db_session: Session, match_with_players):
         """Verify multiple performance features for same match don't conflict."""
-        mp1 = match_with_players['mp1']
-        mp2 = match_with_players['mp2']
+        mp1 = match_with_players["mp1"]
+        mp2 = match_with_players["mp2"]
 
         # Add features for both players
         pf1 = PerformanceFeatures(
@@ -716,20 +828,26 @@ class TestReprocessingIdempotency:
         db_session.commit()
 
         # Verify both exist
-        count = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id.in_([mp1.id, mp2.id])
-        ).count()
+        count = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id.in_([mp1.id, mp2.id]))
+            .count()
+        )
 
         assert count == 2
 
         # Verify they're independent
-        retrieved1 = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved1 = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
-        retrieved2 = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp2.id
-        ).first()
+        retrieved2 = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp2.id)
+            .first()
+        )
 
         assert retrieved1.detected_build_type == "macro"
         assert retrieved2.detected_build_type == "timing"
@@ -738,6 +856,7 @@ class TestReprocessingIdempotency:
 # ============================================================================
 # Tests: Z-Score Normalization
 # ============================================================================
+
 
 class TestZScoreNormalization:
     """Tests for z-score normalization across multiple matches."""
@@ -770,8 +889,7 @@ class TestZScoreNormalization:
 
         values = list(range(30, 71, 5))  # 30, 35, 40, ..., 70
         z_scores = [
-            calculator.calculate_z_score(val, match_avg, match_std)
-            for val in values
+            calculator.calculate_z_score(val, match_avg, match_std) for val in values
         ]
 
         mean_z = sum(z_scores) / len(z_scores)
@@ -802,12 +920,15 @@ class TestZScoreNormalization:
 # Tests: End-to-End Pipeline
 # ============================================================================
 
+
 class TestE2EPipeline:
     """Integration tests for the full advanced parsing pipeline."""
 
-    def test_full_pipeline_flow(self, db_session: Session, match_with_players, mock_enhanced_features):
+    def test_full_pipeline_flow(
+        self, db_session: Session, match_with_players, mock_enhanced_features
+    ):
         """Test complete pipeline: parsing → features → PIM → MMR."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         # Step 1: Parse and extract features (simulated)
         enhanced_features = mock_enhanced_features
@@ -817,7 +938,9 @@ class TestE2EPipeline:
             match_player_id=mp1.id,
             build_order_json=[{"second": 24, "unit_type": "SCV", "is_building": False}],
             detected_build_type=enhanced_features.detected_build_type,
-            upgrades_json=[{"second": 420, "upgrade_name": "TerranInfantryWeaponsLevel1"}],
+            upgrades_json=[
+                {"second": 420, "upgrade_name": "TerranInfantryWeaponsLevel1"}
+            ],
             first_attack_upgrade_second=enhanced_features.first_attack_upgrade_second,
             abilities_json=dict(enhanced_features.ability_usage.abilities),
             total_abilities=enhanced_features.ability_usage.total_abilities,
@@ -832,7 +955,7 @@ class TestE2EPipeline:
         calculator = PICalculator()
         match_averages = MatchAverages()
 
-        metrics = match_with_players['metrics1']
+        metrics = match_with_players["metrics1"]
         pim, breakdown = calculator.calculate_pim(metrics, match_averages)
 
         # Step 4: Apply to MMR
@@ -851,9 +974,11 @@ class TestE2EPipeline:
         db_session.commit()
 
         # Verify complete flow
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved.detected_build_type == "macro"
         assert retrieved.total_abilities == 25
@@ -862,7 +987,7 @@ class TestE2EPipeline:
 
     def test_pipeline_error_handling(self, db_session: Session, match_with_players):
         """Test pipeline handles missing data gracefully."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         # Create minimal performance features (some fields missing)
         perf_features = PerformanceFeatures(
@@ -874,9 +999,11 @@ class TestE2EPipeline:
         db_session.commit()
 
         # Should still work with defaults
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved is not None
         assert retrieved.build_order_json is None
@@ -884,7 +1011,7 @@ class TestE2EPipeline:
 
     def test_pim_version_tracking(self, db_session: Session, match_with_players):
         """Verify PIM calculation version is tracked."""
-        mp1 = match_with_players['mp1']
+        mp1 = match_with_players["mp1"]
 
         perf_features = PerformanceFeatures(
             match_player_id=mp1.id,
@@ -895,9 +1022,11 @@ class TestE2EPipeline:
         db_session.add(perf_features)
         db_session.commit()
 
-        retrieved = db_session.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id == mp1.id
-        ).first()
+        retrieved = (
+            db_session.query(PerformanceFeatures)
+            .filter(PerformanceFeatures.match_player_id == mp1.id)
+            .first()
+        )
 
         assert retrieved.pim_version == "rule_v1"
 

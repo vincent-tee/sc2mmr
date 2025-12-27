@@ -142,33 +142,21 @@ def validate_input(user_input, context=None):
 
 ## Typing and Structural Integrity
 
-### Recursive Type Resolution Pattern
+### Handling Dynamic Data (JSON Columns)
 
-**Rule**: When working with complex, dynamic data structures (e.g., SQLAlchemy JSON columns, API responses), agents must use recursive type resolution to ensure both static analysis (mypy/pyright) and runtime stability.
+**Guideline**: When accessing SQLAlchemy JSON columns (like build orders), use standard narrowing to ensure stability.
 
 **Pattern**:
-1.  **Validate**: Use `isinstance(data, expected_type)` for runtime safety.
-2.  **Cast**: Use `typing.cast(TargetType, data)` to satisfy static analysis.
-3.  **Narrow**: Bind the result to a new, specifically typed variable.
-
-**Implementation**:
 ```python
-# REQUIRED: Recursive Type Resolution
-from typing import cast, List, Dict, Any
-
-def process_build_order(pf: PerformanceFeatures):
-    # 1. Validate and Narrow
-    if not isinstance(pf.build_order_json, list):
-        return []
-    
-    # 2. Cast for Static Analysis
-    build_data = cast(List[Dict[str, Any]], pf.build_order_json)
-    
-    # 3. Use Specifically Typed Variable
-    return [event.get("unit_type") for event in build_data]
+# Simple and effective
+build_data = pf.build_order_json
+if isinstance(build_data, list):
+    # Process knowing it's a list
+    for event in build_data:
+        print(event.get("unit_type"))
 ```
 
-**Reasoning**: This prevents "Never" type inference and "Object is not subscriptable" errors during tool-based code edits, especially when working with ORM-mapped JSON fields.
+**Reasoning**: Prevents runtime crashes and satisfies basic type checking without over-engineering the code.
 
 ### TRUST 5 Framework
 
