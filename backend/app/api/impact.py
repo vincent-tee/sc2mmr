@@ -1,11 +1,13 @@
 """
 API endpoints for player impact and synergy statistics.
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 import json
+from collections import defaultdict
 
 from ..database import get_db
 from ..models import Player, MatchPlayer, PlayerMatchMetrics, PlayerSynergy
@@ -19,6 +21,7 @@ router = APIRouter(prefix="/impact", tags=["impact"])
 # Response models
 class ImpactScoresResponse(BaseModel):
     """Player impact scores."""
+
     economic_score: float
     combat_score: float
     efficiency_score: float
@@ -27,6 +30,7 @@ class ImpactScoresResponse(BaseModel):
 
 class PlayerImpactResponse(BaseModel):
     """Player with impact scores."""
+
     id: int
     name: str
     mmr: float
@@ -37,6 +41,7 @@ class PlayerImpactResponse(BaseModel):
 
 class MatchMetricsResponse(BaseModel):
     """Detailed match metrics."""
+
     match_id: int
     player_name: str
     race: str
@@ -68,6 +73,7 @@ class MatchMetricsResponse(BaseModel):
 
 class SynergyResponse(BaseModel):
     """Synergy between two players."""
+
     player1_id: int
     player1_name: str
     player2_id: int
@@ -81,6 +87,7 @@ class SynergyResponse(BaseModel):
 
 class PlayerSynergyListResponse(BaseModel):
     """List of synergies for a player."""
+
     player_id: int
     player_name: str
     synergies: List[SynergyResponse]
@@ -90,7 +97,7 @@ class PlayerSynergyListResponse(BaseModel):
 def get_players_by_impact(
     sort_by: str = "overall",  # economic, combat, efficiency, overall
     min_games: int = 5,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get players ranked by impact scores.
@@ -110,7 +117,7 @@ def get_players_by_impact(
         "economic": lambda p: p.avg_economic_score,
         "combat": lambda p: p.avg_combat_score,
         "efficiency": lambda p: p.avg_efficiency_score,
-        "overall": lambda p: p.avg_overall_impact
+        "overall": lambda p: p.avg_overall_impact,
     }
 
     sort_key = sort_key_map.get(sort_by, sort_key_map["overall"])
@@ -125,10 +132,10 @@ def get_players_by_impact(
                 economic_score=p.avg_economic_score,
                 combat_score=p.avg_combat_score,
                 efficiency_score=p.avg_efficiency_score,
-                overall_impact=p.avg_overall_impact
+                overall_impact=p.avg_overall_impact,
             ),
             total_games=p.total_games,
-            win_rate=p.win_rate
+            win_rate=p.win_rate,
         )
         for p in players_sorted
     ]
@@ -136,9 +143,7 @@ def get_players_by_impact(
 
 @router.get("/players/{player_id}/matches", response_model=List[MatchMetricsResponse])
 def get_player_match_metrics(
-    player_id: int,
-    limit: int = 20,
-    db: Session = Depends(get_db)
+    player_id: int, limit: int = 20, db: Session = Depends(get_db)
 ):
     """
     Get detailed match metrics for a player.
@@ -156,47 +161,53 @@ def get_player_match_metrics(
         raise HTTPException(status_code=404, detail="Player not found")
 
     # Get recent matches
-    match_players = db.query(MatchPlayer).filter(
-        MatchPlayer.player_id == player_id
-    ).order_by(MatchPlayer.id.desc()).limit(limit).all()
+    match_players = (
+        db.query(MatchPlayer)
+        .filter(MatchPlayer.player_id == player_id)
+        .order_by(MatchPlayer.id.desc())
+        .limit(limit)
+        .all()
+    )
 
     results = []
     for mp in match_players:
-        metrics = db.query(PlayerMatchMetrics).filter(
-            PlayerMatchMetrics.match_player_id == mp.id
-        ).first()
+        metrics = (
+            db.query(PlayerMatchMetrics)
+            .filter(PlayerMatchMetrics.match_player_id == mp.id)
+            .first()
+        )
 
         if metrics:
-            results.append(MatchMetricsResponse(
-                match_id=mp.match_id,
-                player_name=player.name,
-                race=mp.race.value,
-                won=bool(mp.won),
-                minerals_collected=metrics.minerals_collected,
-                vespene_collected=metrics.vespene_collected,
-                total_resources=metrics.total_resources_collected,
-                workers_created=metrics.workers_created,
-                units_killed=metrics.units_killed,
-                units_lost=metrics.units_lost,
-                damage_dealt=metrics.damage_dealt,
-                damage_taken=metrics.damage_taken,
-                damage_ratio=metrics.damage_ratio,
-                economic_score=metrics.economic_score,
-                combat_score=metrics.combat_score,
-                efficiency_score=metrics.efficiency_score,
-                overall_impact=metrics.overall_impact,
-                apm=metrics.apm,
-                first_expansion_timing=metrics.first_expansion_timing
-            ))
+            results.append(
+                MatchMetricsResponse(
+                    match_id=mp.match_id,
+                    player_name=player.name,
+                    race=mp.race.value,
+                    won=bool(mp.won),
+                    minerals_collected=metrics.minerals_collected,
+                    vespene_collected=metrics.vespene_collected,
+                    total_resources=metrics.total_resources_collected,
+                    workers_created=metrics.workers_created,
+                    units_killed=metrics.units_killed,
+                    units_lost=metrics.units_lost,
+                    damage_dealt=metrics.damage_dealt,
+                    damage_taken=metrics.damage_taken,
+                    damage_ratio=metrics.damage_ratio,
+                    economic_score=metrics.economic_score,
+                    combat_score=metrics.combat_score,
+                    efficiency_score=metrics.efficiency_score,
+                    overall_impact=metrics.overall_impact,
+                    apm=metrics.apm,
+                    first_expansion_timing=metrics.first_expansion_timing,
+                )
+            )
 
     return results
 
 
 @router.get("/players/{player_id}/synergies", response_model=PlayerSynergyListResponse)
 def get_player_synergies(
-    player_id: int,
-    min_games: int = 3,
-    db: Session = Depends(get_db)
+    player_id: int, min_games: int = 3, db: Session = Depends(get_db)
 ):
     """
     Get synergies for a specific player.
@@ -225,30 +236,28 @@ def get_player_synergies(
             p1_id, p1_name = other_player.id, other_player.name
             p2_id, p2_name = player.id, player.name
 
-        synergy_responses.append(SynergyResponse(
-            player1_id=p1_id,
-            player1_name=p1_name,
-            player2_id=p2_id,
-            player2_name=p2_name,
-            games_together=synergy.games_together,
-            wins_together=synergy.wins_together,
-            win_rate=synergy.win_rate_together,
-            synergy_score=synergy.synergy_score,
-            avg_combined_impact=synergy.avg_combined_impact
-        ))
+        synergy_responses.append(
+            SynergyResponse(
+                player1_id=p1_id,
+                player1_name=p1_name,
+                player2_id=p2_id,
+                player2_name=p2_name,
+                games_together=synergy.games_together,
+                wins_together=synergy.wins_together,
+                win_rate=synergy.win_rate_together,
+                synergy_score=synergy.synergy_score,
+                avg_combined_impact=synergy.avg_combined_impact,
+            )
+        )
 
     return PlayerSynergyListResponse(
-        player_id=player.id,
-        player_name=player.name,
-        synergies=synergy_responses
+        player_id=player.id, player_name=player.name, synergies=synergy_responses
     )
 
 
 @router.get("/synergies/top", response_model=List[SynergyResponse])
 def get_top_synergies(
-    min_games: int = 5,
-    limit: int = 10,
-    db: Session = Depends(get_db)
+    min_games: int = 5, limit: int = 10, db: Session = Depends(get_db)
 ):
     """
     Get top player synergies across all players.
@@ -273,7 +282,7 @@ def get_top_synergies(
             wins_together=synergy.wins_together,
             win_rate=synergy.win_rate_together,
             synergy_score=synergy.synergy_score,
-            avg_combined_impact=synergy.avg_combined_impact
+            avg_combined_impact=synergy.avg_combined_impact,
         )
         for player1, player2, synergy in top_synergies
     ]
@@ -284,7 +293,7 @@ def get_impact_leaderboard(
     category: str,  # economic, combat, efficiency, overall, damage, resources
     min_games: int = 5,
     limit: int = 10,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get leaderboard for specific impact category.
@@ -302,16 +311,22 @@ def get_impact_leaderboard(
 
     # Define sorting keys
     if category == "economic":
-        players_sorted = sorted(players, key=lambda p: p.avg_economic_score, reverse=True)
+        players_sorted = sorted(
+            players, key=lambda p: p.avg_economic_score, reverse=True
+        )
         score_key = "avg_economic_score"
     elif category == "combat":
         players_sorted = sorted(players, key=lambda p: p.avg_combat_score, reverse=True)
         score_key = "avg_combat_score"
     elif category == "efficiency":
-        players_sorted = sorted(players, key=lambda p: p.avg_efficiency_score, reverse=True)
+        players_sorted = sorted(
+            players, key=lambda p: p.avg_efficiency_score, reverse=True
+        )
         score_key = "avg_efficiency_score"
     elif category == "overall":
-        players_sorted = sorted(players, key=lambda p: p.avg_overall_impact, reverse=True)
+        players_sorted = sorted(
+            players, key=lambda p: p.avg_overall_impact, reverse=True
+        )
         score_key = "avg_overall_impact"
     else:
         raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
@@ -320,27 +335,27 @@ def get_impact_leaderboard(
 
     leaderboard = []
     for rank, player in enumerate(players_sorted, 1):
-        leaderboard.append({
-            "rank": rank,
-            "player_id": player.id,
-            "player_name": player.name,
-            "score": getattr(player, score_key),
-            "total_games": player.total_games,
-            "win_rate": player.win_rate,
-            "mmr": player.mmr
-        })
+        leaderboard.append(
+            {
+                "rank": rank,
+                "player_id": player.id,
+                "player_name": player.name,
+                "score": getattr(player, score_key),
+                "total_games": player.total_games,
+                "win_rate": player.win_rate,
+                "mmr": player.mmr,
+            }
+        )
 
-    return {
-        "category": category,
-        "min_games": min_games,
-        "leaderboard": leaderboard
-    }
+    return {"category": category, "min_games": min_games, "leaderboard": leaderboard}
 
 
 # Damage Timeline Endpoints
 
+
 class TimingAttackResponse(BaseModel):
     """Timing attack response."""
+
     start_second: int
     start_time: str  # MM:SS format
     end_second: int
@@ -353,6 +368,7 @@ class TimingAttackResponse(BaseModel):
 
 class DamageSpikeResponse(BaseModel):
     """Damage spike response."""
+
     second: int
     time: str  # MM:SS format
     damage: int
@@ -360,6 +376,7 @@ class DamageSpikeResponse(BaseModel):
 
 class DamageTimelineResponse(BaseModel):
     """Damage timeline analysis response."""
+
     match_id: int
     player_name: str
     total_damage: int
@@ -374,11 +391,12 @@ class DamageTimelineResponse(BaseModel):
     consistency_score: float
 
 
-@router.get("/players/{player_id}/matches/{match_id}/timeline", response_model=DamageTimelineResponse)
+@router.get(
+    "/players/{player_id}/matches/{match_id}/timeline",
+    response_model=DamageTimelineResponse,
+)
 def get_match_damage_timeline(
-    player_id: int,
-    match_id: int,
-    db: Session = Depends(get_db)
+    player_id: int, match_id: int, db: Session = Depends(get_db)
 ):
     """
     Get detailed damage timeline for a specific match.
@@ -399,21 +417,28 @@ def get_match_damage_timeline(
         raise HTTPException(status_code=404, detail="Player not found")
 
     # Find the match player record
-    match_player = db.query(MatchPlayer).filter(
-        MatchPlayer.match_id == match_id,
-        MatchPlayer.player_id == player_id
-    ).first()
+    match_player = (
+        db.query(MatchPlayer)
+        .filter(MatchPlayer.match_id == match_id, MatchPlayer.player_id == player_id)
+        .first()
+    )
 
     if not match_player:
-        raise HTTPException(status_code=404, detail="Player did not participate in this match")
+        raise HTTPException(
+            status_code=404, detail="Player did not participate in this match"
+        )
 
     # Get metrics with timeline
-    metrics = db.query(PlayerMatchMetrics).filter(
-        PlayerMatchMetrics.match_player_id == match_player.id
-    ).first()
+    metrics = (
+        db.query(PlayerMatchMetrics)
+        .filter(PlayerMatchMetrics.match_player_id == match_player.id)
+        .first()
+    )
 
     if not metrics or not metrics.damage_timeline:
-        raise HTTPException(status_code=404, detail="Damage timeline not available for this match")
+        raise HTTPException(
+            status_code=404, detail="Damage timeline not available for this match"
+        )
 
     # Parse timeline
     timeline = DamageTimeline.from_json(metrics.damage_timeline)
@@ -447,7 +472,7 @@ def get_match_damage_timeline(
             peak_time=attack.peak_time_display,
             total_damage=attack.total_damage,
             peak_damage=attack.peak_damage,
-            duration_seconds=attack.duration_seconds
+            duration_seconds=attack.duration_seconds,
         )
         for attack in timing_attacks
     ]
@@ -456,9 +481,7 @@ def get_match_damage_timeline(
     spikes = timeline.get_damage_spikes()
     spike_responses = [
         DamageSpikeResponse(
-            second=spike.second,
-            time=spike.time_display,
-            damage=spike.damage
+            second=spike.second, time=spike.time_display, damage=spike.damage
         )
         for spike in spikes[:10]  # Top 10 spikes
     ]
@@ -475,15 +498,12 @@ def get_match_damage_timeline(
         damage_distribution=timeline.get_damage_distribution(),
         timing_attacks=timing_attack_responses,
         damage_spikes=spike_responses,
-        consistency_score=timeline.calculate_consistency_score()
+        consistency_score=timeline.calculate_consistency_score(),
     )
 
 
 @router.get("/matches/{match_id}/coordination")
-def get_match_team_coordination(
-    match_id: int,
-    db: Session = Depends(get_db)
-):
+def get_match_team_coordination(match_id: int, db: Session = Depends(get_db)):
     """
     Analyze team coordination in a match based on attack timing.
 
@@ -498,9 +518,7 @@ def get_match_team_coordination(
         HTTPException: If match not found
     """
     # Get all players in the match
-    match_players = db.query(MatchPlayer).filter(
-        MatchPlayer.match_id == match_id
-    ).all()
+    match_players = db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).all()
 
     if not match_players:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -514,18 +532,22 @@ def get_match_team_coordination(
         timelines = []
 
         for mp in team_players:
-            metrics = db.query(PlayerMatchMetrics).filter(
-                PlayerMatchMetrics.match_player_id == mp.id
-            ).first()
+            metrics = (
+                db.query(PlayerMatchMetrics)
+                .filter(PlayerMatchMetrics.match_player_id == mp.id)
+                .first()
+            )
 
             if metrics and metrics.damage_timeline:
                 player = db.query(Player).filter(Player.id == mp.player_id).first()
                 timeline = DamageTimeline.from_json(metrics.damage_timeline)
-                timelines.append({
-                    'player_name': player.name if player else "Unknown",
-                    'timeline': timeline,
-                    'first_damage': timeline.get_first_damage_second()
-                })
+                timelines.append(
+                    {
+                        "player_name": player.name if player else "Unknown",
+                        "timeline": timeline,
+                        "first_damage": timeline.get_first_damage_second(),
+                    }
+                )
 
         if len(timelines) < 2:
             return {"coordination_score": None, "analysis": "Not enough data"}
@@ -535,44 +557,38 @@ def get_match_team_coordination(
         for i in range(len(timelines)):
             for j in range(i + 1, len(timelines)):
                 score = DamageTimelineExtractor.calculate_coordination_score(
-                    timelines[i]['timeline'],
-                    timelines[j]['timeline']
+                    timelines[i]["timeline"], timelines[j]["timeline"]
                 )
-                coordination_scores.append({
-                    'player1': timelines[i]['player_name'],
-                    'player2': timelines[j]['player_name'],
-                    'score': score
-                })
+                coordination_scores.append(
+                    {
+                        "player1": timelines[i]["player_name"],
+                        "player2": timelines[j]["player_name"],
+                        "score": score,
+                    }
+                )
 
-        avg_coordination = sum(cs['score'] for cs in coordination_scores) / len(coordination_scores)
+        avg_coordination = sum(cs["score"] for cs in coordination_scores) / len(
+            coordination_scores
+        )
 
         return {
-            'coordination_score': avg_coordination,
-            'pairwise_scores': coordination_scores,
-            'first_damages': [
-                {
-                    'player': t['player_name'],
-                    'first_damage_second': t['first_damage']
-                }
+            "coordination_score": avg_coordination,
+            "pairwise_scores": coordination_scores,
+            "first_damages": [
+                {"player": t["player_name"], "first_damage_second": t["first_damage"]}
                 for t in timelines
-            ]
+            ],
         }
 
     team_1_analysis = analyze_team_coordination(team_1)
     team_2_analysis = analyze_team_coordination(team_2)
 
-    return {
-        'match_id': match_id,
-        'team_1': team_1_analysis,
-        'team_2': team_2_analysis
-    }
+    return {"match_id": match_id, "team_1": team_1_analysis, "team_2": team_2_analysis}
 
 
 @router.get("/players/{player_id}/attack-patterns")
 def get_player_attack_patterns(
-    player_id: int,
-    limit: int = 20,
-    db: Session = Depends(get_db)
+    player_id: int, limit: int = 20, db: Session = Depends(get_db)
 ):
     """
     Analyze player's attack timing patterns across matches.
@@ -593,18 +609,24 @@ def get_player_attack_patterns(
         raise HTTPException(status_code=404, detail="Player not found")
 
     # Get recent matches
-    match_players = db.query(MatchPlayer).filter(
-        MatchPlayer.player_id == player_id
-    ).order_by(MatchPlayer.id.desc()).limit(limit).all()
+    match_players = (
+        db.query(MatchPlayer)
+        .filter(MatchPlayer.player_id == player_id)
+        .order_by(MatchPlayer.id.desc())
+        .limit(limit)
+        .all()
+    )
 
     first_damage_timings = []
-    timing_attacks_by_time = defaultdict(int)  # Group by minute
-    damage_distributions = {'early': [], 'mid': [], 'late': []}
+    timing_attacks_by_time: Dict[int, int] = defaultdict(int)  # Group by minute
+    damage_distributions: Dict[str, List[float]] = {"early": [], "mid": [], "late": []}
 
     for mp in match_players:
-        metrics = db.query(PlayerMatchMetrics).filter(
-            PlayerMatchMetrics.match_player_id == mp.id
-        ).first()
+        metrics = (
+            db.query(PlayerMatchMetrics)
+            .filter(PlayerMatchMetrics.match_player_id == mp.id)
+            .first()
+        )
 
         if metrics:
             # First damage timing
@@ -615,9 +637,9 @@ def get_player_attack_patterns(
             if metrics.damage_timeline:
                 timeline = DamageTimeline.from_json(metrics.damage_timeline)
                 dist = timeline.get_damage_distribution()
-                damage_distributions['early'].append(dist['early'])
-                damage_distributions['mid'].append(dist['mid'])
-                damage_distributions['late'].append(dist['late'])
+                damage_distributions["early"].append(dist["early"])
+                damage_distributions["mid"].append(dist["mid"])
+                damage_distributions["late"].append(dist["late"])
 
                 # Track timing attacks by minute
                 attacks = timeline.detect_timing_attacks()
@@ -631,9 +653,11 @@ def get_player_attack_patterns(
         avg_first_damage = sum(first_damage_timings) / len(first_damage_timings)
 
     avg_damage_dist = {}
-    for phase in ['early', 'mid', 'late']:
+    for phase in ["early", "mid", "late"]:
         if damage_distributions[phase]:
-            avg_damage_dist[phase] = sum(damage_distributions[phase]) / len(damage_distributions[phase])
+            avg_damage_dist[phase] = sum(damage_distributions[phase]) / len(
+                damage_distributions[phase]
+            )
         else:
             avg_damage_dist[phase] = 0
 
@@ -643,17 +667,18 @@ def get_player_attack_patterns(
         preferred_timing = max(timing_attacks_by_time.items(), key=lambda x: x[1])
 
     return {
-        'player_id': player_id,
-        'player_name': player.name,
-        'matches_analyzed': len(match_players),
-        'avg_first_damage_second': avg_first_damage,
-        'avg_first_damage_time': f"{int(avg_first_damage // 60)}:{int(avg_first_damage % 60):02d}" if avg_first_damage else None,
-        'avg_damage_distribution': avg_damage_dist,
-        'preferred_attack_timing_minute': preferred_timing[0] if preferred_timing else None,
-        'timing_attack_frequency': dict(timing_attacks_by_time),
-        'archetype': player.primary_archetype,
-        'aggression_score': player.avg_aggression_score
+        "player_id": player_id,
+        "player_name": player.name,
+        "matches_analyzed": len(match_players),
+        "avg_first_damage_second": avg_first_damage,
+        "avg_first_damage_time": f"{int(avg_first_damage // 60)}:{int(avg_first_damage % 60):02d}"
+        if avg_first_damage
+        else None,
+        "avg_damage_distribution": avg_damage_dist,
+        "preferred_attack_timing_minute": preferred_timing[0]
+        if preferred_timing
+        else None,
+        "timing_attack_frequency": dict(timing_attacks_by_time),
+        "archetype": player.primary_archetype,
+        "aggression_score": player.avg_aggression_score,
     }
-
-
-from collections import defaultdict

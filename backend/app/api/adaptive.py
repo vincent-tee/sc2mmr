@@ -243,6 +243,21 @@ def update_auto_optimization_config(
     }
 
 
+@router.post("/force-optimize")
+def force_optimization(db: Session = Depends(get_db)):
+    """
+    Force optimization regardless of threshold.
+    """
+    result = AutoAdaptiveTracker.force_optimization(db)
+
+    if not result:
+        raise HTTPException(
+            status_code=500, detail="Optimization failed to generate results"
+        )
+
+    return {"status": "success", "message": "Optimization completed", "result": result}
+
+
 @router.get("/model-versions")
 def get_model_versions(db: Session = Depends(get_db)):
     """
@@ -393,6 +408,41 @@ def get_feature_importance(db: Session = Depends(get_db)):
         }
     except Exception:
         return {"features": []}
+
+
+@router.get("/feature-suggestions")
+def get_feature_suggestions(db: Session = Depends(get_db)):
+    """
+    Get AI-suggested new features.
+    """
+    try:
+        from ..online_learning import FeatureSuggestion
+
+        suggestions = (
+            db.query(FeatureSuggestion)
+            .order_by(FeatureSuggestion.correlation_hypothesis.desc())
+            .all()
+        )
+
+        return {
+            "suggestions": [
+                {
+                    "id": int(s.id),
+                    "feature_name": str(s.feature_name),
+                    "description": str(s.feature_description),
+                    "extraction_logic": str(s.extraction_logic or ""),
+                    "reasoning": str(s.reasoning or ""),
+                    "expected_correlation": float(s.correlation_hypothesis or 0),
+                    "status": str(s.status),
+                    "created_at": s.created_at.isoformat(),
+                    "tested_at": s.tested_at.isoformat() if s.tested_at else None,
+                    "test_results": str(s.test_results or ""),
+                }
+                for s in suggestions
+            ]
+        }
+    except Exception:
+        return {"suggestions": []}
 
 
 @router.get("/accuracy-comparison")
