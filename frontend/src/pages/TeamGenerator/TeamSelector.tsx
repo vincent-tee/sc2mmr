@@ -60,10 +60,10 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const [guestName, setGuestName] = useState('');
-  const [guestMMR, setGuestMMR] = useState(1000);
+  const [guestMMR, setGuestMMR] = useState(3500);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [editName, setEditName] = useState('');
-  const [editMMR, setEditMMR] = useState(1000);
+  const [editMMR, setEditMMR] = useState(3500);
   const [aiDifficulties, setAIDifficulties] = useState<Record<string, number>>({});
 
   // Identify guest players (negative IDs, not AI)
@@ -85,7 +85,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
     if (guestName.trim()) {
       onAddGuest(guestName, guestMMR);
       setGuestName('');
-      setGuestMMR(1000);
+      setGuestMMR(3500);
       onClose();
     }
   };
@@ -183,11 +183,12 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                   colorScheme="purple"
                   leftIcon={<FiCpu />}
                   rightIcon={<FiChevronDown />}
+                  fontFamily="heading"
                 >
                   Add AI
                 </MenuButton>
-                <MenuList bg="space.800" borderColor="space.700">
-                  <Text px={3} py={2} fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase">
+                <MenuList bg="space.800" borderColor="space.700" boxShadow="4px 4px 0 var(--chakra-colors-space-900)" borderRadius="xl">
+                  <Text px={3} py={2} fontSize="10px" color="gray.500" fontWeight="black" textTransform="uppercase" letterSpacing="widest">
                     Select Difficulty
                   </Text>
                   <Divider mb={2} borderColor="whiteAlpha.100" />
@@ -195,12 +196,13 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                     <MenuItem
                       key={diff}
                       bg="transparent"
-                      _hover={{ bg: 'whiteAlpha.100' }}
+                      _hover={{ bg: 'space.700' }}
                       onClick={() => onAddAI && onAddAI(diff, mmr)}
+                      fontFamily="heading"
                     >
                       <HStack justify="space-between" w="full">
-                        <Text textTransform="capitalize">{diff.replace('_', ' ')}</Text>
-                        <Badge colorScheme="purple">{mmr}</Badge>
+                        <Text textTransform="capitalize" fontSize="sm">{diff.replace('_', ' ')}</Text>
+                        <Badge variant="solid" bg="space.900" color="purple.400" fontFamily="mono">{mmr}</Badge>
                       </HStack>
                     </MenuItem>
                   ))}
@@ -212,6 +214,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 colorScheme="brand"
                 onClick={onOpen}
                 leftIcon={<FiPlus />}
+                fontFamily="heading"
               >
                 Add Guest
               </Button>
@@ -221,6 +224,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 onClick={onClearSelection}
                 fontFamily="heading"
                 leftIcon={<FiX />}
+                color="gray.400"
               >
                 Clear
               </Button>
@@ -230,6 +234,9 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 onClick={onSelectAll}
                 fontFamily="heading"
                 leftIcon={<FiCheck />}
+                color="brand.400"
+                borderColor="brand.500"
+                _hover={{ bg: 'brand.500', color: 'gray.900' }}
               >
                 Select All
               </Button>
@@ -270,16 +277,19 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 />
               </Box>
               <Box>
-                <Text fontSize="xs" color="gray.500" mb={1} fontWeight="bold">Starting MMR</Text>
+                <Text fontSize="xs" color="gray.500" mb={1} fontWeight="bold" fontFamily="heading" letterSpacing="wide">Starting MMR</Text>
                 <Input
                   type="number"
-                  placeholder="1000"
+                  placeholder="3500"
                   value={guestMMR}
-                  onChange={(e) => setGuestMMR(parseInt(e.target.value) || 1000)}
+                  onChange={(e) => setGuestMMR(parseInt(e.target.value) || 3500)}
                   bg="space.900"
                   border="none"
+                  fontFamily="mono"
                 />
-                <Text fontSize="xs" color="gray.600" mt={1}>Default is 1000. Adjust if they're more or less skilled.</Text>
+                <Text fontSize="10px" color="gray.600" mt={2} textTransform="uppercase" letterSpacing="widest">
+                  Baseline is 3500 (Platinum). Adjust for player skill.
+                </Text>
               </Box>
             </VStack>
           </ModalBody>
@@ -309,14 +319,15 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 />
               </Box>
               <Box>
-                <Text fontSize="xs" color="gray.500" mb={1} fontWeight="bold">MMR</Text>
+                <Text fontSize="xs" color="gray.500" mb={1} fontWeight="bold" fontFamily="heading" letterSpacing="wide">MMR</Text>
                 <Input
                   type="number"
-                  placeholder="1000"
+                  placeholder="3500"
                   value={editMMR}
-                  onChange={(e) => setEditMMR(parseInt(e.target.value) || 1000)}
+                  onChange={(e) => setEditMMR(parseInt(e.target.value) || 3500)}
                   bg="space.900"
                   border="none"
+                  fontFamily="mono"
                 />
               </Box>
             </VStack>

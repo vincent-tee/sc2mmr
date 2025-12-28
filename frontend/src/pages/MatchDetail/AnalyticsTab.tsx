@@ -72,14 +72,16 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       {/* Team 1 Individual Analytics */}
       <Box>
         <Heading
-          size="lg"
-          mb={4}
+          size="md"
+          mb={6}
           fontFamily="heading"
-          letterSpacing="wider"
+          letterSpacing="widest"
+          color="shield.400"
+          textTransform="uppercase"
         >
-          Team 1 Analytics
+          <Text as="span" className="emoji-font">🛡️</Text> Squad Alpha Analytics
         </Heading>
-        <VStack spacing={4} align="stretch">
+        <VStack spacing={6} align="stretch">
           {team1Players.map((player) => {
             const metrics = playerMetrics[player.player_id];
             const timeline = damageTimelines?.find(
@@ -89,10 +91,13 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             if (!metrics) return null;
 
             return (
-              <Box key={player.player_id}>
+              <Box key={player.player_id} bg="space.800" p={6} borderRadius="xl" border="3px solid" borderColor="space.900" boxShadow="3px 3px 0 var(--chakra-colors-space-900)">
+                <Heading size="sm" mb={6} color="gray.200" fontFamily="heading" letterSpacing="wide">
+                    {player.player_name}
+                </Heading>
                 <Grid
                   templateColumns={{ base: '1fr', lg: 'repeat(2, 1fr)' }}
-                  gap={4}
+                  gap={6}
                 >
                   {/* Impact Score Radar */}
                   <GridItem>
@@ -117,15 +122,13 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
                 {/* Damage Timeline */}
                 {timeline && (
-                  <Box mt={4}>
+                  <Box mt={6}>
                     <DamageTimelineChart
                       timelineData={transformTimelineData(timeline.timeline)}
                       playerName={player.player_name}
                     />
                   </Box>
                 )}
-
-                <Divider my={6} borderColor="whiteAlpha.200" />
               </Box>
             );
           })}
@@ -133,17 +136,19 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       </Box>
 
       {/* Team 2 Individual Analytics */}
-      <Box>
+      <Box mt={8}>
         <Heading
-          size="lg"
-          mb={4}
+          size="md"
+          mb={6}
           fontFamily="heading"
-          letterSpacing="wider"
+          letterSpacing="widest"
+          color="accent.400"
+          textTransform="uppercase"
         >
-          Team 2 Analytics
+          <Text as="span" className="emoji-font">⚔️</Text> Squad Bravo Analytics
         </Heading>
-        <VStack spacing={4} align="stretch">
-          {team2Players.map((player, playerIndex) => {
+        <VStack spacing={6} align="stretch">
+          {team2Players.map((player) => {
             const metrics = playerMetrics[player.player_id];
             const timeline = damageTimelines?.find(
               (t) => t.player_id === player.player_id
@@ -152,10 +157,13 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             if (!metrics) return null;
 
             return (
-              <Box key={player.player_id}>
+              <Box key={player.player_id} bg="space.800" p={6} borderRadius="xl" border="3px solid" borderColor="space.900" boxShadow="3px 3px 0 var(--chakra-colors-space-900)">
+                <Heading size="sm" mb={6} color="gray.200" fontFamily="heading" letterSpacing="wide">
+                    {player.player_name}
+                </Heading>
                 <Grid
                   templateColumns={{ base: '1fr', lg: 'repeat(2, 1fr)' }}
-                  gap={4}
+                  gap={6}
                 >
                   {/* Impact Score Radar */}
                   <GridItem>
@@ -180,16 +188,12 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
                 {/* Damage Timeline */}
                 {timeline && (
-                  <Box mt={4}>
+                  <Box mt={6}>
                     <DamageTimelineChart
                       timelineData={transformTimelineData(timeline.timeline)}
                       playerName={player.player_name}
                     />
                   </Box>
-                )}
-
-                {playerIndex !== team2Players.length - 1 && (
-                  <Divider my={6} borderColor="whiteAlpha.200" />
                 )}
               </Box>
             );

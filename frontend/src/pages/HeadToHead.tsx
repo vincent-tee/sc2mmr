@@ -472,6 +472,40 @@ const HeadToHead: React.FC = () => {
                 </Stat>
               </SimpleGrid>
 
+              {/* Map Dominance */}
+              {h2hData.map_dominance && h2hData.map_dominance.length > 0 && (
+                <Box w="100%">
+                  <Heading size="md" color="gray.200" mb={4} fontFamily="heading">
+                    <Text as="span" className="emoji-font">🗺️</Text> Map Dominance
+                  </Heading>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                    {h2hData.map_dominance.map((map) => {
+                      const p1Ratio = (map.p1_wins / map.total) * 100;
+                      const p2Ratio = (map.p2_wins / map.total) * 100;
+                      return (
+                        <Box key={map.map_name} bg={cardBg} p={4} borderRadius="xl" border="2px solid" borderColor="space.700">
+                          <HStack justify="space-between" mb={2}>
+                            <Text fontWeight="bold" color="gray.300" fontSize="sm">{map.map_name}</Text>
+                            <Badge bg="space.900" color="gray.500">{map.total} games</Badge>
+                          </HStack>
+                          <HStack spacing={1}>
+                            <Box flex={p1Ratio} h="8px" bg="shield.400" borderRadius="full" />
+                            <Box flex={p2Ratio} h="8px" bg="accent.400" borderRadius="full" />
+                            {map.total > (map.p1_wins + map.p2_wins) && (
+                              <Box flex={100 - p1Ratio - p2Ratio} h="8px" bg="gray.700" borderRadius="full" />
+                            )}
+                          </HStack>
+                          <HStack justify="space-between" mt={1}>
+                            <Text fontSize="10px" color="shield.400" fontWeight="bold">{h2hData.player1.name}: {map.p1_wins}</Text>
+                            <Text fontSize="10px" color="accent.400" fontWeight="bold">{h2hData.player2.name}: {map.p2_wins}</Text>
+                          </HStack>
+                        </Box>
+                      );
+                    })}
+                  </SimpleGrid>
+                </Box>
+              )}
+
               {/* Recent Matches */}
               {h2hData.recent_matches.length > 0 && (
                 <Box w="100%">

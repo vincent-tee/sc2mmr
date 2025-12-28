@@ -30,16 +30,36 @@ import {
   GridItem,
   Progress,
   ButtonGroup,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
+  Tooltip,
+  SimpleGrid,
+  Flex,
+  Circle,
 } from '@chakra-ui/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { FiArrowLeft, FiTrendingUp, FiActivity, FiAward, FiTarget } from 'react-icons/fi';
+import { 
+  FiArrowLeft, 
+  FiTrendingUp, 
+  FiActivity, 
+  FiAward, 
+  FiTarget, 
+  FiStar,
+  FiZap,
+  FiClock
+} from 'react-icons/fi';
 import { playersApi } from '../api/endpoints';
+import { achievementsApi } from '../api/achievements';
 import LoadingState from '../components/LoadingState';
 import RankBadge from '../components/RankBadge';
 import RaceBackground from '../components/RaceBackground';
 import { formatWinRate, formatDateOnly } from '../utils/formatting';
 import type { RecentMatch, PlayerDetail as PlayerDetailType } from '@/types/api';
+import { RARITY_COLORS, getRarityLabel } from '../types/achievements';
 
 // Design tokens
 const cardBg = 'space.800';
@@ -66,6 +86,16 @@ const PlayerDetail: React.FC = () => {
       return response.data as PlayerDetailWithRaceStats;
     },
     placeholderData: keepPreviousData,
+  });
+
+  // Fetch player achievements
+  const { data: achievementData } = useQuery({
+    queryKey: ['player-achievements', playerId],
+    queryFn: async () => {
+      const response = await achievementsApi.getPlayerAchievements(parseInt(playerId!, 10), true);
+      return response.data;
+    },
+    enabled: !!playerId,
   });
 
   // Only show full loading state on initial load, not pagination
@@ -321,38 +351,130 @@ const PlayerDetail: React.FC = () => {
             boxShadow={brandShadow}
             p={6}
           >
-            <Heading size="md" fontFamily="heading" color="gray.300" mb={4}>
-              <Text as="span" className="emoji-font">🎮</Text> Race Statistics
+            <Heading size="md" fontFamily="heading" color="gray.300" mb={6}>
+              <Text as="span" className="emoji-font">📊</Text> Performance & Career
             </Heading>
-            <Grid templateColumns={{ base: '1fr', md: 'repeat(4, 1fr)' }} gap={4}>
-              {Object.entries(playerData.race_stats ?? {}).map(([race, games]) => (
-                <GridItem key={race}>
-                  <VStack align="stretch" spacing={2}>
-                    <HStack justify="space-between">
-                      <Badge
-                        bg={`${getRaceColor(race)}.500`}
-                        color="white"
-                        px={2}
-                        py={1}
-                        borderRadius="md"
-                      >
-                        {race}
-                      </Badge>
-                      <Text fontWeight="bold" color="gray.300" fontFamily="mono">
-                        {games} games
-                      </Text>
-                    </HStack>
-                    <Progress
-                      value={playerData.total_games > 0 ? (games / playerData.total_games) * 100 : 0}
-                      colorScheme={getRaceColor(race)}
-                      size="sm"
-                      borderRadius="full"
-                      bg="space.900"
-                    />
-                  </VStack>
-                </GridItem>
-              ))}
-            </Grid>
+            
+            <Tabs variant="unstyled">
+              <TabList mb={4} gap={2}>
+                <Tab 
+                  bg="space.900" 
+                  color="gray.500" 
+                  borderRadius="lg" 
+                  px={6} 
+                  py={2}
+                  fontFamily="heading"
+                  _selected={{ bg: 'brand.500', color: 'white', boxShadow: '3px 3px 0 var(--chakra-colors-space-900)' }}
+                  _hover={{ bg: 'space.700' }}
+                >
+                  <Icon as={FiZap} mr={2} /> Race Stats
+                </Tab>
+                <Tab 
+                  bg="space.900" 
+                  color="gray.500" 
+                  borderRadius="lg" 
+                  px={6} 
+                  py={2}
+                  fontFamily="heading"
+                  _selected={{ bg: 'brand.500', color: 'white', boxShadow: '3px 3px 0 var(--chakra-colors-space-900)' }}
+                  _hover={{ bg: 'space.700' }}
+                >
+                  <Icon as={FiAward} mr={2} /> Trophy Case
+                </Tab>
+              </TabList>
+              
+              <TabPanels>
+                <TabPanel p={0} pt={2}>
+                  <Grid templateColumns={{ base: '1fr', md: 'repeat(4, 1fr)' }} gap={4}>
+                    {Object.entries(playerData.race_stats ?? {}).map(([race, games]) => (
+                      <GridItem key={race}>
+                        <VStack align="stretch" spacing={2}>
+                          <HStack justify="space-between">
+                            <Badge
+                              bg={`${getRaceColor(race)}.500`}
+                              color="white"
+                              px={2}
+                              py={1}
+                              borderRadius="md"
+                            >
+                              {race}
+                            </Badge>
+                            <Text fontWeight="bold" color="gray.300" fontFamily="mono">
+                              {games} games
+                            </Text>
+                          </HStack>
+                          <Progress
+                            value={playerData.total_games > 0 ? (games / playerData.total_games) * 100 : 0}
+                            colorScheme={getRaceColor(race)}
+                            size="sm"
+                            borderRadius="full"
+                            bg="space.900"
+                          />
+                        </VStack>
+                      </GridItem>
+                    ))}
+                  </Grid>
+                </TabPanel>
+                
+                <TabPanel p={0} pt={2}>
+                  {!achievementData || achievementData.awarded.length === 0 ? (
+                    <Box py={8} textAlign="center" bg="space.900" borderRadius="xl" border="2px dashed" borderColor="space.700">
+                      <Icon as={FiAward} boxSize={10} color="gray.700" mb={2} />
+                      <Text color="gray.600">No trophies earned yet. Start playing to unlock achievements!</Text>
+                    </Box>
+                  ) : (
+                    <VStack align="stretch" spacing={6}>
+                      <HStack spacing={4}>
+                         <Stat bg="space.900" p={3} borderRadius="lg" border="1px solid" borderColor="whiteAlpha.100">
+                           <StatLabel fontSize="xs" color="gray.500">Points</StatLabel>
+                           <StatNumber fontSize="xl" color="brand.400">{achievementData.total_points}</StatNumber>
+                         </Stat>
+                         <Stat bg="space.900" p={3} borderRadius="lg" border="1px solid" borderColor="whiteAlpha.100">
+                           <StatLabel fontSize="xs" color="gray.500">Unlocked</StatLabel>
+                           <StatNumber fontSize="xl" color="accent.400">{achievementData.awarded.length}</StatNumber>
+                         </Stat>
+                      </HStack>
+                      
+                      <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 6 }} spacing={4}>
+                        {achievementData.awarded.map((awarded: any) => {
+                          const rarityColors = RARITY_COLORS[awarded.rarity as keyof typeof RARITY_COLORS] || RARITY_COLORS.common;
+                          return (
+                            <Tooltip 
+                              key={awarded.code} 
+                              label={
+                                <Box p={1}>
+                                  <Text fontWeight="bold">{awarded.name}</Text>
+                                  <Text fontSize="xs">{awarded.description}</Text>
+                                  <Text fontSize="10px" color="gray.400" mt={1}>Earned: {formatDateOnly(awarded.earned_at)}</Text>
+                                </Box>
+                              }
+                              hasArrow
+                            >
+                              <VStack 
+                                bg="space.900" 
+                                p={3} 
+                                borderRadius="xl" 
+                                border="2px solid" 
+                                borderColor={rarityColors.border}
+                                transition="all 0.2s"
+                                _hover={{ transform: 'scale(1.05)', boxShadow: '0 0 15px ' + rarityColors.border }}
+                              >
+                                <Circle size="10" bg={rarityColors.bg} boxShadow={rarityColors.glow}>
+                                  <Text fontSize="xl">{awarded.icon || '🎖️'}</Text>
+                                </Circle>
+                                <Text fontSize="10px" fontWeight="bold" textAlign="center" noOfLines={1} color={rarityColors.text}>
+                                  {awarded.name}
+                                </Text>
+                              </VStack>
+                            </Tooltip>
+                          );
+                        })}
+                      </SimpleGrid>
+                    </VStack>
+                  )}
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
           </Box>
 
           {/* Recent Matches */}

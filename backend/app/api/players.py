@@ -160,16 +160,15 @@ def get_player_rankings(
     if core_only:
         query = query.filter(Player.is_core_player == 1)
 
-    # Sort by MMR (mu - 3*sigma)
-    players = query.all()
-    players_sorted = sorted(players, key=lambda p: p.mmr, reverse=True)
+    # Sort by Recency-Weighted MMR (Default) or Base MMR
+    players = query.order_by(desc(Player.recency_weighted_mmr)).all()
 
     return [
         PlayerRankingResponse(
             rank=idx + 1,
             player=_player_to_response(p),
         )
-        for idx, p in enumerate(players_sorted)
+        for idx, p in enumerate(players)
     ]
 
 
@@ -207,11 +206,15 @@ def get_player_details(
         "Random": player.random_games,
     }
 
-    # Recent matches
+    # Recent matches with optimized join to avoid N+1 queries
+    from sqlalchemy.orm import joinedload
+
     match_players = (
         db.query(MatchPlayer)
+        .options(joinedload(MatchPlayer.match))
         .filter(MatchPlayer.player_id == player_id)
-        .order_by(MatchPlayer.id.desc())
+        .join(Match)
+        .order_by(Match.played_at.desc())
         .offset(recent_matches_offset)
         .limit(recent_matches_limit)
         .all()
@@ -219,8 +222,7 @@ def get_player_details(
 
     recent_matches = []
     for mp in match_players:
-        match = db.query(Match).filter(Match.id == mp.match_id).first()
-        if match:
+        if mp.match:
             # Use centralized display MMR formula for consistency with Player.mmr
             from ..rating_system import RatingSystem
 
@@ -229,10 +231,10 @@ def get_player_details(
 
             recent_matches.append(
                 {
-                    "match_id": match.id,
-                    "played_at": match.played_at.isoformat(),
-                    "game_mode": match.game_mode.value,
-                    "map_name": match.map_name,
+                    "match_id": mp.match.id,
+                    "played_at": mp.match.played_at.isoformat(),
+                    "game_mode": mp.match.game_mode.value,
+                    "map_name": mp.match.map_name,
                     "race": mp.race.value,
                     "won": bool(mp.won),
                     "team_number": mp.team_number,

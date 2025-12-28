@@ -139,15 +139,15 @@ class Player(Base):
         Scaled MMR for display and balancing.
 
         Uses the centralized display MMR formula from RatingSystem:
-        MMR = 1000 + 40*mu
+        MMR = 1000 + 100*mu
 
         Sigma (uncertainty) is kept internal for matchmaking quality but doesn't
         affect displayed rating. This prevents inactive players from having their
         displayed MMR penalized when only their uncertainty increases.
 
         This gives approximately:
-        - New players: ~2000 MMR (mu=25)
-        - Experienced players: 800-2400 MMR range
+        - New players: ~3500 MMR (mu=25)
+        - Experienced players: 1500-4500 MMR range
         - Higher MMR = better skill
 
         See RatingSystem.calculate_display_mmr() for the authoritative implementation.
@@ -467,6 +467,10 @@ class PlayerSynergy(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
+
+    # Relationships
+    player1: Mapped["Player"] = relationship("Player", foreign_keys=[player1_id])
+    player2: Mapped["Player"] = relationship("Player", foreign_keys=[player2_id])
 
     @property
     def win_rate_together(self) -> float:

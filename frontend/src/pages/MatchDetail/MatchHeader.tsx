@@ -44,10 +44,11 @@ interface MatchHeaderProps {
 }
 
 const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
-  const cardBg = useColorModeValue('white', 'rgba(17, 25, 40, 0.8)');
-  const winnerBg = useColorModeValue('green.50', 'rgba(0, 255, 136, 0.1)');
-  const loserBg = useColorModeValue('red.50', 'rgba(239, 68, 68, 0.1)');
-  const borderColor = useColorModeValue('gray.200', 'rgba(0, 212, 255, 0.2)');
+  const cardBg = 'space.800';
+  const winnerBg = 'rgba(72, 187, 120, 0.1)';
+  const loserBg = 'rgba(245, 101, 101, 0.1)';
+  const borderColor = 'space.900';
+  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
   const { match, players } = matchData;
 
@@ -106,25 +107,16 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
       />
 
       {/* Detailed Match Information Card */}
-      <Card
+      <Box
         bg={cardBg}
-        border="2px solid"
+        borderRadius="xl"
+        border="3px solid"
         borderColor={borderColor}
-        boxShadow="0 8px 32px rgba(0, 212, 255, 0.2)"
+        boxShadow={brandShadow}
         position="relative"
         overflow="hidden"
-        _before={{
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '4px',
-          background:
-            'linear-gradient(90deg, rgba(0, 212, 255, 0.8), rgba(255, 179, 0, 0.8))',
-        }}
       >
-        <CardBody>
+        <Box p={6}>
           <VStack align="stretch" spacing={6}>
             {/* Match Title and Duration */}
             <Flex justify="space-between" align="start" flexWrap="wrap" gap={4}>
@@ -132,17 +124,20 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
               <HStack spacing={3}>
                 <Icon as={FiActivity} boxSize={6} color="brand.400" />
                 <Heading
-                  size="2xl"
+                  size="xl"
                   fontFamily="heading"
                   letterSpacing="wider"
+                  color="gray.100"
                 >
                   {match.map_name}
                 </Heading>
                 <Badge
-                  colorScheme="blue"
-                  fontSize="lg"
+                  bg="space.900"
+                  color="brand.400"
+                  fontSize="md"
                   px={4}
                   py={1}
+                  borderRadius="md"
                   fontFamily="heading"
                 >
                   {match.game_mode}
@@ -154,10 +149,10 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
             </VStack>
 
             <Stat textAlign="right">
-              <StatLabel fontFamily="heading" color="brand.400">
-                Match Duration
+              <StatLabel fontFamily="heading" color="brand.400" letterSpacing="widest" textTransform="uppercase" fontSize="xs">
+                Battle Duration
               </StatLabel>
-              <StatNumber fontSize="3xl" fontFamily="heading">
+              <StatNumber fontSize="3xl" fontFamily="heading" color="gray.100">
                 {formatDuration(match.duration_seconds)}
               </StatNumber>
             </Stat>
@@ -166,17 +161,19 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
           {/* Win Probability Section */}
           {hasWinProb && (
             <Box>
-              <Divider my={4} borderColor="whiteAlpha.200" />
+              <Divider my={5} borderColor="whiteAlpha.100" />
 
               {/* Upset Alert */}
               {upsetIndicator && (
                 <Alert
                   status="warning"
                   variant="left-accent"
-                  mb={4}
+                  borderRadius="xl"
+                  mb={6}
                   bg="rgba(255, 179, 0, 0.1)"
                   borderColor="accent.500"
                   borderWidth="2px"
+                  boxShadow="inner"
                 >
                   <Icon
                     as={FiAlertTriangle}
@@ -186,28 +183,30 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                   />
                   <Box>
                     <Text
-                      fontWeight="bold"
+                      fontWeight="black"
                       fontSize="lg"
                       fontFamily="heading"
                       letterSpacing="wider"
+                      color="accent.400"
                     >
                       {upsetIndicator}
                     </Text>
-                    <Text fontSize="sm" mt={1}>
-                      The underdog team defied the odds and secured victory!
+                    <Text fontSize="sm" color="gray.300">
+                      The underdog squad defied the forecast and secured victory!
                     </Text>
                   </Box>
                 </Alert>
               )}
 
-              <VStack spacing={4}>
+              <VStack spacing={6}>
                 <Heading
-                  size="md"
+                  size="sm"
                   fontFamily="heading"
-                  letterSpacing="wider"
-                  color="brand.400"
+                  letterSpacing="widest"
+                  color="gray.500"
+                  textTransform="uppercase"
                 >
-                  Win Probability Analysis
+                  Neural Forecast Analysis
                 </Heading>
 
                 <Grid
@@ -216,65 +215,61 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                   w="full"
                 >
                   {/* Team 1 Prediction */}
-                  <Card
-                    bg={team1Won ? winnerBg : loserBg}
+                  <Box
+                    bg={team1Won ? 'rgba(72, 187, 120, 0.05)' : 'rgba(245, 101, 101, 0.05)'}
+                    borderRadius="xl"
                     border="2px solid"
                     borderColor={team1Won ? 'shield.500' : 'red.500'}
-                    boxShadow={
-                      team1Won ? '0 0 20px rgba(0, 255, 136, 0.3)' : 'none'
-                    }
+                    p={5}
+                    position="relative"
+                    boxShadow={team1Won ? '0 0 20px rgba(0, 255, 136, 0.1)' : 'none'}
                   >
-                    <CardBody>
-                      <VStack spacing={3}>
+                    <VStack spacing={3}>
+                      <HStack w="full" justify="space-between">
                         <HStack>
                           <Icon
                             as={FiTrendingUp}
                             color="brand.400"
-                            boxSize={5}
+                            boxSize={4}
                           />
                           <Text
                             fontFamily="heading"
-                            fontWeight="bold"
+                            fontWeight="black"
+                            fontSize="xs"
+                            letterSpacing="widest"
                             color="brand.400"
+                            textTransform="uppercase"
                           >
-                            Team 1
+                            Squad Alpha
                           </Text>
-                          {team1Won && (
-                            <Badge colorScheme="green" ml="auto">
-                              <Icon as={FiAward} mr={1} />
-                              Victory
-                            </Badge>
-                          )}
                         </HStack>
-                         <Stat textAlign="center">
-                           <StatLabel fontSize="xs" color="gray.500">
-                             Predicted Win Chance
-                           </StatLabel>
-                           <StatNumber
-                             fontSize="4xl"
-                             fontFamily="heading"
-                             color={
-                               team1Prob > 0.5 ? 'shield.500' : 'gray.400'
-                             }
-                           >
-                             {formatWinProbability(team1Prob)}
-                           </StatNumber>
-                           {predictedWinningTeam === 1 && (
-                             <StatHelpText>
-                               {team1Won
-                                 ? 'Prediction: Correct'
-                                 : 'Prediction: Incorrect'}
-                             </StatHelpText>
-                           )}
-                         </Stat>
-                      </VStack>
-                    </CardBody>
-                  </Card>
+                        {team1Won && (
+                          <Badge colorScheme="green" variant="solid" borderRadius="sm">
+                            VICTORY
+                          </Badge>
+                        )}
+                      </HStack>
+                       <Stat textAlign="center">
+                         <StatLabel fontSize="10px" color="gray.500" textTransform="uppercase" letterSpacing="widest">
+                           Win Probability
+                         </StatLabel>
+                         <StatNumber
+                           fontSize="4xl"
+                           fontFamily="heading"
+                           color={
+                             team1Prob > 0.5 ? 'shield.400' : 'gray.500'
+                           }
+                         >
+                           {formatWinProbability(team1Prob)}
+                         </StatNumber>
+                       </Stat>
+                    </VStack>
+                  </Box>
 
                   {/* VS Divider */}
                   <Flex align="center" justify="center">
-                    <Box textAlign="center">
-                      <Icon as={FiZap} boxSize={12} color="accent.500" mb={2} />
+                    <VStack spacing={0}>
+                      <Icon as={FiZap} boxSize={10} color="accent.500" mb={1} />
                       <Text
                         fontFamily="heading"
                         fontSize="2xl"
@@ -284,64 +279,60 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                       >
                         VS
                       </Text>
-                    </Box>
+                    </VStack>
                   </Flex>
 
                   {/* Team 2 Prediction */}
-                  <Card
-                    bg={!team1Won ? winnerBg : loserBg}
+                  <Box
+                    bg={!team1Won ? 'rgba(72, 187, 120, 0.05)' : 'rgba(245, 101, 101, 0.05)'}
+                    borderRadius="xl"
                     border="2px solid"
                     borderColor={!team1Won ? 'shield.500' : 'red.500'}
-                    boxShadow={
-                      !team1Won ? '0 0 20px rgba(0, 255, 136, 0.3)' : 'none'
-                    }
+                    p={5}
+                    position="relative"
+                    boxShadow={!team1Won ? '0 0 20px rgba(0, 255, 136, 0.1)' : 'none'}
                   >
-                    <CardBody>
-                      <VStack spacing={3}>
+                    <VStack spacing={3}>
+                       <HStack w="full" justify="space-between">
                         <HStack>
                           <Icon
                             as={FiTrendingUp}
                             color="accent.400"
-                            boxSize={5}
+                            boxSize={4}
                           />
                           <Text
                             fontFamily="heading"
-                            fontWeight="bold"
+                            fontWeight="black"
+                            fontSize="xs"
+                            letterSpacing="widest"
                             color="accent.400"
+                            textTransform="uppercase"
                           >
-                            Team 2
+                            Squad Bravo
                           </Text>
-                          {!team1Won && (
-                            <Badge colorScheme="green" ml="auto">
-                              <Icon as={FiAward} mr={1} />
-                              Victory
-                            </Badge>
-                          )}
                         </HStack>
-                         <Stat textAlign="center">
-                           <StatLabel fontSize="xs" color="gray.500">
-                             Predicted Win Chance
-                           </StatLabel>
-                           <StatNumber
-                             fontSize="4xl"
-                             fontFamily="heading"
-                             color={
-                               team2Prob > 0.5 ? 'shield.500' : 'gray.400'
-                             }
-                           >
-                             {formatWinProbability(team2Prob)}
-                           </StatNumber>
-                           {predictedWinningTeam === 2 && (
-                             <StatHelpText>
-                               {!team1Won
-                                 ? 'Prediction: Correct'
-                                 : 'Prediction: Incorrect'}
-                             </StatHelpText>
-                           )}
-                         </Stat>
-                      </VStack>
-                    </CardBody>
-                  </Card>
+                        {!team1Won && (
+                          <Badge colorScheme="green" variant="solid" borderRadius="sm">
+                            VICTORY
+                          </Badge>
+                        )}
+                      </HStack>
+                       <Stat textAlign="center">
+                         <StatLabel fontSize="10px" color="gray.500" textTransform="uppercase" letterSpacing="widest">
+                           Win Probability
+                         </StatLabel>
+                         <StatNumber
+                           fontSize="4xl"
+                           fontFamily="heading"
+                           color={
+                             team2Prob > 0.5 ? 'shield.400' : 'gray.500'
+                           }
+                         >
+                           {formatWinProbability(team2Prob)}
+                         </StatNumber>
+                       </Stat>
+                    </VStack>
+                  </Box>
                 </Grid>
 
                 {/* Visual probability comparison */}
@@ -350,33 +341,19 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                     <Box flex={team1Prob}>
                       <Progress
                         value={100}
-                        size="xl"
+                        size="md"
                         colorScheme="cyan"
-                        borderRadius="md"
-                        bg="gray.700"
-                        sx={{
-                          '& > div': {
-                            background:
-                              'linear-gradient(90deg, rgba(0, 212, 255, 0.6), rgba(0, 212, 255, 1))',
-                            boxShadow: '0 0 15px rgba(0, 212, 255, 0.6)',
-                          },
-                        }}
+                        borderRadius="full"
+                        bg="space.900"
                       />
                     </Box>
                     <Box flex={team2Prob}>
                       <Progress
                         value={100}
-                        size="xl"
+                        size="md"
                         colorScheme="orange"
-                        borderRadius="md"
-                        bg="gray.700"
-                        sx={{
-                          '& > div': {
-                            background:
-                              'linear-gradient(90deg, rgba(255, 179, 0, 1), rgba(255, 179, 0, 0.6))',
-                            boxShadow: '0 0 15px rgba(255, 179, 0, 0.6)',
-                          },
-                        }}
+                        borderRadius="full"
+                        bg="space.900"
                       />
                     </Box>
                   </HStack>
@@ -385,8 +362,8 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
             </Box>
           )}
         </VStack>
-      </CardBody>
-    </Card>
+      </Box>
+    </Box>
     </VStack>
   );
 };

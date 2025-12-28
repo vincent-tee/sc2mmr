@@ -14,7 +14,7 @@ Provides rankings across multiple categories:
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, case
+from sqlalchemy import func, desc, case, cast, Float
 from pydantic import BaseModel
 
 from ..database import get_db
@@ -246,17 +246,17 @@ async def get_winrate_leaderboard(
     db: Session = Depends(get_db),
 ):
     """Get players ranked by win rate (minimum games required)."""
+    # Sort in database: wins / total_games
     players = (
         db.query(Player)
         .filter(
             Player.total_games >= min_games,
             Player.is_core_player == 1,
         )
+        .order_by(desc(cast(Player.wins, Float) / cast(Player.total_games, Float)))
+        .limit(limit)
         .all()
     )
-
-    # Calculate win rates
-    ranked = sorted(players, key=lambda p: p.win_rate, reverse=True)[:limit]
 
     return [
         {
@@ -267,7 +267,7 @@ async def get_winrate_leaderboard(
             "secondary_value": p.total_games,
             "extra_info": f"{p.wins}W {p.losses}L",
         }
-        for i, p in enumerate(ranked)
+        for i, p in enumerate(players)
     ]
 
 
@@ -407,7 +407,9 @@ async def get_winstreak_leaderboard(
     db: Session = Depends(get_db),
 ):
     """Get players ranked by their best win streak ever."""
-    # Calculate win streaks from match history
+    from sqlalchemy.orm import joinedload
+
+    # Calculate win streaks from match history with optimized queries
     players = (
         db.query(Player)
         .filter(
@@ -419,8 +421,9 @@ async def get_winstreak_leaderboard(
 
     streaks = []
     for player in players:
+        # Fetch only what we need
         matches = (
-            db.query(MatchPlayer)
+            db.query(MatchPlayer.won)
             .filter(MatchPlayer.player_id == player.id)
             .join(Match)
             .order_by(Match.played_at)
@@ -429,8 +432,8 @@ async def get_winstreak_leaderboard(
 
         max_streak = 0
         current_streak = 0
-        for mp in matches:
-            if mp.won:
+        for m in matches:
+            if m.won:
                 current_streak += 1
                 max_streak = max(max_streak, current_streak)
             else:
@@ -468,21 +471,23 @@ async def get_duos_leaderboard(
     db: Session = Depends(get_db),
 ):
     """Get the best duo partnerships."""
-    query = db.query(PlayerSynergy).filter(PlayerSynergy.games_together >= min_games)
+    from sqlalchemy.orm import joinedload
+
+    query = (
+        db.query(PlayerSynergy)
+        .options(joinedload(PlayerSynergy.player1), joinedload(PlayerSynergy.player2))
+        .filter(PlayerSynergy.games_together >= min_games)
+    )
+
+    # Sort based on requested criteria in DB where possible
+    if sort_by == "wins":
+        query = query.order_by(desc(PlayerSynergy.wins_together))
+    elif sort_by == "synergy":
+        query = query.order_by(desc(PlayerSynergy.synergy_score))
 
     synergies = query.all()
 
-    # Get player names
-    player_ids = set()
-    for s in synergies:
-        player_ids.add(s.player1_id)
-        player_ids.add(s.player2_id)
-
-    players = {
-        p.id: p.name for p in db.query(Player).filter(Player.id.in_(player_ids)).all()
-    }
-
-    # Calculate win rates and sort
+    # Calculate win rates and sort for winrate case which is harder in SQL
     duos = []
     for s in synergies:
         win_rate = (
@@ -492,18 +497,13 @@ async def get_duos_leaderboard(
             {
                 "synergy": s,
                 "win_rate": win_rate,
-                "player1_name": players.get(s.player1_id, "Unknown"),
-                "player2_name": players.get(s.player2_id, "Unknown"),
+                "player1_name": s.player1.name if s.player1 else "Unknown",
+                "player2_name": s.player2.name if s.player2 else "Unknown",
             }
         )
 
-    # Sort based on requested criteria
-    if sort_by == "wins":
-        duos.sort(key=lambda x: x["synergy"].wins_together, reverse=True)
-    elif sort_by == "winrate":
+    if sort_by == "winrate":
         duos.sort(key=lambda x: x["win_rate"], reverse=True)
-    else:
-        duos.sort(key=lambda x: x["synergy"].synergy_score, reverse=True)
 
     return [
         {

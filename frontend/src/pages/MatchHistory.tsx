@@ -59,11 +59,9 @@ const PlayerHighlightCard: React.FC<{
   matchId: number;
   isMVP: boolean;
 }> = ({ player, matchId, isMVP }) => {
-  const bgColor = useColorModeValue(
-    player.won ? 'green.50' : 'red.50',
-    player.won ? 'rgba(72, 187, 120, 0.1)' : 'rgba(245, 101, 101, 0.1)'
-  );
+  const cardBg = 'space.800';
   const borderColor = player.won ? 'green.400' : 'red.400';
+  const highlightBg = player.won ? 'rgba(72, 187, 120, 0.1)' : 'rgba(245, 101, 101, 0.1)';
 
   // Generate unique commentary for this player
   const commentary = generatePlayerHighlight(
@@ -79,12 +77,14 @@ const PlayerHighlightCard: React.FC<{
 
   return (
     <Box
-      bg={bgColor}
+      bg={highlightBg}
       p={3}
-      borderRadius="md"
-      border="1px solid"
+      borderRadius="xl"
+      border="2px solid"
       borderColor={borderColor}
       position="relative"
+      transition="all 0.2s"
+      _hover={{ transform: 'scale(1.02)' }}
     >
       {isMVP && (
         <Badge
@@ -168,6 +168,9 @@ const MatchCard: React.FC<{
   onNavigate: (id: number) => void;
 }> = ({ match, onNavigate }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const cardBg = 'space.800';
+  const borderColor = 'space.900';
+  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
   const team1Players = match.players.filter((p) => p.team_number === 1);
   const team2Players = match.players.filter((p) => p.team_number === 2);
@@ -194,11 +197,12 @@ const MatchCard: React.FC<{
     : null;
 
   return (
-    <Card
-      bg="space.800"
+    <Box
+      bg={cardBg}
+      borderRadius="xl"
       border="3px solid"
-      borderColor="space.700"
-      boxShadow="3px 3px 0 space.900"
+      borderColor={borderColor}
+      boxShadow={brandShadow}
       position="relative"
       overflow="hidden"
       transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
@@ -207,7 +211,7 @@ const MatchCard: React.FC<{
         transform: 'translateY(-2px)',
       }}
     >
-      <CardBody>
+      <Box p={5}>
         {/* Main match info - clickable */}
         <Box
           cursor="pointer"
@@ -215,23 +219,25 @@ const MatchCard: React.FC<{
         >
           <Grid
             templateColumns={{ base: '1fr', md: 'auto 1fr auto' }}
-            gap={4}
+            gap={6}
             alignItems="center"
           >
             {/* Left: Match icon with winner indicator */}
             <Box
-              bg={`linear-gradient(135deg, ${match.winner_team === 1 ? 'rgba(72, 187, 120, 0.3)' : 'rgba(0, 212, 255, 0.2)'}, ${match.winner_team === 2 ? 'rgba(255, 179, 0, 0.3)' : 'rgba(255, 179, 0, 0.1)'})`}
-              p={3}
-              borderRadius="lg"
+              bg={`linear-gradient(135deg, ${match.winner_team === 1 ? 'rgba(72, 187, 120, 0.2)' : 'rgba(107, 70, 193, 0.1)'}, ${match.winner_team === 2 ? 'rgba(255, 179, 0, 0.2)' : 'rgba(107, 70, 193, 0.05)'})`}
+              p={4}
+              borderRadius="xl"
               border="2px solid"
-              borderColor={match.winner_team === 1 ? 'green.400' : 'orange.400'}
+              borderColor={match.winner_team === 1 ? 'shield.400' : 'accent.400'}
               textAlign="center"
+              minW="120px"
+              boxShadow="inset 0 0 15px rgba(0,0,0,0.2)"
             >
-              <Text fontSize="xs" color="gray.400" fontFamily="heading">
-                Winner
+              <Text fontSize="10px" color="gray.400" fontFamily="heading" letterSpacing="widest" textTransform="uppercase" mb={1}>
+                Match Winner
               </Text>
-              <Text fontSize="lg" fontWeight="bold" color={match.winner_team === 1 ? 'green.400' : 'orange.400'}>
-                Team {match.winner_team}
+              <Text fontSize="xl" fontWeight="black" color={match.winner_team === 1 ? 'shield.400' : 'accent.400'} fontFamily="heading">
+                TEAM {match.winner_team}
               </Text>
             </Box>
 
@@ -242,19 +248,23 @@ const MatchCard: React.FC<{
                   size="md"
                   fontFamily="heading"
                   letterSpacing="wide"
+                  color="gray.100"
                 >
                   {match.map_name}
                 </Heading>
                 <Badge
-                  colorScheme="blue"
-                  fontSize="sm"
+                  bg="space.900"
+                  color="brand.400"
+                  fontSize="xs"
                   px={2}
+                  py={1}
+                  borderRadius="md"
                   fontFamily="heading"
                 >
                   {match.game_mode}
                 </Badge>
                 {upsetCommentary && (
-                  <Badge colorScheme="purple" fontSize="sm" px={2}>
+                  <Badge variant="solid" colorScheme="purple" fontSize="xs" px={2} py={1} borderRadius="md" animation={`${pulseGlow} 2s infinite`}>
                     🤯 UPSET
                   </Badge>
                 )}
@@ -264,17 +274,21 @@ const MatchCard: React.FC<{
               <Text
                 fontSize="sm"
                 fontWeight="medium"
-                color="brand.300"
+                color="gray.300"
                 fontFamily="heading"
+                lineHeight="short"
               >
                 {matchOverview}
               </Text>
 
-              <HStack spacing={4} fontSize="xs" color="gray.500" fontFamily="heading">
-                <Text>{formatDateTime(match.played_at)}</Text>
+              <HStack spacing={4} fontSize="xs" color="gray.500" fontFamily="mono">
+                <HStack spacing={1}>
+                   <Icon as={FiClock} />
+                   <Text>{formatDateTime(match.played_at)}</Text>
+                </HStack>
                 <Text>•</Text>
                 <HStack>
-                  <Icon as={FiZap} />
+                  <Icon as={FiActivity} />
                   <Text>{formatDuration(match.duration_seconds)}</Text>
                 </HStack>
                 {match.total_damage && (
@@ -282,70 +296,27 @@ const MatchCard: React.FC<{
                     <Text>•</Text>
                     <HStack>
                       <Icon as={FiTarget} />
-                      <Text>{match.total_damage.toLocaleString()} total damage</Text>
+                      <Text>{match.total_damage.toLocaleString()} DMG</Text>
                     </HStack>
                   </>
                 )}
               </HStack>
-
-              {/* Win Probability Bar */}
-              {hasWinProb && (
-                <Box w="full" mt={1}>
-                  <HStack justify="space-between" mb={1} fontSize="xs" fontFamily="heading">
-                    <HStack>
-                      <Badge
-                        bg={match.winner_team === 1 ? 'green.500' : 'gray.600'}
-                        color="white"
-                        fontSize="xs"
-                      >
-                        T1: {(team1Prob * 100).toFixed(0)}%
-                      </Badge>
-                    </HStack>
-                    <HStack>
-                      <Badge
-                        bg={match.winner_team === 2 ? 'green.500' : 'gray.600'}
-                        color="white"
-                        fontSize="xs"
-                      >
-                        T2: {(team2Prob * 100).toFixed(0)}%
-                      </Badge>
-                    </HStack>
-                  </HStack>
-                  <HStack spacing={1}>
-                    <Box flex={team1Prob}>
-                      <Progress
-                        value={100}
-                        size="sm"
-                        colorScheme={match.winner_team === 1 ? 'green' : 'cyan'}
-                        borderRadius="md"
-                        bg="gray.700"
-                      />
-                    </Box>
-                    <Box flex={team2Prob}>
-                      <Progress
-                        value={100}
-                        size="sm"
-                        colorScheme={match.winner_team === 2 ? 'green' : 'orange'}
-                        borderRadius="md"
-                        bg="gray.700"
-                      />
-                    </Box>
-                  </HStack>
-                </Box>
-              )}
             </VStack>
 
             {/* Right: Expand/Action buttons */}
-            <VStack spacing={2}>
+            <HStack spacing={3}>
               <Button
                 size="sm"
-                variant="primary"
-                rightIcon={<Icon as={FiTarget} />}
+                variant="outline"
+                colorScheme="brand"
+                rightIcon={<Icon as={FiChevronRight} />}
                 fontFamily="heading"
                 onClick={(e) => {
                   e.stopPropagation();
                   onNavigate(match.id);
                 }}
+                borderRadius="lg"
+                _hover={{ bg: 'brand.500', color: 'gray.900' }}
               >
                 Details
               </Button>
@@ -354,46 +325,57 @@ const MatchCard: React.FC<{
                 icon={isExpanded ? <FiChevronUp /> : <FiChevronDown />}
                 size="sm"
                 variant="ghost"
-                colorScheme="cyan"
+                color="gray.500"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setIsExpanded(!isExpanded);
+                }}
               />
-            </VStack>
+            </HStack>
           </Grid>
         </Box>
 
         {/* Expandable player highlights */}
         <Collapse in={isExpanded} animateOpacity>
-          <Divider my={4} borderColor="whiteAlpha.200" />
+          <Divider my={5} borderColor="whiteAlpha.100" />
 
           {/* MVP Highlight */}
           {mvpCommentary && (
             <Box
-              bg="rgba(255, 215, 0, 0.1)"
-              p={3}
-              borderRadius="md"
+              bg="rgba(255, 215, 0, 0.05)"
+              p={4}
+              borderRadius="xl"
               border="1px solid"
-              borderColor="yellow.500"
-              mb={4}
+              borderColor="yellow.600"
+              mb={6}
+              boxShadow="inner"
             >
-              <Text fontSize="sm" fontWeight="bold" color="yellow.400">
-                {mvpCommentary}
-              </Text>
+              <HStack>
+                <Icon as={FiAward} color="yellow.400" boxSize={5} />
+                <Text fontSize="sm" fontWeight="bold" color="yellow.200" fontFamily="heading">
+                  {mvpCommentary}
+                </Text>
+              </HStack>
             </Box>
           )}
 
-          <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={4}>
+          <Grid templateColumns={{ base: '1fr', lg: 'repeat(2, 1fr)' }} gap={6}>
             {/* Team 1 */}
             <Box>
-              <HStack mb={2}>
-                <Icon as={FiUsers} color="cyan.400" />
+              <HStack mb={3}>
+                <Icon as={FiUsers} color="shield.400" />
                 <Text
                   fontFamily="heading"
-                  fontSize="sm"
-                  color={match.winner_team === 1 ? 'green.400' : 'gray.400'}
+                  fontSize="xs"
+                  fontWeight="black"
+                  letterSpacing="widest"
+                  textTransform="uppercase"
+                  color={match.winner_team === 1 ? 'shield.400' : 'gray.500'}
                 >
-                  Team 1 {match.winner_team === 1 && '🏆'}
+                  Squad Alpha {match.winner_team === 1 && '🏆'}
                 </Text>
               </HStack>
-              <VStack spacing={2} align="stretch">
+              <VStack spacing={3} align="stretch">
                 {team1Players.map((player) => (
                   <PlayerHighlightCard
                     key={player.player_id}
@@ -407,17 +389,20 @@ const MatchCard: React.FC<{
 
             {/* Team 2 */}
             <Box>
-              <HStack mb={2}>
-                <Icon as={FiUsers} color="orange.400" />
+              <HStack mb={3}>
+                <Icon as={FiUsers} color="accent.400" />
                 <Text
                   fontFamily="heading"
-                  fontSize="sm"
-                  color={match.winner_team === 2 ? 'green.400' : 'gray.400'}
+                  fontSize="xs"
+                  fontWeight="black"
+                  letterSpacing="widest"
+                  textTransform="uppercase"
+                  color={match.winner_team === 2 ? 'accent.400' : 'gray.500'}
                 >
-                  Team 2 {match.winner_team === 2 && '🏆'}
+                  Squad Bravo {match.winner_team === 2 && '🏆'}
                 </Text>
               </HStack>
-              <VStack spacing={2} align="stretch">
+              <VStack spacing={3} align="stretch">
                 {team2Players.map((player) => (
                   <PlayerHighlightCard
                     key={player.player_id}
@@ -430,8 +415,10 @@ const MatchCard: React.FC<{
             </Box>
           </Grid>
         </Collapse>
-      </CardBody>
-    </Card>
+      </Box>
+    </Box>
+  );
+};
   );
 };
 
@@ -441,6 +428,10 @@ const MatchHistory: React.FC = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState<number>(1);
   const matchesPerPage = 15;
+
+  // Design tokens
+  const borderColor = 'space.900';
+  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
   // Fetch matches with player data using keepPreviousData for smooth pagination
   const { data: matchesData, isLoading, isFetching } = useQuery<MatchListWithPlayersResponse>({
@@ -506,48 +497,26 @@ const MatchHistory: React.FC = () => {
       <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
           {/* Header Section */}
-          <Box position="relative">
-            <HStack justify="space-between" align="start" mb={2}>
-              <VStack align="start" spacing={1}>
-                <HStack spacing={3}>
-                  <Icon as={FiActivity} boxSize={8} color="brand.400" />
-                  <Heading
-                    size="2xl"
-                    fontFamily="heading"
-                    letterSpacing="wider"
-                    color="brand.400"
-                  >
-                    Match History
-                  </Heading>
-                </HStack>
-                <Text
-                  color="gray.500"
-                  fontFamily="heading"
-                  letterSpacing="wide"
-                  fontSize="sm"
-                >
-                  {totalMatches} matches recorded{totalPages > 1 ? ` • Page ${currentPage}/${totalPages}` : ''}
-                  {isFetching && !isLoading && ' • Updating...'}
-                </Text>
-              </VStack>
-
-              {/* Stats badges */}
-              <HStack spacing={3}>
-                <Badge
-                  bg="brand.500"
-                  color="gray.900"
-                  px={4}
-                  py={2}
-                  borderRadius="lg"
-                  fontSize="lg"
-                  fontFamily="heading"
-                  boxShadow="3px 3px 0 space.900"
-                >
-<Icon as={FiTrendingUp} mr={2} />
-                    Active
-                  </Badge>
-              </HStack>
-            </HStack>
+          <Box textAlign="center">
+            <Heading
+              size="2xl"
+              fontFamily="heading"
+              fontWeight="black"
+              letterSpacing="wider"
+              color="brand.400"
+              mb={2}
+            >
+              <Text as="span" className="emoji-font">📊</Text> Match Archive
+            </Heading>
+            <Text
+              color="gray.400"
+              fontFamily="heading"
+              letterSpacing="wide"
+              fontSize="lg"
+            >
+              {totalMatches} battles recorded • Page {currentPage} of {totalPages}
+              {isFetching && !isLoading && ' • Updating...'}
+            </Text>
           </Box>
 
           {/* Match List */}

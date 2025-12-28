@@ -39,12 +39,21 @@ export interface H2HMatchSummary {
   duration_seconds: number;
 }
 
+/** Map dominance info */
+export interface MapDominance {
+  map_name: string;
+  p1_wins: number;
+  p2_wins: number;
+  total: number;
+}
+
 /** Complete H2H response */
 export interface HeadToHeadResponse {
   player1: H2HPlayerSummary;
   player2: H2HPlayerSummary;
   head_to_head: HeadToHeadStats;
   recent_matches: H2HMatchSummary[];
+  map_dominance: MapDominance[];
 }
 
 // =============================================================================

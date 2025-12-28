@@ -47,11 +47,19 @@ class MatchSummary(BaseModel):
     duration_seconds: int
 
 
+class MapDominance(BaseModel):
+    map_name: str
+    p1_wins: int
+    p2_wins: int
+    total: int
+
+
 class HeadToHeadResponse(BaseModel):
     player1: PlayerSummary
     player2: PlayerSummary
     head_to_head: HeadToHeadStats
     recent_matches: List[MatchSummary]
+    map_dominance: List[MapDominance]
 
 
 class RivalryResponse(BaseModel):
@@ -270,6 +278,35 @@ def get_head_to_head(player1_id: int, player2_id: int, db: Session = Depends(get
             )
         )
 
+    # 4. Get Map Dominance
+    map_query = text("""
+    SELECT m.map_name, 
+           SUM(CASE WHEN mp1.won = 1 THEN 1 ELSE 0 END) as p1_wins,
+           SUM(CASE WHEN mp2.won = 1 THEN 1 ELSE 0 END) as p2_wins,
+           COUNT(*) as total
+    FROM matches m
+    JOIN match_players mp1 ON m.id = mp1.match_id
+    JOIN match_players mp2 ON m.id = mp2.match_id
+    WHERE mp1.player_id = :p1_id 
+      AND mp2.player_id = :p2_id
+      AND mp1.team_number != mp2.team_number
+    GROUP BY m.map_name
+    ORDER BY total DESC
+    LIMIT 10
+    """)
+    map_results = db.execute(
+        map_query, {"p1_id": player1_id, "p2_id": player2_id}
+    ).fetchall()
+    map_dominance = [
+        MapDominance(
+            map_name=row.map_name,
+            p1_wins=row.p1_wins,
+            p2_wins=row.p2_wins,
+            total=row.total,
+        )
+        for row in map_results
+    ]
+
     # Construct response in requested order
     req_p1 = p2 if player1_id == p2_id else p1
     req_p2 = p1 if player1_id == p2_id else p2
@@ -291,4 +328,5 @@ def get_head_to_head(player1_id: int, player2_id: int, db: Session = Depends(get
         ),
         head_to_head=stats,
         recent_matches=recent_matches,
+        map_dominance=map_dominance,
     )

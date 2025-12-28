@@ -425,7 +425,7 @@ const TeamGenerator: React.FC = () => {
       <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
           {/* Friend Squad Header */}
-          <Box textAlign="center" py={6} animation={`${slideInUp} 0.5s ease-out`}>
+          <Box textAlign="center" py={4} animation={`${slideInUp} 0.5s ease-out`}>
             <Heading
               size="2xl"
               fontFamily="heading"
@@ -434,15 +434,15 @@ const TeamGenerator: React.FC = () => {
               mb={2}
               color="brand.400"
             >
-              Team Generator
+              <Text as="span" className="emoji-font">⚖️</Text> Team Generator
             </Heading>
             <Text
-              fontSize="md"
+              fontSize="lg"
               color="gray.400"
               fontFamily="heading"
               letterSpacing="wide"
             >
-              Get perfectly balanced teams for your next squad session
+              Get perfectly balanced squads for your next session
             </Text>
           </Box>
 
