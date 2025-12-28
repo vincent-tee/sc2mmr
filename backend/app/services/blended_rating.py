@@ -5,7 +5,7 @@ Blended Rating Service - Provides Consensus MMR Change by weighting TrueSkill an
 import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from .xgboost_predictor import get_xgboost_predictor
+from .ml_predictor import get_ml_predictor
 from ..rating_system import RatingSystem
 from ..models import Player, Match, MatchPlayer
 
@@ -55,7 +55,7 @@ class BlendedRatingService:
         xgboost_contribution = 0.0
 
         try:
-            predictor = get_xgboost_predictor()
+            predictor = get_ml_predictor()
             match = db.query(Match).filter(Match.id == match_id).first()
             if match:
                 # Find the player in the match

@@ -1,6 +1,6 @@
 /**
  * ML Intelligence Center
- * Displays model accuracy trends, SHAP importance, and model management tools.
+ * Consolidated model monitoring, training, and learning dashboard.
  */
 import React, { useState } from 'react';
 import {
@@ -16,67 +16,63 @@ import {
   Icon,
   Badge,
   useToast,
-  useColorModeValue,
+  Progress,
   Stat,
   StatLabel,
   StatNumber,
   StatHelpText,
   StatArrow,
-  Divider,
-  Alert,
-  AlertIcon,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
   Tooltip,
+  Circle,
+  Flex,
+  Spacer,
 } from '@chakra-ui/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FiCpu,
-  FiTrendingUp,
-  FiActivity,
   FiZap,
   FiInfo,
   FiRefreshCw,
   FiBarChart2,
+  FiCheckCircle,
+  FiBookOpen,
   FiTarget,
+  FiActivity,
+  FiDatabase,
 } from 'react-icons/fi';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  Legend,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell,
-} from 'recharts';
+
 import { adaptiveApi } from '../api/endpoints';
+import { apiClient } from '../api/client';
 import LoadingState from '../components/LoadingState';
-import TacticalCard from '../components/TacticalCard';
-import TacticalBackground from '../components/common/TacticalBackground';
 
 const MLIntelligence: React.FC = () => {
-  const [isTraining, setIsTraining] = useState(false);
-  const toast = useToast();
+  const [isTrainingXgb, setIsTrainingXgb] = useState(false);
   
-  const cyanGlow = 'rgba(0, 212, 255, 0.5)';
-  const purpleGlow = 'rgba(128, 0, 255, 0.5)';
-  const orangeGlow = 'rgba(255, 140, 26, 0.5)';
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  
+  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
+  const cardBg = 'space.800';
+  const borderColor = 'space.700';
 
   // ============================================================================
   // Data Fetching
   // ============================================================================
 
-  const { data: accuracyData, isLoading: accuracyLoading, refetch: refetchAccuracy } = useQuery({
+  const { data: accuracyData, isLoading: accuracyLoading } = useQuery({
     queryKey: ['ml-accuracy-trends'],
     queryFn: async () => {
-      const response = await adaptiveApi.getAccuracyComparison(180); // Last 6 months
+      const response = await adaptiveApi.getAccuracyComparison(180);
       return response.data;
     },
   });
 
-  const { data: shapData, isLoading: shapLoading, refetch: refetchShap } = useQuery({
+  const { data: shapData, isLoading: shapLoading } = useQuery({
     queryKey: ['ml-shap-importance'],
     queryFn: async () => {
       const response = await adaptiveApi.getShapImportance();
@@ -84,7 +80,7 @@ const MLIntelligence: React.FC = () => {
     },
   });
 
-  const { data: modelStatus, isLoading: statusLoading, refetch: refetchStatus } = useQuery({
+  const { data: modelStatus, isLoading: statusLoading } = useQuery({
     queryKey: ['ml-model-status'],
     queryFn: async () => {
       const response = await adaptiveApi.getMLModelsStatus();
@@ -92,338 +88,356 @@ const MLIntelligence: React.FC = () => {
     },
   });
 
+  const { data: predictionLogs } = useQuery({
+    queryKey: ['ml-prediction-logs'],
+    queryFn: async () => {
+      const response = await apiClient.get('/adaptive/prediction-logs?limit=10');
+      return response.data;
+    },
+    refetchInterval: 30000,
+  });
+
   // ============================================================================
   // Handlers
   // ============================================================================
 
-  const handleRetrain = async () => {
-    setIsTraining(true);
+  const handleRetrainXGB = async () => {
+    setIsTrainingXgb(true);
     try {
       const response = await adaptiveApi.trainXGBoost();
       if (response.data.status === 'success') {
         toast({
-          title: 'Model Retrained Successfully',
-          description: `New accuracy: ${response.data.test_accuracy}%`,
+          title: 'Predictor Updated',
+          description: `Training complete. Test accuracy: ${response.data.test_accuracy}%`,
           status: 'success',
           duration: 5000,
           isClosable: true,
         });
-        refetchAccuracy();
-        refetchShap();
-        refetchStatus();
-      } else {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['ml-accuracy-trends'] }),
+          queryClient.invalidateQueries({ queryKey: ['ml-shap-importance'] }),
+          queryClient.invalidateQueries({ queryKey: ['ml-model-status'] }),
+        ]);
+      } else if (response.data.status === 'insufficient_data') {
         toast({
-          title: 'Retraining Incomplete',
-          description: 'Not enough new data since last training.',
-          status: 'warning',
-          duration: 5000,
-          isClosable: true,
+            title: 'Training Skipped',
+            description: `Need at least ${response.data.required} matches. Currently have ${response.data.matches}.`,
+            status: 'warning',
         });
       }
     } catch (error) {
-      toast({
-        title: 'Retraining Failed',
-        description: 'An error occurred while communicating with the neural core.',
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
+      toast({ title: 'Update Failed', status: 'error' });
     } finally {
-      setIsTraining(false);
+      setIsTrainingXgb(false);
     }
   };
 
   // ============================================================================
-  // Rendering Helpers
+  // Helpers & Mapping
   // ============================================================================
 
-  if (accuracyLoading || shapLoading || statusLoading) {
-    return <LoadingState message="Connecting to neural core..." />;
+  const factorGlossary: Record<string, { label: string, desc: string, category: 'Micro' | 'Macro' | 'Meta' }> = {
+    // === Core Meta Features ===
+    'experience_diff': { label: 'Experience Gap', desc: 'Total match count difference. Veterans have seen more situations. STRONGEST predictor.', category: 'Meta' },
+    'sum_mmr_diff': { label: 'Team Skill Total', desc: 'The sum of all player MMRs on the team. More accurate for 4v4 than averages.', category: 'Meta' },
+    'win_rate_diff': { label: 'Win Consistency', desc: 'Historical win rate difference between squads.', category: 'Meta' },
+    'team_size_diff': { label: 'Squad Size Gap', desc: 'Difference in number of players. Critical for uneven handicap matches.', category: 'Meta' },
+    'max_mmr_diff': { label: 'Star Player Power', desc: 'The MMR difference between the highest-rated player on each team.', category: 'Meta' },
+    // === Micro Features ===
+    'combat_diff': { label: 'Combat Rating', desc: 'Historical combat performance score. Measures fight efficiency.', category: 'Micro' },
+    'teamfight_diff': { label: 'Team Fight Engagement', desc: 'How often players participate in group battles. Synergy indicator.', category: 'Micro' },
+    // === Macro Features ===
+    'aggression_diff': { label: 'Aggression Style', desc: 'Play style aggressiveness. Less aggressive teams win more consistently.', category: 'Macro' },
+    'minerals_diff': { label: 'Economy Strength', desc: 'Total minerals collected difference.', category: 'Macro' },
+    'supply_block_diff': { label: 'Macro Efficiency', desc: 'Time spent supply blocked. Lower is better macro.', category: 'Macro' },
+    'form_trend_diff': { label: 'Recent Form', desc: 'Slope of recent performance scores. Captures "hot streaks" or tilting.', category: 'Meta' },
+    'spending_diff': { label: 'Spending Quotient', desc: 'Economic efficiency (SQ). How well players spend their income.', category: 'Macro' },
+  };
+
+  const getFeatureLabel = (key: string) => factorGlossary[key]?.label || key.replace(/_/g, ' ').replace('diff', '').trim().toUpperCase();
+
+  if (accuracyLoading || statusLoading) {
+    return <LoadingState message="Analyzing neural pathways..." />;
   }
 
-  const trends = accuracyData?.trends || [];
   const shapFeatures = shapData?.features || [];
-  const trueskillFinal = accuracyData?.results?.trueskill?.total > 0 
-    ? (accuracyData.results.trueskill.correct / accuracyData.results.trueskill.total) * 100 
-    : 0;
-  const hybridFinal = accuracyData?.results?.hybrid?.total > 0 
-    ? (accuracyData.results.hybrid.correct / accuracyData.results.hybrid.total) * 100 
-    : 0;
+  const totalMatches = accuracyData?.total_matches || 0;
+  const trainingThreshold = 10;
+
+  // Normalize feature importance to percentages that sum to 100%
+  const normalizedFeatures = shapFeatures.length > 0 ? (() => {
+    const totalImportance = shapFeatures.reduce((sum: number, f: any) => sum + Math.abs(f.importance), 0);
+    if (totalImportance === 0) return shapFeatures;
+    return shapFeatures.map((f: any) => ({
+      ...f,
+      importance: Math.abs(f.importance) / totalImportance
+    }));
+  })() : [];
 
   return (
-    <Box position="relative" minH="100vh" pb={10}>
-      <TacticalBackground opacity={0.05} gridSize={40} variant="cyan" />
-      
+    <Box position="relative" minH="100vh" pb={10} bg="space.900">
       <Container maxW="container.xl" pt={8}>
         <VStack spacing={8} align="stretch">
-          {/* Header Section */}
-          <HStack justify="space-between" align="flex-end">
-            <VStack align="start" spacing={1}>
-              <HStack spacing={3}>
-                <Icon as={FiCpu} boxSize={8} color="cyan.400" />
-                <Heading size="xl" fontFamily="heading" letterSpacing="wider">
-                  ML INTELLIGENCE
-                </Heading>
-                <Badge colorScheme="cyan" variant="outline" px={2}>PHASE 2 ACTIVE</Badge>
-              </HStack>
-              <Text color="gray.400" fontSize="md">
-                Strategic analysis and predictive model performance monitoring.
-              </Text>
-            </VStack>
-            
-            <HStack spacing={4}>
-              <Tooltip label="Refresh all neural data">
-                <Button 
-                  leftIcon={<FiRefreshCw />} 
-                  variant="ghost" 
-                  colorScheme="cyan" 
-                  size="sm"
-                  onClick={() => {
-                    refetchAccuracy();
-                    refetchShap();
-                    refetchStatus();
-                  }}
-                >
-                  Sync Core
-                </Button>
-              </Tooltip>
-              <Button
-                leftIcon={<FiZap />}
-                colorScheme="purple"
-                size="md"
-                isLoading={isTraining}
-                loadingText="Retraining..."
-                onClick={handleRetrain}
-                boxShadow={`0 0 15px ${purpleGlow}`}
+          {/* Header */}
+          <Box>
+            <HStack spacing={4} mb={3} w="full">
+              <Icon as={FiCpu} boxSize={10} color="brand.500" />
+              <Heading size="2xl" fontFamily="heading" letterSpacing="wider">
+                Intelligence Center
+              </Heading>
+              <Badge 
+                colorScheme={modelStatus?.xgboost?.is_trained ? 'green' : 'gray'} 
+                variant="solid" 
+                px={4} 
+                py={2} 
+                borderRadius="full"
+                fontSize="md"
+                textTransform="uppercase"
+                letterSpacing="widest"
               >
-                Retrain Model
+                {modelStatus?.xgboost?.is_trained ? 'NEURAL ACTIVE' : 'IDLE'}
+              </Badge>
+              <Spacer />
+              <Button 
+                size="sm" 
+                variant="outline" 
+                colorScheme="brand" 
+                leftIcon={<Icon as={FiZap} />} 
+                onClick={handleRetrainXGB} 
+                isLoading={isTrainingXgb}
+              >
+                Train ML Predictor
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                colorScheme="gray" 
+                leftIcon={<Icon as={FiRefreshCw} />} 
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ['ml-accuracy-trends'] });
+                  queryClient.invalidateQueries({ queryKey: ['ml-shap-importance'] });
+                  queryClient.invalidateQueries({ queryKey: ['ml-model-status'] });
+                }}
+              >
+                Refresh
               </Button>
             </HStack>
-          </HStack>
+            <Text color="gray.300" fontSize="lg" maxW="container.md">
+              The neural core analyzes gameplay patterns to predict winners and adjust your rank based on performance.
+            </Text>
+          </Box>
 
-          <Divider borderColor="whiteAlpha.200" />
+          {/* Training Progress / Data Collection */}
+          {totalMatches < trainingThreshold && (
+            <Box bg="space.800" border="2px dashed" borderColor="brand.500" p={6} borderRadius="xl" boxShadow={brandShadow}>
+              <VStack align="stretch" spacing={4}>
+                <HStack justify="space-between">
+                  <VStack align="start" spacing={0}>
+                    <Text fontWeight="bold" color="brand.400">Data Collection in Progress</Text>
+                    <Text fontSize="xs" color="gray.500">The AI needs {trainingThreshold} matches to build a reliable prediction model.</Text>
+                  </VStack>
+                  <Text fontWeight="black" fontSize="2xl" color="brand.400">{totalMatches} / {trainingThreshold}</Text>
+                </HStack>
+                <Progress value={(totalMatches / trainingThreshold) * 100} colorScheme="brand" bg="space.900" borderRadius="full" size="sm" />
+              </VStack>
+            </Box>
+          )}
 
           {/* Quick Stats Grid */}
           <Grid templateColumns={{ base: '1fr', md: 'repeat(4, 1fr)' }} gap={4}>
-            <GridItem>
-              <TacticalCard variant="command" glowColor="cyan.500">
-                <Stat>
-                  <StatLabel color="gray.400">Hybrid Accuracy</StatLabel>
-                  <StatNumber color="cyan.400" fontSize="3xl">
-                    {hybridFinal.toFixed(1)}%
-                  </StatNumber>
-                  <StatHelpText>
-                    <StatArrow type={hybridFinal > trueskillFinal ? "increase" : "decrease"} />
-                    vs Baseline
-                  </StatHelpText>
-                </Stat>
-              </TacticalCard>
-            </GridItem>
-            <GridItem>
-              <TacticalCard variant="command" glowColor="purple.500">
-                <Stat>
-                  <StatLabel color="gray.400">TrueSkill Baseline</StatLabel>
-                  <StatNumber color="purple.400" fontSize="3xl">
-                    {trueskillFinal.toFixed(1)}%
-                  </StatNumber>
-                  <StatHelpText>Standard Rating</StatHelpText>
-                </Stat>
-              </TacticalCard>
-            </GridItem>
-            <GridItem>
-              <TacticalCard variant="command" glowColor="orange.500">
-                <Stat>
-                  <StatLabel color="gray.400">Total Samples</StatLabel>
-                  <StatNumber color="orange.400" fontSize="3xl">
-                    {accuracyData?.total_matches || 0}
-                  </StatNumber>
-                  <StatHelpText>Match Records</StatHelpText>
-                </Stat>
-              </TacticalCard>
-            </GridItem>
-            <GridItem>
-              <TacticalCard variant="command" glowColor="green.500">
-                <Stat>
-                  <StatLabel color="gray.400">Model Status</StatLabel>
-                  <StatNumber color="green.400" fontSize="xl" mt={2}>
-                    {modelStatus?.xgboost?.is_trained ? "OPTIMIZED" : "INITIALIZING"}
-                  </StatNumber>
-                  <StatHelpText>XGBoost Core</StatHelpText>
-                </Stat>
-              </TacticalCard>
-            </GridItem>
+            {[
+              { 
+                label: 'Model Accuracy', 
+                val: accuracyData?.cv_accuracy ? `${accuracyData.cv_accuracy}%` : '--', 
+                sub: accuracyData?.cv_accuracy && accuracyData?.baseline_accuracy 
+                  ? `+${(accuracyData.cv_accuracy - accuracyData.baseline_accuracy).toFixed(1)}% vs baseline` 
+                  : 'Validated on held-out data', 
+                color: 'accent.400', 
+                arrow: (accuracyData?.cv_accuracy || 0) > (accuracyData?.baseline_accuracy || 0), 
+                icon: FiTarget 
+              },
+              { 
+                label: 'MMR Baseline', 
+                val: accuracyData?.baseline_accuracy ? `${accuracyData.baseline_accuracy}%` : '--', 
+                sub: 'Higher MMR wins', 
+                color: 'brand.400', 
+                icon: FiActivity 
+              },
+              { label: 'Training Data', val: accuracyData?.cv_training_size || totalMatches, sub: 'Matches analyzed', color: 'brand.400', icon: FiDatabase },
+              { label: 'Impact Modifier', val: '+50%', sub: 'Max carry bonus', color: 'green.400', icon: FiZap },
+            ].map((stat, i) => (
+              <GridItem key={i}>
+                <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={6} position="relative" overflow="hidden">
+                  <Icon as={stat.icon} position="absolute" right="-10px" bottom="-10px" boxSize={24} color="whiteAlpha.100" />
+                  <Stat>
+                    <StatLabel color="gray.400" fontSize="xs" fontWeight="bold" letterSpacing="widest">{stat.label}</StatLabel>
+                    <StatNumber color={stat.color} fontSize="3xl" fontWeight="black">{stat.val}</StatNumber>
+                    <StatHelpText>
+                      {stat.arrow !== undefined && <StatArrow type={stat.arrow ? 'increase' : 'decrease'} />}
+                      {stat.sub}
+                    </StatHelpText>
+                  </Stat>
+                </Box>
+              </GridItem>
+            ))}
           </Grid>
 
-          <Grid templateColumns={{ base: '1fr', lg: '3fr 2fr' }} gap={6}>
-            {/* Accuracy Trends Chart */}
-            <GridItem>
-              <TacticalCard h="full">
-                <VStack align="stretch" spacing={6}>
-                  <HStack justify="space-between">
-                    <HStack>
-                      <Icon as={FiTrendingUp} color="cyan.400" />
-                      <Heading size="md" fontFamily="heading">ACCURACY TRENDS</Heading>
-                    </HStack>
-                    <Badge colorScheme="cyan">6 MONTH WINDOW</Badge>
-                  </HStack>
-                  
-                  {trends.length < 2 ? (
-                    <Box h="300px" display="flex" alignItems="center" justifyContent="center">
-                      <Alert status="info" variant="subtle" bg="transparent" borderColor="cyan.800" borderWidth={1}>
-                        <AlertIcon color="cyan.400" />
-                        <Text color="gray.400">Insufficient data for trend analysis. Collect more matches.</Text>
-                      </Alert>
-                    </Box>
-                  ) : (
-                    <Box h="400px" w="100%">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={trends}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                          <XAxis 
-                            dataKey="date" 
-                            stroke="rgba(255,255,255,0.5)" 
-                            tick={{ fontSize: 10 }}
-                            tickFormatter={(str) => str.split('-').slice(1).join('/')}
-                          />
-                          <YAxis 
-                            stroke="rgba(255,255,255,0.5)" 
-                            domain={[0.4, 1]}
-                            tickFormatter={(val) => `${(val * 100).toFixed(0)}%`}
-                          />
-                          <RechartsTooltip 
-                            contentStyle={{ backgroundColor: '#0d1121', borderColor: '#00d4ff', color: '#fff' }}
-                            itemStyle={{ color: '#00d4ff' }}
-                          />
-                          <Legend />
-                          <Line 
-                            type="monotone" 
-                            dataKey="hybrid_accuracy" 
-                            name="XGBoost Hybrid" 
-                            stroke="#00d4ff" 
-                            strokeWidth={3}
-                            dot={{ fill: '#00d4ff', r: 4 }}
-                            activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }}
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="trueskill_accuracy" 
-                            name="TrueSkill Baseline" 
-                            stroke="#8000ff" 
-                            strokeWidth={2}
-                            strokeDasharray="5 5"
-                            dot={{ fill: '#8000ff', r: 3 }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </Box>
-                  )}
-                  
-                  <Box p={4} bg="whiteAlpha.50" borderRadius="md" borderLeft="4px solid" borderColor="cyan.400">
-                    <HStack>
-                      <Icon as={FiInfo} color="cyan.400" />
-                      <Text fontSize="sm" color="gray.300">
-                        Accuracy represents the percentage of matches where the model correctly identified the winning team before the match started.
-                      </Text>
-                    </HStack>
-                  </Box>
-                </VStack>
-              </TacticalCard>
-            </GridItem>
-
-            {/* Feature Importance Chart */}
-            <GridItem>
-              <TacticalCard h="full" glowColor="purple.500">
-                <VStack align="stretch" spacing={6}>
-                  <HStack justify="space-between">
-                    <HStack>
-                      <Icon as={FiBarChart2} color="purple.400" />
-                      <Heading size="md" fontFamily="heading">SHAP IMPORTANCE</Heading>
-                    </HStack>
-                    <Tooltip label="SHAP values show which features impact predictions the most.">
-                      <Icon as={FiInfo} color="gray.500" />
-                    </Tooltip>
-                  </HStack>
-
-                  {shapFeatures.length === 0 ? (
-                    <Box h="300px" display="flex" alignItems="center" justifyContent="center">
-                      <Text color="gray.500">No importance data available.</Text>
-                    </Box>
-                  ) : (
-                    <Box h="450px" w="100%">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={shapFeatures.slice(0, 10)}
-                          layout="vertical"
-                          margin={{ left: 40 }}
-                        >
-                          <XAxis type="number" hide />
-                          <YAxis 
-                            dataKey="feature" 
-                            type="category" 
-                            stroke="rgba(255,255,255,0.7)"
-                            tick={{ fontSize: 11 }}
-                            width={100}
-                            tickFormatter={(str) => str.replace(/_/g, ' ').replace('diff', '').toUpperCase()}
-                          />
-                          <RechartsTooltip 
-                            contentStyle={{ backgroundColor: '#0d1121', borderColor: '#8000ff', color: '#fff' }}
-                            cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                          />
-                          <Bar dataKey="importance" radius={[0, 4, 4, 0]}>
-                            {shapFeatures.map((entry, index) => (
-                              <Cell 
-                                key={`cell-${index}`} 
-                                fill={index < 3 ? '#00d4ff' : index < 6 ? '#8000ff' : '#4a5568'} 
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </Box>
-                  )}
-
-                  <VStack align="stretch" spacing={2}>
-                    <Text fontSize="xs" fontWeight="bold" color="gray.500">KEY DRIVERS</Text>
-                    {shapFeatures.slice(0, 3).map((f, i) => (
-                      <HStack key={f.feature} justify="space-between">
-                        <HStack>
-                          <Badge colorScheme={i === 0 ? 'cyan' : 'purple'} variant="solid" size="sm">{i+1}</Badge>
-                          <Text fontSize="sm" color="gray.300">{f.feature.replace(/_/g, ' ').toUpperCase()}</Text>
+                  {/* Winning Factors & Glossary */}
+                  <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={8}>
+                    <Tabs variant="soft-rounded" colorScheme="brand">
+                      <HStack justify="space-between" mb={8} borderBottom="1px solid" borderColor="whiteAlpha.100" pb={4}>
+                        <HStack spacing={4}>
+                          <Icon as={FiBarChart2} color="accent.400" boxSize={8} />
+                          <Heading size="lg" fontFamily="heading">Winning Factors</Heading>
                         </HStack>
-                        <Text fontSize="xs" color="gray.500">{(f.importance * 100).toFixed(1)}%</Text>
+                        <TabList bg="space.900" p={1} borderRadius="full">
+                          <Tab borderRadius="full" fontSize="sm" px={6}>Impact Chart</Tab>
+                          <Tab borderRadius="full" fontSize="sm" px={6}>Factor Glossary</Tab>
+                        </TabList>
                       </HStack>
-                    ))}
-                  </VStack>
-                </VStack>
-              </TacticalCard>
-            </GridItem>
-          </Grid>
 
-          {/* Model Controls Card */}
-          <TacticalCard variant="angled" glowColor="orange.500">
-            <HStack justify="space-between">
-              <VStack align="start" spacing={1}>
-                <HStack>
-                  <Icon as={FiTarget} color="orange.400" />
-                  <Heading size="md" fontFamily="heading">MODEL MANAGEMENT</Heading>
-                </HStack>
-                <Text color="gray.400" fontSize="sm">
-                  Neural core maintains historical weights. Manual retraining recommended after 50+ new matches.
-                </Text>
-              </VStack>
-              <HStack spacing={6}>
-                <VStack align="end" spacing={0}>
-                  <Text fontSize="xs" color="gray.500">LAST OPTIMIZATION</Text>
-                  <Text fontWeight="bold" color="orange.400">24H AGO</Text>
+                      <TabPanels>
+                        <TabPanel p={0}>
+                          <Grid templateColumns={{ base: '1fr', lg: '3fr 2fr' }} gap={12}>
+                            <VStack align="stretch" spacing={6}>
+                              {normalizedFeatures.length === 0 ? (
+                                <Box h="300px" display="flex" flexDirection="column" alignItems="center" justifyContent="center">
+                                  <Icon as={FiCpu} boxSize={12} color="gray.700" mb={4} />
+                                  <Text color="gray.600" fontSize="md">Awaiting model training to calculate factor importance.</Text>
+                                </Box>
+                              ) : (
+                                normalizedFeatures.slice(0, 8).map((f, i) => {
+                                  const importancePercent = f.importance * 100;
+                                  const maxImportance = normalizedFeatures[0].importance * 100;
+                                  const glossaryEntry = factorGlossary[f.feature];
+                                  return (
+                                    <Tooltip
+                                      key={f.feature}
+                                      label={
+                                        <Box p={2}>
+                                          <Text fontWeight="bold" mb={1}>{glossaryEntry?.label || f.feature}</Text>
+                                          <Text fontSize="sm" color="gray.200">{glossaryEntry?.desc || 'No description available.'}</Text>
+                                          <Badge mt={2} colorScheme={glossaryEntry?.category === 'Micro' ? 'orange' : glossaryEntry?.category === 'Macro' ? 'green' : 'blue'}>
+                                            {glossaryEntry?.category || 'META'}
+                                          </Badge>
+                                        </Box>
+                                      }
+                                      placement="right"
+                                      hasArrow
+                                      bg="space.700"
+                                      color="white"
+                                      borderRadius="lg"
+                                      px={4}
+                                      py={3}
+                                      maxW="280px"
+                                    >
+                                      <Box
+                                        cursor="pointer"
+                                        p={3}
+                                        mx={-3}
+                                        borderRadius="lg"
+                                        transition="all 0.2s"
+                                        _hover={{ bg: 'whiteAlpha.50' }}
+                                      >
+                                        <HStack justify="space-between" mb={2}>
+                                          <HStack spacing={3}>
+                                              <Text fontSize="sm" fontWeight="black" color="white" letterSpacing="widest">
+                                              {getFeatureLabel(f.feature)}
+                                              </Text>
+                                              <Badge size="sm" fontSize="10px" colorScheme={glossaryEntry?.category === 'Micro' ? 'orange' : glossaryEntry?.category === 'Macro' ? 'green' : 'blue'}>
+                                                  {glossaryEntry?.category || 'META'}
+                                              </Badge>
+                                          </HStack>
+                                          <Text fontSize="sm" color="gray.400" fontFamily="mono" fontWeight="bold">{importancePercent.toFixed(1)}%</Text>
+                                        </HStack>
+                                        <Progress value={(importancePercent / maxImportance) * 100} size="sm" borderRadius="full" colorScheme={i < 3 ? "brand" : "accent"} bg="space.900" />
+                                      </Box>
+                                    </Tooltip>
+                                  );
+                                })
+                              )}
+                    </VStack>
+                    <Box bg="space.900" p={6} borderRadius="xl" border="2px solid" borderColor="space.700" boxShadow="inner">
+                        <Heading size="sm" mb={6} color="brand.400" textTransform="uppercase" letterSpacing="widest" display="flex" alignItems="center">
+                            <Icon as={FiZap} mr={2} />
+                            Strategic Insight
+                        </Heading>
+                        <Text fontSize="md" color="gray.200" lineHeight="tall" fontWeight="medium">
+                            The AI currently weights <Text as="span" fontWeight="black" color="brand.400">Experience</Text> as the highest predictor. 
+                            In your squad, matches with a gap of 50+ games are <Text as="span" color="accent.300" fontWeight="bold">18% more likely</Text> to favor the veteran side, 
+                            regardless of average MMR.
+                        </Text>
+                        <Divider my={6} borderColor="whiteAlpha.200" />
+                        <Text fontSize="sm" color="gray.500" fontStyle="italic">
+                            "Micro" factors become more predictive as player MMRs converge. Matches with high skill gaps are almost entirely decided by macro efficiency.
+                        </Text>
+                    </Box>
+                  </Grid>
+                </TabPanel>
+                <TabPanel p={0}>
+                  <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={6}>
+                    {Object.entries(factorGlossary).map(([key, info]) => (
+                      <Box key={key} p={5} bg="space.900" borderRadius="xl" borderLeft="6px solid" borderColor={info.category === 'Micro' ? 'orange.400' : info.category === 'Macro' ? 'green.400' : 'blue.400'} _hover={{ bg: 'space.700', transform: 'translateX(5px)' }} transition="all 0.2s">
+                        <HStack justify="space-between" mb={2}>
+                          <Text fontWeight="black" fontSize="md" color="white" letterSpacing="wide">{info.label}</Text>
+                          <Badge variant="outline" colorScheme={info.category === 'Micro' ? 'orange' : info.category === 'Macro' ? 'green' : 'blue'} fontSize="10px">{info.category}</Badge>
+                        </HStack>
+                        <Text fontSize="sm" color="gray.400" lineHeight="short">{info.desc}</Text>
+                      </Box>
+                    ))}
+                  </Grid>
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
+          </Box>
+
+          {/* System Logic - Pipeline View */}
+          <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={8}>
+            <VStack align="stretch" spacing={8}>
+                <VStack align="start" spacing={1}>
+                    <HStack>
+                        <Icon as={FiBookOpen} color="brand.400" boxSize={6} />
+                        <Heading size="md" fontFamily="heading">The Hybrid Audit Pipeline</Heading>
+                    </HStack>
+                    <Text fontSize="sm" color="gray.500">How your performance metrics transform into rank adjustments.</Text>
                 </VStack>
-                <Divider orientation="vertical" h="40px" />
-                <VStack align="end" spacing={0}>
-                  <Text fontSize="xs" color="gray.500">DATASET SIZE</Text>
-                  <Text fontWeight="bold" color="cyan.400">{accuracyData?.total_matches || 0} MATCHES</Text>
-                </VStack>
-              </HStack>
-            </HStack>
-          </TacticalCard>
+
+                <Flex flexDir={{ base: 'column', lg: 'row' }} justify="space-between" align="center" gap={4} position="relative">
+                    {/* Visual Connector Line for Desktop */}
+                    <Box position="absolute" top="40px" left="10%" right="10%" h="2px" bg="whiteAlpha.100" display={{ base: 'none', lg: 'block' }} zIndex={0} />
+
+                    {[
+                        { step: 1, title: 'TrueSkill Base', desc: 'Calculates ±25 MMR based on win/loss and opponent strength.', icon: FiActivity, color: 'blue.400' },
+                        { step: 2, title: 'Gameplay Audit', desc: 'AI analyzes 14 factors (Macro/Micro) vs squad average.', icon: FiCpu, color: 'purple.400' },
+                        { step: 3, title: 'Carry Detection', desc: 'If Performance > 70% confidence, a multiplier is triggered.', icon: FiZap, color: 'brand.400' },
+                        { step: 4, title: 'Final Update', desc: 'Up to 1.5x gain for wins or 0.5x loss reduction.', icon: FiCheckCircle, color: 'green.400' },
+                    ].map((item, i) => (
+                        <VStack key={i} flex={1} bg="space.900" p={5} borderRadius="xl" border="1px solid" borderColor="space.700" zIndex={1} spacing={4} minH="180px">
+                            <Circle size="12" bg="space.800" border="2px solid" borderColor={item.color}>
+                                <Icon as={item.icon} color={item.color} boxSize={6} />
+                            </Circle>
+                            <VStack spacing={1}>
+                                <Text fontWeight="black" fontSize="sm" color="white" textTransform="uppercase">{item.title}</Text>
+                                <Text fontSize="xs" color="gray.500" textAlign="center">{item.desc}</Text>
+                            </VStack>
+                        </VStack>
+                    ))}
+                </Flex>
+
+                <Box bg="rgba(78, 205, 196, 0.1)" p={4} borderRadius="lg" border="1px solid" borderColor="accent.400">
+                    <HStack spacing={4}>
+                        <Icon as={FiInfo} color="accent.400" />
+                        <Text fontSize="xs" color="gray.300">
+                            <Text as="span" fontWeight="bold">Example:</Text> If you win a game (+25 MMR) but the AI detects a "Carry Performance" in Step 3, 
+                            your final gain would be <Text as="span" color="accent.300" fontWeight="bold">+38 MMR</Text>.
+                        </Text>
+                    </HStack>
+                </Box>
+            </VStack>
+          </Box>
+
+
+
         </VStack>
       </Container>
     </Box>

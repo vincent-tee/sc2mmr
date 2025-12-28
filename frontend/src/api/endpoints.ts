@@ -11,6 +11,7 @@ import type {
   TeamSuggestion,
   Match,
   MatchDetail,
+  MatchListResponse,
   MatchListWithPlayersResponse,
   ReplayUploadResponse,
   PlayerImpact,
@@ -27,9 +28,7 @@ import type {
 export interface PlayersApi {
   getAll: (coreOnly?: boolean) => Promise<AxiosResponse<Player[]>>;
   getRankings: (minGames?: number, coreOnly?: boolean) => Promise<AxiosResponse<PlayerRanking[]>>;
-  getById: (playerId: number, recentMatchesLimit?: number) => Promise<AxiosResponse<PlayerDetail>>;
-  create: (name: string, isCorePlayer?: boolean) => Promise<AxiosResponse<Player>>;
-  calibrate: (name: string, similarToPlayerId: number) => Promise<AxiosResponse<Player>>;
+  getById: (playerId: number, recentMatchesLimit?: number, recentMatchesOffset?: number) => Promise<AxiosResponse<PlayerDetail>>;
 }
 
 export const playersApi: PlayersApi = {
@@ -48,9 +47,12 @@ export const playersApi: PlayersApi = {
   },
 
   // Get player details
-  getById: (playerId: number, recentMatchesLimit = 10) => {
+  getById: (playerId: number, recentMatchesLimit = 10, recentMatchesOffset = 0) => {
     return apiClient.get<PlayerDetail>(`/players/${playerId}`, {
-      params: { recent_matches_limit: recentMatchesLimit }
+      params: {
+        recent_matches_limit: recentMatchesLimit,
+        recent_matches_offset: recentMatchesOffset
+      }
     });
   },
 
@@ -82,6 +84,7 @@ export interface TeamsApi {
   balanceWithModel: (playerIds: number[], model?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
   compareModels: (playerIds: number[]) => Promise<AxiosResponse<Record<string, TeamSuggestion[]>>>;
   getModels: () => Promise<AxiosResponse<string[]>>;
+  getAIDifficulties: () => Promise<AxiosResponse<{ difficulties: Record<string, number>, config_path: string }>>;
   predict: (team1Ids: number[], team2Ids: number[]) => Promise<AxiosResponse<MatchPredictionResponse>>;
 }
 
@@ -130,8 +133,12 @@ export const teamsApi: TeamsApi = {
   getModels: () => {
     return apiClient.get<string[]>('/teams/models');
   },
-
+  // Get AI difficulties
+  getAIDifficulties: () => {
+    return apiClient.get<{ difficulties: Record<string, number>, config_path: string }>('/teams/ai-difficulties');
+  },
   // Predict match outcome with detailed analysis
+
   predict: (team1Ids: number[], team2Ids: number[]) => {
     return apiClient.post<MatchPredictionResponse>('/teams/predict', {
       team_1_ids: team1Ids,
@@ -160,7 +167,7 @@ export interface FailedUpload {
 export interface ReplaysApi {
   upload: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => Promise<AxiosResponse<ReplayUploadResponse>>;
   uploadAdvanced: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => Promise<AxiosResponse<ReplayUploadResponse>>;
-  getMatches: (limit?: number, offset?: number) => Promise<AxiosResponse<Match[]>>;
+  getMatches: (limit?: number, offset?: number) => Promise<AxiosResponse<MatchListResponse>>;
   getMatchesWithPlayers: (limit?: number, offset?: number) => Promise<AxiosResponse<MatchListWithPlayersResponse>>;
   getMatchById: (matchId: number | string) => Promise<AxiosResponse<MatchDetail>>;
   getMatchCommentary: (matchId: number | string) => Promise<AxiosResponse<{ commentary: string }>>;
@@ -198,7 +205,7 @@ export const replaysApi: ReplaysApi = {
 
   // Get matches
   getMatches: (limit = 50, offset = 0) => {
-    return apiClient.get<Match[]>('/replays/matches', {
+    return apiClient.get<MatchListResponse>('/replays/matches', {
       params: { limit, offset }
     });
   },
@@ -340,12 +347,18 @@ export interface ShapImportance {
   importance: number;
 }
 
+export interface BalanceMethodSuccessRate {
+  success_rate: number;
+  total_matches: number;
+}
+
 export interface AdaptiveApi {
   getAccuracyComparison: (days?: number) => Promise<AxiosResponse<{
     total_matches: number;
     results: Record<string, { correct: number; total: number }>;
     trends: AccuracyTrend[];
   }>>;
+  getBalanceMethodSuccessRate: () => Promise<AxiosResponse<Record<string, BalanceMethodSuccessRate>>>;
   getShapImportance: () => Promise<AxiosResponse<{ features: ShapImportance[] }>>;
   trainXGBoost: () => Promise<AxiosResponse<{
     status: string;
@@ -360,20 +373,43 @@ export interface AdaptiveApi {
     xgboost: { is_trained: boolean; accuracy: number | null };
     build_classifier: { use_clustering: boolean };
   }>>;
+  backfillPredictions: () => Promise<AxiosResponse<{ status: string, message: string }>>;
+  getTheories: () => Promise<AxiosResponse<{ theories: any[] }>>;
+  submitTheory: (theory: string) => Promise<AxiosResponse<any>>;
+  getFeatureSuggestions: () => Promise<AxiosResponse<{ suggestions: any[] }>>;
+  submitFeatureSuggestion: (name: string, desc: string) => Promise<AxiosResponse<any>>;
 }
 
 export const adaptiveApi: AdaptiveApi = {
   getAccuracyComparison: (days = 90) => {
     return apiClient.get('/adaptive/accuracy-comparison', { params: { days } });
   },
+  getBalanceMethodSuccessRate: () => {
+    return apiClient.get('/adaptive/balance-method-success-rate');
+  },
   getShapImportance: () => {
     return apiClient.get('/adaptive/shap-importance');
   },
   trainXGBoost: () => {
-    return apiClient.post('/adaptive/train-xgboost');
+    return apiClient.post('/adaptive/train-ml-model');
   },
   getMLModelsStatus: () => {
     return apiClient.get('/adaptive/ml-models-status');
+  },
+  backfillPredictions: () => {
+    return apiClient.post('/adaptive/backfill-predictions');
+  },
+  getTheories: () => {
+    return apiClient.get('/adaptive/meta-feedback');
+  },
+  submitTheory: (theory: string) => {
+    return apiClient.post('/adaptive/meta-feedback', { theory });
+  },
+  getFeatureSuggestions: () => {
+    return apiClient.get('/adaptive/feature-suggestions');
+  },
+  submitFeatureSuggestion: (feature_name: string, description: string) => {
+    return apiClient.post('/adaptive/feature-suggestions', { feature_name, description });
   }
 };
 

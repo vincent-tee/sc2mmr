@@ -67,8 +67,8 @@ const RankBadge: React.FC<RankBadgeProps> = ({
         className={className}
       >
         <HStack spacing={1} height="100%">
-          {showIcon && <Text>{rankInfo.icon}</Text>}
           <Text>{rankInfo.name}</Text>
+          {showIcon && rankInfo.icon && <Text>{rankInfo.icon}</Text>}
           {showMMR && <Text fontWeight="extrabold">{formatMMR(mmr)}</Text>}
         </HStack>
       </Badge>

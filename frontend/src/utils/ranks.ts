@@ -1,19 +1,22 @@
 /**
  * Rank Badge Utility Functions
- * StarCraft 2 rank thresholds and styling
+ * StarCraft 2 rank thresholds - ADJUSTED for friend group play
+ * Based on typical 1500-2500 MMR range for casual/semi-competitive players
  */
 
 /**
  * SC2 rank name and their MMR thresholds
+ * Adjusted for the new MMR scale (1000 + 100*mu)
+ * Standard starting mu=25 results in 3500 MMR (Platinum)
  */
 export const RANK_THRESHOLDS = {
-  Bronze: { min: 0, max: 1500 },
-  Silver: { min: 1500, max: 2000 },
-  Gold: { min: 2000, max: 2300 },
-  Platinum: { min: 2300, max: 2600 },
-  Diamond: { min: 2600, max: 2900 },
-  Master: { min: 2900, max: 3200 },
-  Grandmaster: { min: 3200, max: Infinity },
+  Bronze: { min: 0, max: 2500 },
+  Silver: { min: 2500, max: 3000 },
+  Gold: { min: 3000, max: 3400 },
+  Platinum: { min: 3400, max: 3800 },
+  Diamond: { min: 3800, max: 4100 },
+  Master: { min: 4100, max: 4350 },
+  Grandmaster: { min: 4350, max: Infinity },
 } as const;
 
 export type RankName = keyof typeof RANK_THRESHOLDS;
@@ -26,27 +29,27 @@ export const RANK_COLORS: Record<RankName, { bg: string; color: string; icon: st
   Bronze: {
     bg: 'orange.600',
     color: 'white',
-    icon: '⚔',
+    icon: '',
   },
   Silver: {
     bg: 'gray.400',
     color: 'gray.900',
-    icon: '⚔⚔',
+    icon: '',
   },
   Gold: {
     bg: 'yellow.500',
     color: 'gray.900',
-    icon: '⚔⚔⚔',
+    icon: '',
   },
   Platinum: {
     bg: 'cyan.400',
     color: 'gray.900',
-    icon: '⚔⚔⚔⚔',
+    icon: '',
   },
   Diamond: {
     bg: 'blue.400',
     color: 'white',
-    icon: '⚔⚔⚔⚔⚔',
+    icon: '',
   },
   Master: {
     bg: 'purple.500',

@@ -58,6 +58,7 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
   const team1Prob = match.predicted_team1_win_prob || 0.5;
   const team2Prob = match.predicted_team2_win_prob || 0.5;
   const winningTeam = team1Won ? 1 : 2;
+  const predictedWinningTeam = team1Prob > team2Prob ? 1 : 2;
   const upsetIndicator = hasWinProb
     ? getUpsetIndicator(winningTeam, team1Prob, team2Prob)
     : null;
@@ -245,25 +246,27 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                             </Badge>
                           )}
                         </HStack>
-                        <Stat textAlign="center">
-                          <StatLabel fontSize="xs" color="gray.500">
-                            Predicted Win Chance
-                          </StatLabel>
-                          <StatNumber
-                            fontSize="4xl"
-                            fontFamily="heading"
-                            color={
-                              team1Prob > 0.5 ? 'shield.500' : 'gray.400'
-                            }
-                          >
-                            {formatWinProbability(team1Prob)}
-                          </StatNumber>
-                          <StatHelpText>
-                            {team1Won
-                              ? 'Prediction: Correct'
-                              : 'Prediction: Incorrect'}
-                          </StatHelpText>
-                        </Stat>
+                         <Stat textAlign="center">
+                           <StatLabel fontSize="xs" color="gray.500">
+                             Predicted Win Chance
+                           </StatLabel>
+                           <StatNumber
+                             fontSize="4xl"
+                             fontFamily="heading"
+                             color={
+                               team1Prob > 0.5 ? 'shield.500' : 'gray.400'
+                             }
+                           >
+                             {formatWinProbability(team1Prob)}
+                           </StatNumber>
+                           {predictedWinningTeam === 1 && (
+                             <StatHelpText>
+                               {team1Won
+                                 ? 'Prediction: Correct'
+                                 : 'Prediction: Incorrect'}
+                             </StatHelpText>
+                           )}
+                         </Stat>
                       </VStack>
                     </CardBody>
                   </Card>
@@ -315,25 +318,27 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
                             </Badge>
                           )}
                         </HStack>
-                        <Stat textAlign="center">
-                          <StatLabel fontSize="xs" color="gray.500">
-                            Predicted Win Chance
-                          </StatLabel>
-                          <StatNumber
-                            fontSize="4xl"
-                            fontFamily="heading"
-                            color={
-                              team2Prob > 0.5 ? 'shield.500' : 'gray.400'
-                            }
-                          >
-                            {formatWinProbability(team2Prob)}
-                          </StatNumber>
-                          <StatHelpText>
-                            {!team1Won
-                              ? 'Prediction: Correct'
-                              : 'Prediction: Incorrect'}
-                          </StatHelpText>
-                        </Stat>
+                         <Stat textAlign="center">
+                           <StatLabel fontSize="xs" color="gray.500">
+                             Predicted Win Chance
+                           </StatLabel>
+                           <StatNumber
+                             fontSize="4xl"
+                             fontFamily="heading"
+                             color={
+                               team2Prob > 0.5 ? 'shield.500' : 'gray.400'
+                             }
+                           >
+                             {formatWinProbability(team2Prob)}
+                           </StatNumber>
+                           {predictedWinningTeam === 2 && (
+                             <StatHelpText>
+                               {!team1Won
+                                 ? 'Prediction: Correct'
+                                 : 'Prediction: Incorrect'}
+                             </StatHelpText>
+                           )}
+                         </Stat>
                       </VStack>
                     </CardBody>
                   </Card>

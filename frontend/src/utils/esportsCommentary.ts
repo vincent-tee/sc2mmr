@@ -38,7 +38,7 @@ const DAMAGE_INTROS = [
   '⚡ ELECTRIFYING!',
   '💀 BRUTAL!',
   '🎯 SURGICAL!',
-  '⚔️ RELENTLESS!',
+  ' RELENTLESS!',
   '🌋 ERUPTION!',
   '🚀 OBLITERATION!',
   '💣 CARNAGE!',
@@ -186,7 +186,7 @@ const LOSS_OPENERS = [
   '💔 DEFEAT...',
   '😤 SO CLOSE!',
   '🥊 BATTLED HARD!',
-  '⚔️ FOUGHT VALIANTLY!',
+  ' FOUGHT VALIANTLY!',
   '🎯 ALMOST HAD IT!',
 ];
 
@@ -247,7 +247,7 @@ const ECONOMY_MEDIUM_PHRASES = [
 ];
 
 const ECONOMY_LOW_PHRASES = [
-  '⚔️ Prioritized aggression over economy!',
+  ' Prioritized aggression over economy!',
   '🎯 All-in mentality!',
   '💥 Fighting over farming!',
   '🔥 Aggro style, low macro!',
@@ -336,7 +336,7 @@ const QUICK_MATCH_PHRASES = [
 ];
 
 const LONG_MATCH_PHRASES = [
-  '⚔️ EPIC BATTLE! An absolute war of attrition!',
+  ' EPIC BATTLE! An absolute war of attrition!',
   '🏰 SIEGE WARFARE! Both teams dug in deep!',
   '💪 MARATHON! A true test of endurance!',
   '🔥 GRUELING! Every advantage was fought for!',
@@ -345,7 +345,7 @@ const LONG_MATCH_PHRASES = [
 
 const NORMAL_MATCH_PHRASES = [
   '🎮 SOLID MATCH! Good plays on both sides!',
-  '⚔️ COMPETITIVE! Teams went back and forth!',
+  ' COMPETITIVE! Teams went back and forth!',
   '🎯 WELL PLAYED! Clean execution throughout!',
   '💥 ACTION-PACKED! Plenty of excitement!',
   '🔥 ENGAGING! A game worth watching!',
@@ -438,7 +438,7 @@ export const generatePlayerHighlight = (
   if (highlights.length === 0) {
     // Fallback generic highlight
     const GENERIC_HIGHLIGHTS = [
-      `⚔️ ${stats.name} brought the heat this match!`,
+      ` ${stats.name} brought the heat this match!`,
       `🎮 ${stats.name} showed up and showed out!`,
       `💪 ${stats.name} put in WORK today!`,
       `🔥 ${stats.name} was in the mix all game!`,

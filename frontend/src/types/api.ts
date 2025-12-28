@@ -28,6 +28,7 @@ export interface Player {
   random_games: number;
   favorite_race: string;
   is_core_player: boolean;
+  is_ai: boolean;
   avg_economic_score: number;
   avg_combat_score: number;
   avg_efficiency_score: number;
@@ -125,6 +126,13 @@ export interface MatchListWithPlayersResponse {
   offset: number;
 }
 
+export interface MatchListResponse {
+  matches: Match[];
+  total_count: number;
+  limit: number;
+  offset: number;
+}
+
 export interface MatchPlayer {
   player_id: number;
   player_name: string;
@@ -210,6 +218,7 @@ export interface TeamPlayer {
   total_games: number;
   favorite_race: string;
   is_core_player: boolean;
+  is_ai: boolean;
   avg_overall_impact?: number;
 }
 
@@ -378,7 +387,17 @@ export interface VersionResponse {
 // Race and Game Mode Enums
 // =============================================================================
 
-export type Race = 'Terran' | 'Protoss' | 'Zerg' | 'Random';
+export enum Race {
+  TERRAN = 'Terran',
+  PROTOSS = 'Protoss',
+  ZERG = 'Zerg',
+  RANDOM = 'Random',
+}
+
+export interface TeamSuggestionWithImpact extends TeamSuggestion {
+  team_1_avg_impact?: number;
+  team_2_avg_impact?: number;
+}
 
 export type GameMode =
   | '2v2'

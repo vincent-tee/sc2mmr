@@ -38,6 +38,8 @@ export interface DuoLeaderboardEntry {
 
 export type LeaderboardCategoryKey =
   | 'mmr'
+  | 'trueskill'
+  | 'hybrid'
   | 'winrate'
   | 'games'
   | 'achievements'
@@ -58,10 +60,17 @@ export interface LeaderboardCategory {
 export const LEADERBOARD_CATEGORIES: LeaderboardCategory[] = [
   {
     key: 'mmr',
-    name: 'MMR Rankings',
-    description: 'Overall skill rating',
+    name: 'Squad MMR',
+    description: 'Recency-weighted skill rating (Primary)',
     unit: 'MMR',
     icon: '🏆',
+  },
+  {
+    key: 'trueskill',
+    name: 'TrueSkill',
+    description: 'Pure mathematical skill rating (Stable)',
+    unit: 'MMR',
+    icon: '🔢',
   },
   {
     key: 'winrate',
@@ -79,35 +88,42 @@ export const LEADERBOARD_CATEGORIES: LeaderboardCategory[] = [
   },
   {
     key: 'achievements',
-    name: 'Achievement Points',
-    description: 'Total achievement score',
+    name: 'Achievements',
+    description: 'Total achievement points earned',
     unit: 'pts',
     icon: '🎖️',
   },
   {
     key: 'damage',
-    name: 'Damage Kings',
+    name: 'Damage',
     description: 'Highest average damage per game',
     unit: 'dmg',
-    icon: '⚔️',
+    icon: '💪',
   },
   {
     key: 'kills',
-    name: 'Unit Slayers',
+    name: 'Kills',
     description: 'Most units killed on average',
     unit: 'kills',
     icon: '💀',
   },
   {
     key: 'winstreak',
-    name: 'Best Win Streak',
+    name: 'Streaks',
     description: 'Longest winning streak ever',
     unit: 'games',
     icon: '🔥',
   },
   {
+    key: 'hybrid',
+    name: 'Hybrid (Alpha)',
+    description: 'Performance-adjusted skill rating',
+    unit: 'MMR',
+    icon: '🧪',
+  },
+  {
     key: 'duos',
-    name: 'Best Duos',
+    name: 'Duos (Alpha)',
     description: 'Most successful partner combinations',
     unit: 'wins',
     icon: '🤝',
@@ -127,6 +143,8 @@ export function getLeaderboardCategory(key: LeaderboardCategoryKey): Leaderboard
 export function formatLeaderboardValue(value: number, category: LeaderboardCategoryKey): string {
   switch (category) {
     case 'mmr':
+    case 'trueskill':
+    case 'hybrid':
       return Math.round(value).toLocaleString();
     case 'winrate':
       return `${value.toFixed(1)}%`;

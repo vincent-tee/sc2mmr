@@ -47,7 +47,6 @@ const PlayerDetail = lazy(() => import('./pages/PlayerDetail'));
 const MatchHistory = lazy(() => import('./pages/MatchHistory'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
 const RatingSystem = lazy(() => import('./pages/RatingSystem'));
-const AdaptiveModel = lazy(() => import('./pages/AdaptiveModel'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Achievements = lazy(() => import('./pages/Achievements'));
 const HeadToHead = lazy(() => import('./pages/HeadToHead'));
@@ -159,14 +158,6 @@ function App(): React.ReactElement {
                 element={
                   <ErrorBoundary>
                     <RatingSystem />
-                  </ErrorBoundary>
-                }
-              />
-              <Route
-                path="/adaptive-model"
-                element={
-                  <ErrorBoundary>
-                    <AdaptiveModel />
                   </ErrorBoundary>
                 }
               />

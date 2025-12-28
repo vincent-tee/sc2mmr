@@ -10,8 +10,6 @@ import {
   Text,
   VStack,
   HStack,
-  Card,
-  CardBody,
   Badge,
   Button,
   Table,
@@ -21,7 +19,6 @@ import {
   Th,
   Td,
   Select,
-  useColorModeValue,
   Icon,
   Tooltip,
   Modal,
@@ -76,11 +73,14 @@ const FailedUploads: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const cardBg = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.700');
-  const errorBoxBg = useColorModeValue('gray.50', 'gray.900');
-  const hoverBg = useColorModeValue('gray.50', 'gray.700');
-  const expandedRowBg = useColorModeValue('gray.50', 'gray.900');
+
+  // Design tokens
+  const cardBg = 'space.800';
+  const borderColor = 'space.900';
+  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
+  const errorBoxBg = 'space.900';
+  const hoverBg = 'space.700';
+  const expandedRowBg = 'space.900';
 
   // Fetch failed uploads
   const { data: failedUploads, isLoading } = useQuery<FailedUpload[]>({
@@ -270,21 +270,36 @@ const FailedUploads: React.FC = () => {
     <Container maxW="container.xl" py={8}>
       <VStack spacing={8} align="stretch">
         {/* Header */}
-        <Box>
-          <Heading size="xl" mb={2}>
-            Failed Uploads
+        <Box textAlign="center" mb={4}>
+          <Heading
+            size="2xl"
+            fontFamily="heading"
+            fontWeight="bold"
+            letterSpacing="wider"
+            color="brand.400"
+            mb={2}
+          >
+            <Text as="span" className="emoji-font">⚠️</Text> Failed Uploads
           </Heading>
-          <Text color="gray.500" fontSize="lg">
+          <Text color="gray.400" fontSize="lg">
             Review replay files that failed to process
           </Text>
         </Box>
 
         {/* Info Alert */}
-        <Alert status="info" variant="left-accent" borderRadius="md">
+        <Alert
+          status="info"
+          variant="left-accent"
+          borderRadius="xl"
+          bg="space.800"
+          border="3px solid"
+          borderColor={borderColor}
+          boxShadow={brandShadow}
+        >
           <AlertIcon />
           <Box>
-            <AlertTitle>Manual Review Required</AlertTitle>
-            <AlertDescription>
+            <AlertTitle fontFamily="heading" letterSpacing="wide">Manual Review Required</AlertTitle>
+            <AlertDescription color="gray.300">
               These replays failed to process automatically. Review them to identify patterns or
               edge cases that may need algorithm improvements.
             </AlertDescription>
@@ -292,51 +307,60 @@ const FailedUploads: React.FC = () => {
         </Alert>
 
         {/* Filters */}
-        <Card bg={cardBg}>
-          <CardBody>
-            <HStack spacing={4} justify="space-between">
-              <HStack spacing={4}>
-                <Icon as={FiFilter} color="gray.500" />
-                <Select
-                  placeholder="All Error Types"
-                  value={errorTypeFilter}
-                  onChange={handleErrorTypeChange}
-                  maxW="300px"
-                >
-                  <option value="parse_error">Parse Error</option>
-                  <option value="validation_error">Validation Error</option>
-                  <option value="winner_determination">Winner Determination</option>
-                  <option value="unsupported_mode">Unsupported Mode</option>
-                  <option value="corrupt_file">Corrupt File</option>
-                  <option value="other">Other</option>
-                </Select>
+        <Box
+          bg={cardBg}
+          borderRadius="xl"
+          border="3px solid"
+          borderColor={borderColor}
+          boxShadow={brandShadow}
+          p={4}
+        >
+          <HStack spacing={4} justify="space-between">
+            <HStack spacing={4}>
+              <Icon as={FiFilter} color="gray.400" />
+              <Select
+                placeholder="All Error Types"
+                value={errorTypeFilter}
+                onChange={handleErrorTypeChange}
+                maxW="300px"
+                bg="space.900"
+                borderColor="space.700"
+              >
+                <option value="parse_error">Parse Error</option>
+                <option value="validation_error">Validation Error</option>
+                <option value="winner_determination">Winner Determination</option>
+                <option value="unsupported_mode">Unsupported Mode</option>
+                <option value="corrupt_file">Corrupt File</option>
+                <option value="other">Other</option>
+              </Select>
 
-                <Select
-                  placeholder="All Statuses"
-                  value={reviewedFilter}
-                  onChange={handleReviewedFilterChange}
-                  maxW="200px"
-                >
-                  <option value="false">Not Reviewed</option>
-                  <option value="true">Reviewed</option>
-                </Select>
-              </HStack>
-
-              {(errorTypeFilter || reviewedFilter) && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setErrorTypeFilter('');
-                    setReviewedFilter('');
-                  }}
-                >
-                  Clear Filters
-                </Button>
-              )}
+              <Select
+                placeholder="All Statuses"
+                value={reviewedFilter}
+                onChange={handleReviewedFilterChange}
+                maxW="200px"
+                bg="space.900"
+                borderColor="space.700"
+              >
+                <option value="false">Not Reviewed</option>
+                <option value="true">Reviewed</option>
+              </Select>
             </HStack>
-          </CardBody>
-        </Card>
+
+            {(errorTypeFilter || reviewedFilter) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setErrorTypeFilter('');
+                  setReviewedFilter('');
+                }}
+              >
+                Clear Filters
+              </Button>
+            )}
+          </HStack>
+        </Box>
 
         {/* Failed Uploads List */}
         {!failedUploads || failedUploads.length === 0 ? (
@@ -350,10 +374,16 @@ const FailedUploads: React.FC = () => {
             }
           />
         ) : (
-          <Card bg={cardBg}>
-            <CardBody p={0}>
-              <Box overflowX="auto" maxW="100%">
-                <Table variant="simple" size="sm">
+          <Box
+            bg={cardBg}
+            borderRadius="xl"
+            border="3px solid"
+            borderColor={borderColor}
+            boxShadow={brandShadow}
+            overflow="hidden"
+          >
+            <Box overflowX="auto" maxW="100%">
+              <Table variant="simple" size="sm">
                   <Thead>
                     <Tr>
                       <Th w="40px"></Th>
@@ -529,10 +559,9 @@ const FailedUploads: React.FC = () => {
                       </>
                     ))}
                   </Tbody>
-                </Table>
-              </Box>
-            </CardBody>
-          </Card>
+              </Table>
+            </Box>
+          </Box>
         )}
       </VStack>
 

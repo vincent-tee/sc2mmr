@@ -1,5 +1,5 @@
 /**
- * Match History Page - TACTICAL BATTLE ARCHIVE
+ * Match History Page - Match Archive
  * Browse past games with esports commentary and player highlights
  */
 import {
@@ -168,8 +168,6 @@ const MatchCard: React.FC<{
   onNavigate: (id: number) => void;
 }> = ({ match, onNavigate }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const cardBg = useColorModeValue('white', 'rgba(17, 25, 40, 0.7)');
-  const borderColor = useColorModeValue('gray.200', 'rgba(0, 212, 255, 0.2)');
 
   const team1Players = match.players.filter((p) => p.team_number === 1);
   const team2Players = match.players.filter((p) => p.team_number === 2);
@@ -197,15 +195,16 @@ const MatchCard: React.FC<{
 
   return (
     <Card
-      bg={cardBg}
-      border="2px solid"
-      borderColor={borderColor}
+      bg="space.800"
+      border="3px solid"
+      borderColor="space.700"
+      boxShadow="3px 3px 0 space.900"
       position="relative"
       overflow="hidden"
-      transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+      transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
       _hover={{
         borderColor: 'brand.500',
-        boxShadow: '0 8px 30px rgba(0, 212, 255, 0.2)',
+        transform: 'translateY(-2px)',
       }}
     >
       <CardBody>
@@ -469,54 +468,44 @@ const MatchHistory: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Container maxW="container.xl" py={8}>
-        <VStack spacing={8} align="stretch">
-          <Heading>Match History</Heading>
-          <VStack spacing={4}>
-            {Array.from({ length: 10 }).map((_, idx) => (
-              <MatchCardSkeleton key={idx} />
-            ))}
+      <Box bg="space.900">
+        <Container maxW="container.xl" py={8}>
+          <VStack spacing={8} align="stretch">
+            <Heading>Match History</Heading>
+            <VStack spacing={4}>
+              {Array.from({ length: 10 }).map((_, idx) => (
+                <MatchCardSkeleton key={idx} />
+              ))}
+            </VStack>
           </VStack>
-        </VStack>
-      </Container>
+        </Container>
+      </Box>
     );
   }
 
   if (matches.length === 0) {
     return (
-      <Container maxW="container.xl" py={8}>
-        <VStack spacing={8} align="stretch">
-          <Heading>Match History</Heading>
-          <EmptyState
-            variant="stats"
-            title="No Matches Yet"
-            description="Upload some replay files to start tracking your game history."
-            onAction={() => navigate('/upload')}
-          />
-        </VStack>
-      </Container>
+      <Box bg="space.900">
+        <Container maxW="container.xl" py={8}>
+          <VStack spacing={8} align="stretch">
+            <Heading>Match History</Heading>
+            <EmptyState
+              variant="stats"
+              title="No Matches Yet"
+              description="Upload some replay files to start tracking your game history."
+              onAction={() => navigate('/upload')}
+            />
+          </VStack>
+        </Container>
+      </Box>
     );
   }
 
   return (
-    <Box position="relative">
-      {/* Animated tactical grid background */}
-      <Box
-        position="fixed"
-        top={0}
-        left={0}
-        right={0}
-        bottom={0}
-        opacity={0.02}
-        pointerEvents="none"
-        backgroundImage="linear-gradient(rgba(0, 212, 255, 0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 212, 255, 0.8) 1px, transparent 1px)"
-        backgroundSize="60px 60px"
-        zIndex={0}
-      />
-
+    <Box position="relative" bg="space.900">
       <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
-          {/* Bold Header Section */}
+          {/* Header Section */}
           <Box position="relative">
             <HStack justify="space-between" align="start" mb={2}>
               <VStack align="start" spacing={1}>
@@ -527,7 +516,6 @@ const MatchHistory: React.FC = () => {
                     fontFamily="heading"
                     letterSpacing="wider"
                     color="brand.400"
-                    textShadow="0 0 30px rgba(0, 212, 255, 0.5)"
                   >
                     Match History
                   </Heading>
@@ -538,7 +526,7 @@ const MatchHistory: React.FC = () => {
                   letterSpacing="wide"
                   fontSize="sm"
                 >
-                  [ {totalMatches} matches recorded{totalPages > 1 ? ` • Page ${currentPage}/${totalPages}` : ''} ]
+                  {totalMatches} matches recorded{totalPages > 1 ? ` • Page ${currentPage}/${totalPages}` : ''}
                   {isFetching && !isLoading && ' • Updating...'}
                 </Text>
               </VStack>
@@ -550,24 +538,16 @@ const MatchHistory: React.FC = () => {
                   color="gray.900"
                   px={4}
                   py={2}
-                  borderRadius="md"
+                  borderRadius="lg"
                   fontSize="lg"
                   fontFamily="heading"
-                  boxShadow="0 0 20px rgba(0, 212, 255, 0.4)"
+                  boxShadow="3px 3px 0 space.900"
                 >
 <Icon as={FiTrendingUp} mr={2} />
                     Active
                   </Badge>
               </HStack>
             </HStack>
-
-            {/* Decorative line */}
-            <Box
-              h="2px"
-              bg="linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.6), transparent)"
-              mt={4}
-              mb={6}
-            />
           </Box>
 
           {/* Match List */}

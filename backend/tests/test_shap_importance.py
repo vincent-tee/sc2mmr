@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from unittest.mock import MagicMock
-from backend.app.services.shap_feature_importance import SHAPFeatureImportance
+from app.services.shap_feature_importance import SHAPFeatureImportance
 
 
 def test_shap_feature_importance_init():

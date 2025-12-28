@@ -45,46 +45,69 @@ class ImpactService:
         if metrics.damage_timeline:
             damage_timeline_json = metrics.damage_timeline.to_json()
 
-        match_metrics = PlayerMatchMetrics(
-            match_player_id=match_player_id,
-            minerals_collected=metrics.minerals_collected,
-            vespene_collected=metrics.vespene_collected,
-            total_resources_collected=metrics.total_resources_collected,
-            resources_spent=metrics.resources_spent,
-            spending_efficiency=metrics.spending_efficiency,
-            workers_created=metrics.workers_created,
-            units_trained=metrics.units_trained,
-            units_lost=metrics.units_lost,
-            units_killed=metrics.units_killed,
-            army_value_built=metrics.army_value_built,
-            army_value_killed=metrics.army_value_killed,
-            army_value_lost=metrics.army_value_lost,
-            damage_dealt=metrics.damage_dealt,
-            damage_taken=metrics.damage_taken,
-            damage_ratio=metrics.damage_ratio,
-            first_expansion_timing=metrics.first_expansion_timing,
-            bases_created=metrics.bases_created,
-            apm=metrics.apm,
-            unit_composition=unit_comp_json,
-            economic_score=metrics.economic_score,
-            combat_score=metrics.combat_score,
-            efficiency_score=metrics.efficiency_score,
-            overall_impact=metrics.overall_impact,
-            team_fight_participation=metrics.team_fight_participation,
-            team_fight_damage=metrics.team_fight_damage,
-            team_fight_damage_ratio=metrics.team_fight_damage_ratio,
-            first_damage_timing=metrics.first_damage_timing,
-            early_game_damage=metrics.early_game_damage,
-            mid_game_damage=metrics.mid_game_damage,
-            late_game_damage=metrics.late_game_damage,
-            player_archetype=metrics.player_archetype.value
-            if hasattr(metrics, "player_archetype") and metrics.player_archetype
-            else None,
-            aggression_score=metrics.aggression_score,
-            damage_timeline=damage_timeline_json,
+        # Determine archetype from metrics (handle both legacy PlayerMetrics and new PlayerMatchResult)
+        archetype = None
+        if hasattr(metrics, "detected_build_type"):
+            archetype = str(getattr(metrics, "detected_build_type", ""))
+        elif hasattr(metrics, "player_archetype") and metrics.player_archetype:
+            # Handle enum if it's an enum, otherwise string
+            archetype = str(
+                getattr(metrics.player_archetype, "value", metrics.player_archetype)
+            )
+
+        # Upsert: check if metrics already exist for this match_player
+        match_metrics = (
+            db.query(PlayerMatchMetrics)
+            .filter(PlayerMatchMetrics.match_player_id == match_player_id)
+            .first()
         )
 
-        db.add(match_metrics)
+        if not match_metrics:
+            match_metrics = PlayerMatchMetrics(match_player_id=match_player_id)
+            db.add(match_metrics)
+
+        # Update fields
+        match_metrics.minerals_collected = metrics.minerals_collected
+        match_metrics.vespene_collected = metrics.vespene_collected
+        match_metrics.total_resources_collected = metrics.total_resources_collected
+        match_metrics.resources_spent = metrics.resources_spent
+        match_metrics.spending_efficiency = metrics.spending_efficiency
+        match_metrics.workers_created = metrics.workers_created
+        match_metrics.units_trained = metrics.units_trained
+        match_metrics.units_lost = metrics.units_lost
+        match_metrics.units_killed = metrics.units_killed
+        match_metrics.army_value_built = metrics.army_value_built
+        match_metrics.army_value_killed = metrics.army_value_killed
+        match_metrics.army_value_lost = metrics.army_value_lost
+
+        # Ensure damage_dealt is never 0 if army_value_killed is known
+        match_metrics.damage_dealt = (
+            metrics.damage_dealt or metrics.army_value_killed or 0
+        )
+        match_metrics.damage_taken = (
+            metrics.damage_taken or metrics.army_value_lost or 0
+        )
+
+        match_metrics.damage_ratio = metrics.damage_ratio
+        match_metrics.first_expansion_timing = metrics.first_expansion_timing
+        match_metrics.bases_created = metrics.bases_created
+        match_metrics.apm = metrics.apm
+        match_metrics.unit_composition = unit_comp_json
+        match_metrics.economic_score = metrics.economic_score
+        match_metrics.combat_score = metrics.combat_score
+        match_metrics.efficiency_score = metrics.efficiency_score
+        match_metrics.overall_impact = metrics.overall_impact
+        match_metrics.team_fight_participation = metrics.team_fight_participation
+        match_metrics.team_fight_damage = metrics.team_fight_damage
+        match_metrics.team_fight_damage_ratio = metrics.team_fight_damage_ratio
+        match_metrics.first_damage_timing = metrics.first_damage_timing
+        match_metrics.early_game_damage = metrics.early_game_damage
+        match_metrics.mid_game_damage = metrics.mid_game_damage
+        match_metrics.late_game_damage = metrics.late_game_damage
+        match_metrics.player_archetype = archetype
+        match_metrics.aggression_score = metrics.aggression_score
+        match_metrics.damage_timeline = damage_timeline_json
+
         db.flush()  # Flush to get ID, but don't commit yet (let caller commit)
 
         return match_metrics

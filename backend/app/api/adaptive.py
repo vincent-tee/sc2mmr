@@ -4,6 +4,7 @@ API endpoints for adaptive model tuning.
 Allows checking model performance and updating weights based on match data.
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -12,9 +13,11 @@ from sqlalchemy import func
 from datetime import datetime, timedelta
 
 from ..database import get_db
+
+logger = logging.getLogger(__name__)
 from ..adaptive_model import AdaptiveModelTuner, PerformanceWeights
 from ..auto_adaptive import AutoAdaptiveTracker, AutoAdaptiveConfig
-from ..models import Match, MatchPlayer, Player
+from ..models import Match, MatchPlayer, Player, FeatureSuggestion, MetaFeedback
 
 router = APIRouter(prefix="/adaptive", tags=["adaptive"])
 
@@ -26,430 +29,140 @@ _performance_cache: Dict[str, Any] = {
 }
 
 
-class WeightSuggestionResponse(BaseModel):
-    """Response for weight suggestion endpoint."""
+class FeatureSuggestionRequest(BaseModel):
+    """Request to suggest a new feature."""
 
-    suggestion: str
-    reason: str
-    confidence: float
-    sample_size: int
-    current_weights: Dict[str, float]
-    suggested_weights: Optional[Dict[str, float]] = None
-    changes: Optional[Dict[str, float]] = None
-    performance_improvement: Optional[float] = None
-
-    class Config:
-        from_attributes = True
+    feature_name: str
+    description: str
 
 
-class UpdateWeightsRequest(BaseModel):
-    """Request to update performance weights."""
+class MetaFeedbackRequest(BaseModel):
+    """Request to submit meta feedback."""
 
-    combat_weight: float
-    economic_weight: float
-    team_contribution_weight: float
-    efficiency_weight: float
+    theory: str
 
 
-@router.get("/suggest-weights", response_model=WeightSuggestionResponse)
-def suggest_weight_updates(db: Session = Depends(get_db)):
-    """
-    Analyze recent matches and suggest performance weight updates.
-    """
-    suggestion = AdaptiveModelTuner.suggest_weight_update(db)
-
-    if not suggestion:
-        raise HTTPException(
-            status_code=500, detail="Failed to generate weight suggestion"
-        )
-
-    cw: Any = suggestion.get("current_weights")
-    sw: Any = suggestion.get("suggested_weights")
-    perf: Any = suggestion.get("performance")
-
-    current_weights_dict = {
-        "combat": float(cw.combat_weight) if cw else 0.0,
-        "economic": float(cw.economic_weight) if cw else 0.0,
-        "team_contribution": float(cw.team_contribution_weight) if cw else 0.0,
-        "efficiency": float(cw.efficiency_weight) if cw else 0.0,
-    }
-
-    suggested_weights_dict = None
-    if sw:
-        suggested_weights_dict = {
-            "combat": float(sw.combat_weight),
-            "economic": float(sw.economic_weight),
-            "team_contribution": float(sw.team_contribution_weight),
-            "efficiency": float(sw.efficiency_weight),
-        }
-
-    return WeightSuggestionResponse(
-        suggestion=str(suggestion.get("suggestion", "")),
-        reason=str(suggestion.get("reason", "")),
-        confidence=float(suggestion.get("confidence", 0)),
-        sample_size=int(suggestion.get("sample_size", 0)),
-        current_weights=current_weights_dict,
-        suggested_weights=suggested_weights_dict,
-        changes=suggestion.get("changes"),
-        performance_improvement=float(perf.correlation_strength) if perf else None,
-    )
-
-
-@router.get("/model-performance")
-def get_model_performance(force_refresh: bool = False, db: Session = Depends(get_db)):
-    """
-    Get current model performance metrics.
-    """
-    now = datetime.utcnow()
-    if (
-        not force_refresh
-        and _performance_cache["timestamp"] is not None
-        and _performance_cache["result"] is not None
-    ):
-        ts: Any = _performance_cache["timestamp"]
-        if ts:
-            cache_age = (now - ts).total_seconds()
-            if cache_age < _performance_cache["cache_duration_seconds"]:
-                cached_result = cast(
-                    Dict[str, Any], _performance_cache["result"]
-                ).copy()
-                cached_result["_cache_age_seconds"] = round(cache_age, 1)
-                cached_result["_from_cache"] = True
-                return cached_result
-
-    current_weights = PerformanceWeights()
-    _, performance = AdaptiveModelTuner.optimize_weights(db, current_weights)
-
-    total_matches = db.query(func.count(Match.id)).scalar() or 0
-
-    perf: Any = performance
-    result = {
-        "win_prediction_accuracy": float(perf.win_prediction_accuracy),
-        "correlation_strength": float(perf.correlation_strength),
-        "sample_size": int(total_matches),
-        "confidence_score": float(perf.confidence_score),
-        "current_weights": {
-            "combat": float(current_weights.combat_weight),
-            "economic": float(current_weights.economic_weight),
-            "team_contribution": float(current_weights.team_contribution_weight),
-            "efficiency": float(current_weights.efficiency_weight),
-        },
-        "_from_cache": False,
-    }
-
-    _performance_cache["timestamp"] = now
-    _performance_cache["result"] = result.copy()
-
-    return result
-
-
-@router.post("/update-weights")
-def update_weights(request: UpdateWeightsRequest, db: Session = Depends(get_db)):
-    """
-    Update performance weights (manual override).
-    """
-    total = (
-        request.combat_weight
-        + request.economic_weight
-        + request.team_contribution_weight
-        + request.efficiency_weight
-    )
-
-    if abs(total - 1.0) > 0.001:
-        raise HTTPException(
-            status_code=400, detail=f"Weights must sum to 1.0 (got {total})"
-        )
-
-    return {
-        "status": "success",
-        "message": "Weights recorded",
-        "new_weights": {
-            "combat": request.combat_weight,
-            "economic": request.economic_weight,
-            "team_contribution": request.team_contribution_weight,
-            "efficiency": request.efficiency_weight,
-        },
-    }
-
-
-@router.get("/auto-status")
-def get_auto_optimization_status(db: Session = Depends(get_db)):
-    """
-    Get auto-optimization status and configuration.
-    """
-    total_matches = db.query(func.count(Match.id)).scalar() or 0
-    tracker: Any = AutoAdaptiveTracker
-    config: Any = AutoAdaptiveConfig
-
-    last_count = int(tracker._last_optimization_count)
-    matches_since_last = int(total_matches) - last_count
-
-    threshold = int(config.MATCHES_PER_OPTIMIZATION)
-    next_optimization_in = threshold - matches_since_last
-
-    curr_w: Any = tracker._current_weights
-
-    return {
-        "enabled": bool(config.ENABLED),
-        "matches_per_optimization": threshold,
-        "total_matches": int(total_matches),
-        "last_optimization_at_match": last_count,
-        "matches_since_last_optimization": matches_since_last,
-        "next_optimization_in": max(0, next_optimization_in),
-        "has_current_weights": curr_w is not None,
-        "current_weights": {
-            "combat": float(curr_w.combat_weight),
-            "economic": float(curr_w.economic_weight),
-            "team_contribution": float(curr_w.team_contribution_weight),
-            "efficiency": float(curr_w.efficiency_weight),
-        }
-        if curr_w
-        else None,
-    }
-
-
-class AutoAdaptiveConfigRequest(BaseModel):
-    """Request to update auto-adaptive configuration."""
-
-    enabled: Optional[bool] = None
-    matches_per_optimization: Optional[int] = None
-
-
-@router.post("/auto-config")
-def update_auto_optimization_config(
-    request: AutoAdaptiveConfigRequest, db: Session = Depends(get_db)
-):
-    """
-    Update auto-optimization configuration.
-    """
-    config: Any = AutoAdaptiveConfig
-    if request.enabled is not None:
-        config.ENABLED = bool(request.enabled)
-
-    if request.matches_per_optimization is not None:
-        if request.matches_per_optimization < 1:
-            raise HTTPException(
-                status_code=400, detail="matches_per_optimization must be at least 1"
-            )
-        config.MATCHES_PER_OPTIMIZATION = int(request.matches_per_optimization)
-
-    return {
-        "status": "success",
-        "message": "Auto-optimization configuration updated",
-        "config": {
-            "enabled": bool(config.ENABLED),
-            "matches_per_optimization": int(config.MATCHES_PER_OPTIMIZATION),
-        },
-    }
-
-
-@router.post("/force-optimize")
-def force_optimization(db: Session = Depends(get_db)):
-    """
-    Force optimization regardless of threshold.
-    """
-    result = AutoAdaptiveTracker.force_optimization(db)
-
-    if not result:
-        raise HTTPException(
-            status_code=500, detail="Optimization failed to generate results"
-        )
-
-    return {"status": "success", "message": "Optimization completed", "result": result}
-
-
-@router.get("/model-versions")
-def get_model_versions(db: Session = Depends(get_db)):
-    """
-    Get all model versions with their performance stats.
-    """
-    try:
-        from ..online_learning import ModelVersion
-
-        versions = (
-            db.query(ModelVersion)
-            .order_by(ModelVersion.created_at.desc())
-            .limit(20)
-            .all()
-        )
-
-        result_list = []
-        for v in versions:
-            ver: Any = v
-            result_list.append(
-                {
-                    "version_name": str(ver.version_name),
-                    "created_at": ver.created_at.isoformat(),
-                    "weights": ver.weights_json,
-                    "is_active": bool(ver.is_active),
-                    "total_predictions": int(ver.total_predictions or 0),
-                    "correct_predictions": int(ver.correct_predictions or 0),
-                    "accuracy": float(ver.correct_predictions or 0)
-                    / float(ver.total_predictions or 1)
-                    if ver.total_predictions and ver.total_predictions > 0
-                    else 0,
-                }
-            )
-
-        return {"versions": result_list}
-    except Exception:
-        return {"versions": []}
-
-
-@router.get("/prediction-logs")
-def get_prediction_logs(limit: int = 50, db: Session = Depends(get_db)):
-    """
-    Get recent prediction logs with outcomes.
-    """
-    try:
-        from ..online_learning import PredictionLog
-
-        limit = min(limit, 200)
-
-        logs = (
-            db.query(PredictionLog)
-            .order_by(PredictionLog.created_at.desc())
-            .limit(limit)
-            .all()
-        )
-
-        result_list = []
-        for l in logs:
-            log: Any = l
-            result_list.append(
-                {
-                    "id": int(log.id),
-                    "match_id": int(log.match_id),
-                    "predicted_team1_win_prob": float(
-                        log.predicted_team1_win_prob or 0
-                    ),
-                    "actual_team1_won": bool(log.actual_team1_won)
-                    if log.actual_team1_won is not None
-                    else None,
-                    "was_upset": bool(log.was_upset),
-                }
-            )
-
-        return {"predictions": result_list}
-    except Exception:
-        return {"predictions": []}
-
-
-@router.get("/blending-stats")
-def get_blending_stats(days: int = 30, db: Session = Depends(get_db)):
-    """
-    Get blending statistics.
-    """
-    try:
-        from ..online_learning import PredictionLog
-
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-
-        logs = (
-            db.query(PredictionLog)
-            .filter(
-                PredictionLog.created_at >= cutoff_date,
-                PredictionLog.actual_team1_won.isnot(None),
-            )
-            .all()
-        )
-
-        if not logs:
-            return {"total_matches": 0, "avg_error": 0}
-
-        total = len(logs)
-        avg_error = sum(float(getattr(l, "prediction_error", 0)) for l in logs) / total
-        upsets = sum(1 for l in logs if bool(getattr(l, "was_upset", False)))
-
-        return {
-            "total_matches": int(total),
-            "avg_error": float(avg_error),
-            "upset_count": int(upsets),
-            "days_analyzed": int(days),
-        }
-    except Exception:
-        return {"total_matches": 0, "avg_error": 0}
-
-
-@router.get("/feature-importance")
-def get_feature_importance(db: Session = Depends(get_db)):
-    """
-    Get feature importance rankings.
-    """
-    try:
-        from ..online_learning import FeatureImportance
-
-        features = (
-            db.query(FeatureImportance)
-            .order_by(FeatureImportance.calculated_at.desc())
-            .limit(100)
-            .all()
-        )
-
-        feature_dict: Dict[str, Any] = {}
-        for f in features:
-            f_any: Any = f
-            f_name = str(f_any.feature_name)
-            if f_name and f_name not in feature_dict:
-                feature_dict[f_name] = f_any
-
-        return {
-            "features": [
-                {
-                    "feature_name": str(f.feature_name),
-                    "correlation": float(f.correlation_with_outcome or 0),
-                }
-                for f in sorted(
-                    feature_dict.values(),
-                    key=lambda x: abs(float(x.correlation_with_outcome or 0)),
-                    reverse=True,
-                )
-            ]
-        }
-    except Exception:
-        return {"features": []}
+@router.get("/test")
+def test_adaptive():
+    return {"status": "ok"}
 
 
 @router.get("/feature-suggestions")
 def get_feature_suggestions(db: Session = Depends(get_db)):
     """
-    Get AI-suggested new features.
+    Get all suggested features.
     """
-    try:
-        from ..online_learning import FeatureSuggestion
+    suggestions = (
+        db.query(FeatureSuggestion).order_by(FeatureSuggestion.created_at.desc()).all()
+    )
+    return {
+        "suggestions": [
+            {
+                "id": s.id,
+                "feature_name": s.feature_name,
+                "description": s.description,
+                "status": s.status,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+            }
+            for s in suggestions
+        ]
+    }
 
-        suggestions = (
-            db.query(FeatureSuggestion)
-            .order_by(FeatureSuggestion.correlation_hypothesis.desc())
-            .all()
+
+@router.post("/feature-suggestions")
+def create_feature_suggestion(
+    request: FeatureSuggestionRequest, db: Session = Depends(get_db)
+):
+    """
+    Suggest a new feature for the ML model.
+    """
+    suggestion = FeatureSuggestion(
+        feature_name=request.feature_name, description=request.description
+    )
+    db.add(suggestion)
+    db.commit()
+    return {"status": "success", "message": "Suggestion received"}
+
+
+@router.get("/meta-feedback")
+def get_meta_feedback(db: Session = Depends(get_db)):
+    """
+    Get all active squad theories.
+    """
+    theories = (
+        db.query(MetaFeedback)
+        .filter(MetaFeedback.is_active == 1)
+        .order_by(MetaFeedback.created_at.desc())
+        .all()
+    )
+    return {
+        "theories": [
+            {
+                "id": t.id,
+                "theory": t.theory,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+            for t in theories
+        ]
+    }
+
+
+@router.post("/meta-feedback")
+def create_meta_feedback(request: MetaFeedbackRequest, db: Session = Depends(get_db)):
+    """
+    Submit a new squad theory.
+    """
+    feedback = MetaFeedback(theory=request.theory)
+    db.add(feedback)
+    db.commit()
+    return {"status": "success", "message": "Theory recorded"}
+
+
+@router.post("/backfill-predictions")
+def backfill_predictions(db: Session = Depends(get_db)):
+    """
+    Run predictions on past matches to populate trends.
+    """
+    from ..services.ml_predictor import get_ml_predictor
+
+    predictor = get_ml_predictor()
+    if not predictor.is_trained:
+        raise HTTPException(status_code=400, detail="Model must be trained first")
+
+    matches = db.query(Match).filter(Match.played_at.isnot(None)).all()
+    updated_count = 0
+
+    for match in matches:
+        match_players = (
+            db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
         )
+        t1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
+        t2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]
 
-        return {
-            "suggestions": [
-                {
-                    "id": int(s.id),
-                    "feature_name": str(s.feature_name),
-                    "description": str(s.feature_description),
-                    "extraction_logic": str(s.extraction_logic or ""),
-                    "reasoning": str(s.reasoning or ""),
-                    "expected_correlation": float(s.correlation_hypothesis or 0),
-                    "status": str(s.status),
-                    "created_at": s.created_at.isoformat(),
-                    "tested_at": s.tested_at.isoformat() if s.tested_at else None,
-                    "test_results": str(s.test_results or ""),
-                }
-                for s in suggestions
-            ]
-        }
-    except Exception:
-        return {"suggestions": []}
+        if t1_ids and t2_ids:
+            prediction = predictor.predict(db, t1_ids, t2_ids)
+            match.predicted_team1_win_prob = (
+                prediction["team_1_win_probability"] / 100.0
+            )
+            match.predicted_team2_win_prob = (
+                prediction["team_2_win_probability"] / 100.0
+            )
+            updated_count += 1
+
+    db.commit()
+    return {"status": "success", "message": f"Updated {updated_count} matches"}
 
 
 @router.get("/accuracy-comparison")
 def get_accuracy_comparison(days: int = 90, db: Session = Depends(get_db)):
     """
     Compare prediction accuracy across different rating models with trends.
+
+    Returns both stored prediction accuracy AND cross-validated model accuracy.
     """
+    from ..services.ml_predictor import get_ml_predictor, FeatureExtractor
+    import numpy as np
+
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
     matches = (
@@ -515,13 +228,13 @@ def get_accuracy_comparison(days: int = 90, db: Session = Depends(get_db)):
                 getattr(players.get(getattr(mp, "player_id", 0), Player()), "mmr", 1000)
             )
             for mp in team1_players
-        ) / len(team1_players)
+        )
         t2_ts = sum(
             float(
                 getattr(players.get(getattr(mp, "player_id", 0), Player()), "mmr", 1000)
             )
             for mp in team2_players
-        ) / len(team2_players)
+        )
 
         results["trueskill"]["total"] += 1
         trends_dict[match_date]["trueskill_total"] += 1
@@ -562,31 +275,220 @@ def get_accuracy_comparison(days: int = 90, db: Session = Depends(get_db)):
             else 0
         )
 
-    return {"total_matches": len(matches), "results": results, "trends": trends}
+    # Calculate cross-validated accuracy (more reliable than stored predictions)
+    cv_accuracy = None
+    baseline_accuracy = None
+    cv_training_size = 0
+    try:
+        from sklearn.model_selection import cross_val_score
+        from sklearn.linear_model import LogisticRegression
+
+        # Get all matches for CV
+        all_matches = db.query(Match).filter(Match.played_at.isnot(None)).all()
+
+        X = []
+        y = []
+
+        for match in all_matches:
+            match_players = (
+                db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
+            )
+            team1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
+            team2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]
+
+            if not team1_ids or not team2_ids:
+                continue
+
+            team1_features = FeatureExtractor.extract_team_features(db, team1_ids)
+            team2_features = FeatureExtractor.extract_team_features(db, team2_ids)
+            feature_vector = FeatureExtractor.create_match_features(
+                team1_features, team2_features
+            )
+            X.append(feature_vector)
+
+            team1_won = any(mp.won and mp.team_number == 1 for mp in match_players)
+            y.append(1 if team1_won else 0)
+
+        if len(X) >= 10:
+            X_arr = np.array(X)
+            y_arr = np.array(y)
+
+            # Baseline: higher MMR wins
+            try:
+                mmr_diff_idx = FeatureExtractor.FEATURE_NAMES.index("sum_mmr_diff")
+            except ValueError:
+                # Fallback if renamed back or differently
+                mmr_diff_idx = 1
+
+            baseline_correct = np.sum((X_arr[:, mmr_diff_idx] > 0) == (y_arr == 1))
+            baseline_accuracy = round(baseline_correct / len(y_arr) * 100, 1)
+
+            # Cross-validated model accuracy
+            lr = LogisticRegression(max_iter=1000, C=0.1, random_state=42)
+            cv_scores = cross_val_score(lr, X_arr, y_arr, cv=5)
+            cv_accuracy = round(cv_scores.mean() * 100, 1)
+            cv_training_size = len(X)
+    except Exception as e:
+        logger.warning(f"CV accuracy calculation failed: {e}")
+        cv_training_size = 0
+
+    return {
+        "total_matches": len(matches),
+        "results": results,
+        "trends": trends,
+        "cv_accuracy": cv_accuracy,
+        "baseline_accuracy": baseline_accuracy,
+        "cv_training_size": cv_training_size,
+    }
+
+
+@router.get("/balance-method-success-rate")
+def get_balance_method_success_rate(db: Session = Depends(get_db)):
+    """
+    Get success rate percentages for each balance method.
+
+    Returns prediction accuracy for:
+    - trueskill: Pure TrueSkill MMR comparison
+    - session: Session-weighted MMR (recent matches weighted 3x)
+    - ml-metrics: ML model combining metrics with adaptive weights
+    """
+    from ..services.ml_predictor import get_ml_predictor, FeatureExtractor
+    import numpy as np
+
+    # Get matches from last 90 days for success rate calculation
+    cutoff_date = datetime.utcnow() - timedelta(days=90)
+
+    matches = (
+        db.query(Match)
+        .filter(Match.played_at >= cutoff_date)
+        .order_by(Match.played_at.desc())
+        .all()
+    )
+
+    if not matches:
+        return {
+            "trueskill": {"success_rate": 50.0, "total_matches": 0},
+            "session": {"success_rate": 50.0, "total_matches": 0},
+            "ml-metrics": {"success_rate": 50.0, "total_matches": 0},
+        }
+
+    results: Dict[str, Dict[str, Any]] = {
+        "trueskill": {"correct": 0, "total": 0},
+        "session": {"correct": 0, "total": 0},
+        "ml-metrics": {"correct": 0, "total": 0},
+    }
+
+    for m in matches:
+        match: Any = m
+        match_players = (
+            db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
+        )
+
+        if not match_players:
+            continue
+
+        team1_players = [mp for mp in match_players if mp.team_number == 1]
+        team2_players = [mp for mp in match_players if mp.team_number == 2]
+
+        if not team1_players or not team2_players:
+            continue
+
+        team1_won = any(bool(mp.won) for mp in team1_players)
+
+        # Get player data
+        player_ids = [mp.player_id for mp in match_players]
+        players = {
+            p.id: p for p in db.query(Player).filter(Player.id.in_(player_ids)).all()
+        }
+
+        # TrueSkill: Compare total team MMR
+        t1_mmr = sum(
+            float(players.get(mp.player_id, Player()).mmr or 1000)
+            for mp in team1_players
+        )
+        t2_mmr = sum(
+            float(players.get(mp.player_id, Player()).mmr or 1000)
+            for mp in team2_players
+        )
+
+        results["trueskill"]["total"] += 1
+        if (t1_mmr > t2_mmr) == team1_won:
+            results["trueskill"]["correct"] += 1
+
+        # Session-weighted: Compare total session MMR if available
+        t1_session = sum(
+            float(
+                getattr(
+                    players.get(mp.player_id, Player()), "session_weighted_mmr", None
+                )
+                or players.get(mp.player_id, Player()).mmr
+                or 1000
+            )
+            for mp in team1_players
+        )
+        t2_session = sum(
+            float(
+                getattr(
+                    players.get(mp.player_id, Player()), "session_weighted_mmr", None
+                )
+                or players.get(mp.player_id, Player()).mmr
+                or 1000
+            )
+            for mp in team2_players
+        )
+
+        results["session"]["total"] += 1
+        if (t1_session > t2_session) == team1_won:
+            results["session"]["correct"] += 1
+
+        # ML-metrics: Use stored prediction if available
+        if match.predicted_team1_win_prob is not None:
+            results["ml-metrics"]["total"] += 1
+            if (float(match.predicted_team1_win_prob) > 0.5) == team1_won:
+                results["ml-metrics"]["correct"] += 1
+
+    # Calculate success rate percentages
+    response = {}
+    for method, data in results.items():
+        if data["total"] > 0:
+            success_rate = round((data["correct"] / data["total"]) * 100, 1)
+        else:
+            success_rate = 50.0  # Default to 50% if no data
+        response[method] = {
+            "success_rate": success_rate,
+            "total_matches": data["total"],
+        }
+
+    return response
 
 
 @router.get("/shap-importance")
 def get_shap_importance():
     """
-    Get global SHAP importance from the XGBoost predictor.
+    Get global SHAP importance from ML predictor.
+    Falls back to native feature importance if SHAP is not available.
     """
-    from ..services.xgboost_predictor import get_xgboost_predictor
+    from ..services.ml_predictor import get_ml_predictor, MLPredictor
 
-    xgb = get_xgboost_predictor()
-    if not xgb.is_trained:
+    ml = get_ml_predictor()
+    if not ml.is_trained:
         # Try to load it
-        from ..services.xgboost_predictor import XGBoostPredictor
-
         try:
-            with open(XGBoostPredictor.MODEL_PATH, "rb") as f:
+            with open(MLPredictor.MODEL_PATH, "rb") as f:
                 import pickle
 
                 data = pickle.load(f)
+                # Try SHAP first, fall back to feature_importance
                 shap_importance = data.get("shap_importance", {})
+                if not shap_importance:
+                    shap_importance = data.get("feature_importance", {})
         except Exception:
             shap_importance = {}
     else:
-        shap_importance = xgb.shap_importance
+        # Use SHAP if available, otherwise use feature_importance
+        shap_importance = (
+            ml.shap_importance if ml.shap_importance else ml.feature_importance
+        )
 
     return {
         "features": [
@@ -598,14 +500,14 @@ def get_shap_importance():
     }
 
 
-@router.post("/train-xgboost")
-def train_xgboost_model(db: Session = Depends(get_db)):
+@router.post("/train-ml-model")
+def train_ml_model_endpoint(db: Session = Depends(get_db)):
     """
-    Train the XGBoost prediction model.
+    Train the ML prediction model.
     """
-    from ..services.xgboost_predictor import train_xgboost_model
+    from ..services.ml_predictor import train_ml_model
 
-    return train_xgboost_model(db)
+    return train_ml_model(db)
 
 
 @router.post("/build-order/retrain")
@@ -631,17 +533,21 @@ def get_ml_models_status(db: Session = Depends(get_db)):
     """
     Get status of all ML models.
     """
-    from ..services.xgboost_predictor import get_xgboost_predictor
+    from ..services.ml_predictor import get_ml_predictor
     from ..services.build_order_classifier import get_classifier
 
-    xgb = get_xgboost_predictor()
+    ml = get_ml_predictor()
+    # Auto-load model if not loaded
+    if not ml.is_trained:
+        ml._load_model()
+
     build_clf = get_classifier()
 
     return {
         "xgboost": {
-            "is_trained": bool(xgb.is_trained),
-            "accuracy": round(float(xgb.training_accuracy) * 100, 1)
-            if xgb.is_trained
+            "is_trained": bool(ml.is_trained),
+            "accuracy": round(float(ml.training_accuracy) * 100, 1)
+            if ml.is_trained
             else None,
         },
         "build_classifier": {

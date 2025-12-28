@@ -1,0 +1,6 @@
+{
+  "description": "Player name aliases - maps alternate names to canonical player names",
+  "aliases": {
+    "DemonSlayer": "DragonKing"
+  }
+}

@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Enum as SQLEnum,
     JSON,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 import enum
@@ -35,7 +36,7 @@ class Player(Base):
     - sigma: uncertainty (default 8.333, decreases with more games)
 
     Hybrid MMR System:
-    - mmr: Display MMR based on TrueSkill (1000 + 40*mu)
+    - mmr: Display MMR based on TrueSkill (1000 + 100*mu)
     - hybrid_mmr: Performance-adjusted MMR that accounts for in-game metrics
     - avg_pim: Average Performance Impact Modifier across all games
     """
@@ -80,6 +81,15 @@ class Player(Base):
     is_core_player: Mapped[int] = mapped_column(
         Integer, default=1, nullable=False
     )  # 1 for core, 0 for outsider
+    is_ai: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )  # 1 for AI/Computer player, 0 for human
+
+    # Session-weighted MMR for faster adaptation (ML Balancing)
+    session_weighted_mmr: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    last_session_weight_update: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
 
     # Average impact scores (calculated from all matches)
     avg_economic_score: Mapped[float] = mapped_column(Float, default=0.0)
@@ -113,7 +123,7 @@ class Player(Base):
 
     # Relationships
     match_participations: Mapped[List["MatchPlayer"]] = relationship(
-        "MatchPlayer", back_populates="player"
+        "MatchPlayer", back_populates="player", passive_deletes=True
     )
 
     @property
@@ -165,6 +175,7 @@ class GameMode(str, enum.Enum):
     """Enum for different game modes."""
 
     # Even team modes
+    ONE_V_ONE = "1v1"
     TWO_V_TWO = "2v2"
     THREE_V_THREE = "3v3"
     FOUR_V_FOUR = "4v4"
@@ -226,10 +237,13 @@ class Match(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )  # Tracks when match data was re-uploaded/updated
 
     # Relationships
     participants: Mapped[List["MatchPlayer"]] = relationship(
-        "MatchPlayer", back_populates="match"
+        "MatchPlayer", back_populates="match", passive_deletes=True
     )
 
 
@@ -237,18 +251,30 @@ class MatchPlayer(Base):
     """
     Links players to matches with their performance details.
     This is a many-to-many relationship table with additional attributes.
+
+    Note: Each player can only appear once per match (enforced by unique constraint).
     """
 
     __tablename__ = "match_players"
+    __table_args__ = (
+        # Ensure a player can only have one entry per match
+        UniqueConstraint("match_id", "player_id", name="uq_match_player"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
-    # Foreign keys
+    # Foreign keys - together form a unique constraint
     match_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("matches.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("matches.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     player_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("players.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("players.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # Match details
@@ -267,24 +293,43 @@ class MatchPlayer(Base):
     player: Mapped["Player"] = relationship(
         "Player", back_populates="match_participations"
     )
+    performance_features: Mapped[Optional["PerformanceFeatures"]] = relationship(
+        "PerformanceFeatures",
+        back_populates="match_player",
+        uselist=False,
+        passive_deletes=True,
+    )
+    metrics: Mapped[Optional["PlayerMatchMetrics"]] = relationship(
+        "PlayerMatchMetrics",
+        back_populates="match_player",
+        uselist=False,
+        passive_deletes=True,
+    )
+
+    @property
+    def mmr_before(self) -> float:
+        """MMR before this match."""
+        from .rating_system import RatingSystem
+
+        return RatingSystem.calculate_display_mmr(self.mu_before)
+
+    @property
+    def mmr_after(self) -> float:
+        """MMR after this match."""
+        from .rating_system import RatingSystem
+
+        return RatingSystem.calculate_display_mmr(self.mu_after)
 
     @property
     def mmr_change(self) -> float:
         """
         Calculate the MMR change from this match.
 
-        Uses the display MMR formula (1000 + 40*mu) to match what users see
+        Uses the display MMR formula from RatingSystem to match what users see
         in Player.mmr. This ensures consistency between displayed ratings
         and match history.
-
-        Note: Uses display MMR (not conservative) because users expect the
-        change to match the difference they see in their profile.
         """
-        from .rating_system import RatingSystem
-
-        mmr_before = RatingSystem.calculate_display_mmr(self.mu_before)
-        mmr_after = RatingSystem.calculate_display_mmr(self.mu_after)
-        return mmr_after - mmr_before
+        return self.mmr_after - self.mmr_before
 
 
 class PlayerMatchMetrics(Base):
@@ -299,7 +344,11 @@ class PlayerMatchMetrics(Base):
 
     # Foreign key to MatchPlayer
     match_player_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("match_players.id"), nullable=False, unique=True, index=True
+        Integer,
+        ForeignKey("match_players.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
     )
 
     # Economic metrics
@@ -373,6 +422,11 @@ class PlayerMatchMetrics(Base):
     # Only stores seconds where damage occurred - typically 20-100 events per game
     # Key = game second, Value = damage dealt that second
 
+    # Relationship
+    match_player: Mapped["MatchPlayer"] = relationship(
+        "MatchPlayer", back_populates="metrics"
+    )
+
 
 class PlayerSynergy(Base):
     """
@@ -385,10 +439,16 @@ class PlayerSynergy(Base):
 
     # Player pair (always store with player1_id < player2_id for consistency)
     player1_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("players.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("players.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     player2_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("players.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("players.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # Synergy metrics
@@ -495,7 +555,11 @@ class PerformanceFeatures(Base):
 
     # Foreign key to MatchPlayer
     match_player_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("match_players.id"), nullable=False, unique=True, index=True
+        Integer,
+        ForeignKey("match_players.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
     )
 
     # =========================================================================
@@ -617,7 +681,7 @@ class PerformanceFeatures(Base):
 
     # Relationship
     match_player: Mapped["MatchPlayer"] = relationship(
-        "MatchPlayer", backref="performance_features"
+        "MatchPlayer", back_populates="performance_features"
     )
 
 
@@ -696,7 +760,7 @@ class Achievement(Base):
 
     # Relationships
     player_achievements: Mapped[List["PlayerAchievement"]] = relationship(
-        "PlayerAchievement", back_populates="achievement"
+        "PlayerAchievement", back_populates="achievement", passive_deletes=True
     )
 
 
@@ -711,10 +775,16 @@ class PlayerAchievement(Base):
 
     # Foreign keys
     player_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("players.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("players.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     achievement_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("achievements.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("achievements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # When earned
@@ -724,7 +794,7 @@ class PlayerAchievement(Base):
 
     # Context (what triggered it)
     trigger_match_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("matches.id"), nullable=True
+        Integer, ForeignKey("matches.id", ondelete="CASCADE"), nullable=True
     )
     trigger_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
@@ -749,10 +819,16 @@ class PlayerRivalry(Base):
 
     # Player pair (always store with player1_id < player2_id for consistency)
     player1_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("players.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("players.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     player2_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("players.id"), nullable=False, index=True
+        Integer,
+        ForeignKey("players.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # Games against each other (on opposite teams)
@@ -766,7 +842,7 @@ class PlayerRivalry(Base):
 
     # Last meeting
     last_match_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("matches.id"), nullable=True
+        Integer, ForeignKey("matches.id", ondelete="CASCADE"), nullable=True
     )
     last_match_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -789,6 +865,97 @@ class PlayerRivalry(Base):
 # ============================================================================
 # Achievement Definitions - The Fun Part!
 # ============================================================================
+
+
+class FeatureSuggestion(Base):
+    """
+    Suggested new features for the ML model.
+    """
+
+    __tablename__ = "feature_suggestions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    feature_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending"
+    )  # pending, reviewed, implemented
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MetaFeedback(Base):
+    """
+    User feedback or "squad theories" about match dynamics.
+    """
+
+    __tablename__ = "meta_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    theory: Mapped[str] = mapped_column(String(500), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Integer, default=1
+    )  # 1 for active, 0 for inactive
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ============================================================================
+# ML Balancing System Models
+# ============================================================================
+
+
+class GroupSynergy(Base):
+    """
+    Cache duo/trio synergy scores for ML balancing.
+
+    Unlike PlayerSynergy which tracks pairs of players via foreign keys,
+    this table uses a composite string key (e.g., "1,2,3") to efficiently
+    cache synergy for any group size (duos, trios, etc.).
+    """
+
+    __tablename__ = "player_synergy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    player_ids_key: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    player_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    matches_played: Mapped[int] = mapped_column(Integer, default=0)
+    matches_won: Mapped[int] = mapped_column(Integer, default=0)
+    win_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    synergy_score: Mapped[float] = mapped_column(Float, default=0.0)
+    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ComponentAccuracy(Base):
+    """
+    Track prediction accuracy by component across all history.
+
+    Uses Exponential Moving Average (EMA) to weight recent predictions
+    more heavily while still considering historical performance.
+    """
+
+    __tablename__ = "component_accuracy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    component_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    predictions_correct: Mapped[int] = mapped_column(Integer, default=0)
+    predictions_total: Mapped[int] = mapped_column(Integer, default=0)
+    accuracy: Mapped[float] = mapped_column(Float, default=0.5)
+    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MLConfig(Base):
+    """
+    Store ML configuration like recommended weights from regression analysis.
+
+    Key-value store for ML system configuration parameters.
+    """
+
+    __tablename__ = "ml_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    config_key: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    config_value: Mapped[str] = mapped_column(String, nullable=False)
+    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 
 ACHIEVEMENT_DEFINITIONS = [
     # =======================================================================

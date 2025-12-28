@@ -54,11 +54,14 @@ const HexagonalStat: React.FC<HexagonalStatProps> = ({
         clipPath="polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)"
         opacity={0.1}
         filter="blur(20px)"
-        animation="pulse 2s ease-in-out infinite"
+        animation="pulse 5s ease-in-out infinite"
         sx={{
           '@keyframes pulse': {
             '0%, 100%': { opacity: 0.1, transform: 'translate(-50%, -50%) scale(1)' },
-            '50%': { opacity: 0.2, transform: 'translate(-50%, -50%) scale(1.05)' },
+            '50%': { opacity: 0.15, transform: 'translate(-50%, -50%) scale(1.02)' },
+          },
+          '@media (prefers-reduced-motion: reduce)': {
+            animation: 'none',
           },
         }}
       />

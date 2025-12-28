@@ -256,6 +256,29 @@ ui_validation = await Task(
 - `docs-manager`: Generates documentation from design specifications
 - `quality-gate`: Ensures design consistency in implementation
 
+## Recommended MCPs for UAT and Lifecycle Management
+
+Beyond the core servers, the following MCPs are recommended for enhanced User Acceptance Testing (UAT) and project lifecycle management.
+
+### GitHub Integration (Official)
+- **Purpose**: Integrated issue tracking and repository management.
+- **UAT Benefit**: Allows agents to automatically create, label, and track UAT issues/bugs directly in the GitHub repository as they are discovered.
+- **Setup**: `npx -y @modelcontextprotocol/server-github`
+
+### API Lab
+- **Purpose**: Advanced API testing and response validation.
+- **UAT Benefit**: Enables deep validation of complex JSON responses (like Hybrid MMR and PIM metrics), ensuring backend-to-frontend data integrity.
+- **Setup**: `npx -y api-lab-mcp`
+
+### YetiBrowser
+- **Purpose**: Visual regression and DOM diffing.
+- **UAT Benefit**: Specifically useful for detecting unintended UI changes in charts and tactical dashboards that traditional E2E tests might miss.
+- **Setup**: `npx -y yeti-browser-mcp`
+
+### UUV (User-centric Universal Validator)
+- **Purpose**: Human-readable E2E workflow validation.
+- **UAT Benefit**: Allows defining test scenarios in plain language (e.g., "As a player, when I upload a replay, I should see a SHAP advantage card"), which is ideal for UAT stakeholder alignment.
+
 ## Integration Workflows
 
 ### Complete Design-to-Code Workflow

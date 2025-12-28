@@ -37,6 +37,7 @@ def _player_to_response(p: "Player") -> "PlayerResponse":
         win_rate=p.win_rate,
         favorite_race=p.favorite_race,
         is_core_player=bool(p.is_core_player),
+        is_ai=bool(p.is_ai),
         last_played=p.last_played,
     )
 
@@ -60,6 +61,7 @@ class PlayerResponse(BaseModel):
     win_rate: float
     favorite_race: str
     is_core_player: bool
+    is_ai: bool = False
     last_played: Optional[datetime]
 
     class Config:
@@ -83,6 +85,7 @@ class PlayerDetailResponse(BaseModel):
     losses: int
     win_rate: float
     is_core_player: bool
+    is_ai: bool = False
     last_played: Optional[datetime]
     race_stats: dict
     recent_matches: List[dict]
@@ -172,7 +175,10 @@ def get_player_rankings(
 
 @router.get("/{player_id}", response_model=PlayerDetailResponse)
 def get_player_details(
-    player_id: int, recent_matches_limit: int = 10, db: Session = Depends(get_db)
+    player_id: int,
+    recent_matches_limit: int = 10,
+    recent_matches_offset: int = 0,
+    db: Session = Depends(get_db),
 ):
     """
     Get detailed information about a specific player.
@@ -180,6 +186,7 @@ def get_player_details(
     Args:
         player_id: Player ID
         recent_matches_limit: Number of recent matches to include
+        recent_matches_offset: Offset for recent matches pagination
         db: Database session
 
     Returns:
@@ -205,6 +212,7 @@ def get_player_details(
         db.query(MatchPlayer)
         .filter(MatchPlayer.player_id == player_id)
         .order_by(MatchPlayer.id.desc())
+        .offset(recent_matches_offset)
         .limit(recent_matches_limit)
         .all()
     )

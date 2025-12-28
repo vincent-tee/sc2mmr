@@ -1,17 +1,17 @@
 /**
- * MMR Ticker Component
- * Horizontal scrolling ticker showing recent rating changes
- * Uses warm color scheme with shield (green) for gains and accent (red) for losses
+ * MMR Notification Bar Component
+ * Static notification showing the most recent significant rating change
+ * Replaces scrolling ticker for better UX (less cognitive load)
  */
 import React, { useMemo } from 'react';
 import {
   Box,
   HStack,
   Text,
-  Flex,
+  Icon,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { FiTrendingUp, FiTrendingDown } from 'react-icons/fi';
+import { FiTrendingUp, FiTrendingDown, FiActivity } from 'react-icons/fi';
 
 interface MMRChange {
   playerName: string;
@@ -25,40 +25,38 @@ interface MMRTickerProps {
   isLoading?: boolean;
 }
 
-const MMRTicker: React.FC<MMRTickerProps> = ({ changes }) => {
+const MMRTicker: React.FC<MMRTickerProps> = ({ changes, isLoading }) => {
   // Style values
-  const bgColor = useColorModeValue('white', 'rgba(13, 17, 33, 0.8)');
+  const bgColor = useColorModeValue('white', 'rgba(13, 17, 33, 0.9)');
   const borderColor = useColorModeValue('gray.200', 'brand.500');
-  const textColor = useColorModeValue('gray.700', 'gray.100');
+  const textColor = useColorModeValue('gray.600', 'gray.300');
+  const positiveColor = useColorModeValue('shield.600', 'shield.400');
+  const negativeColor = useColorModeValue('accent.600', 'accent.400');
 
-  // Duplicate ticker content for seamless loop
-  const doubledChanges = useMemo(() => {
-    if (changes.length === 0) return [];
-    return [...changes, ...changes];
+  // Find the most significant change (largest absolute value)
+  const topChange = useMemo(() => {
+    if (changes.length === 0) return null;
+    return changes.reduce((max, current) =>
+      Math.abs(current.change) > Math.abs(max.change) ? current : max
+    , changes[0]);
   }, [changes]);
 
-  // Format change display
-  const formatChange = (change: number): string => {
-    const sign = change > 0 ? '+' : '';
-    return `${sign}${change}`;
+  // Format time ago
+  const formatTimeAgo = (timestamp: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - timestamp.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
   };
 
-  // Get color based on positive/negative change
-  const getChangeColor = (change: number) => {
-    if (change > 0) {
-      return {
-        color: 'shield.400', // Gold/green for positive
-        icon: FiTrendingUp,
-      };
-    }
-    return {
-      color: 'accent.400', // Red for negative
-      icon: FiTrendingDown,
-    };
-  };
-
-  // Handle empty state
-  if (changes.length === 0) {
+  // Handle loading state
+  if (isLoading) {
     return (
       <Box
         bg={bgColor}
@@ -68,127 +66,84 @@ const MMRTicker: React.FC<MMRTickerProps> = ({ changes }) => {
         py={2}
         display={{ base: 'none', md: 'block' }}
       >
-        <Text fontSize="xs" color="gray.500" textAlign="center">
-          Waiting for rating changes...
-        </Text>
+        <HStack justify="center" spacing={2}>
+          <Icon as={FiActivity} color="gray.500" />
+          <Text fontSize="xs" color="gray.500">
+            Loading activity...
+          </Text>
+        </HStack>
       </Box>
     );
   }
+
+  // Handle empty state
+  if (!topChange || changes.length === 0) {
+    return (
+      <Box
+        bg={bgColor}
+        borderBottom="1px"
+        borderColor={borderColor}
+        px={4}
+        py={2}
+        display={{ base: 'none', md: 'block' }}
+      >
+        <HStack justify="center" spacing={2}>
+          <Icon as={FiActivity} color="gray.500" />
+          <Text fontSize="xs" color="gray.500">
+            Waiting for rating changes...
+          </Text>
+        </HStack>
+      </Box>
+    );
+  }
+
+  const isPositive = topChange.change > 0;
+  const changeColor = isPositive ? positiveColor : negativeColor;
+  const ChangeIcon = isPositive ? FiTrendingUp : FiTrendingDown;
+  const changeSign = isPositive ? '+' : '';
 
   return (
     <Box
       bg={bgColor}
       borderBottom="1px"
       borderColor={borderColor}
-      overflow="hidden"
-      display={{ base: 'none', md: 'block' }}
+      px={4}
       py={2}
+      display={{ base: 'none', md: 'block' }}
+      sx={{
+        '@media (prefers-reduced-motion: reduce)': {
+          animation: 'none !important',
+        },
+      }}
     >
-      <Box
-        position="relative"
-        width="100%"
-        maxW="100%"
-        overflow="hidden"
-      >
-        {/* Gradient fade effect on left */}
-        <Box
-          position="absolute"
-          left={0}
-          top={0}
-          bottom={0}
-          width="60px"
-          background="linear-gradient(to right, rgba(13, 17, 33, 0.95), transparent)"
-          zIndex={10}
-          pointerEvents="none"
-        />
-
-        {/* Gradient fade effect on right */}
-        <Box
-          position="absolute"
-          right={0}
-          top={0}
-          bottom={0}
-          width="60px"
-          background="linear-gradient(to left, rgba(13, 17, 33, 0.95), transparent)"
-          zIndex={10}
-          pointerEvents="none"
-        />
-
-        {/* Scrolling ticker container */}
-        <Flex
-          sx={{
-            animation: `mmrTickerScroll ${Math.max(8, changes.length * 0.8)}s linear infinite`,
-            '@keyframes mmrTickerScroll': {
-              '0%': {
-                transform: 'translateX(0)',
-              },
-              '100%': {
-                transform: `translateX(-50%)`,
-              },
-            },
-          }}
-          gap={6}
-          px={4}
-          whiteSpace="nowrap"
-        >
-          {doubledChanges.map((change, idx) => {
-            const { color: changeColor, icon: Icon } = getChangeColor(change.change);
-            const uniqueKey = `${change.id || `${change.playerName}-${idx}`}`;
-
-            return (
-              <HStack
-                key={uniqueKey}
-                spacing={1}
-                flexShrink={0}
-                px={2}
-                py={1}
-                borderRadius="md"
-                bg={useColorModeValue('gray.100', 'space.700')}
-                border="1px solid"
-                borderColor={useColorModeValue('gray.200', 'space.600')}
-                transition="all 0.2s"
-                _hover={{
-                  borderColor: changeColor,
-                  boxShadow: `0 0 8px rgba(${
-                    change.change > 0
-                      ? '245, 158, 11, 0.3' // shield gold
-                      : '239, 68, 68, 0.3' // accent red
-                  })`,
-                }}
-              >
-                {/* Change indicator icon */}
-                <Icon
-                  size={14}
-                  color={`var(--chakra-colors-${changeColor})`}
-                  style={{ flexShrink: 0 }}
-                />
-
-                {/* Player name */}
-                <Text
-                  fontSize="xs"
-                  fontWeight="medium"
-                  color={textColor}
-                  fontFamily="heading"
-                  minW="max-content"
-                >
-                  {change.playerName}
-                </Text>
-
-                {/* MMR change value */}
-                <Text
-                  fontSize="xs"
-                  fontWeight="bold"
-                  color={changeColor}
-                  minW="max-content"
-                  letterSpacing="tight"
-                >
-                  {formatChange(change.change)}
-                </Text>
-              </HStack>
-            );
-          })}
-        </Flex>
-      </Box>
+      <HStack justify="space-between" maxW="container.xl" mx="auto">
+        <HStack spacing={3}>
+          <Icon
+            as={ChangeIcon}
+            color={changeColor}
+            boxSize={4}
+          />
+          <Text fontSize="sm" color={textColor}>
+            <Text as="span" fontWeight="bold" color="gray.100">
+              {topChange.playerName}
+            </Text>
+            {' '}
+            {isPositive ? 'gained' : 'lost'}
+            {' '}
+            <Text as="span" fontWeight="bold" color={changeColor}>
+              {changeSign}{Math.abs(topChange.change)} MMR
+            </Text>
+          </Text>
+        </HStack>
+        <HStack spacing={4}>
+          <Text fontSize="xs" color="gray.500">
+            {formatTimeAgo(topChange.timestamp)}
+          </Text>
+          <Text fontSize="xs" color="gray.600">
+            {changes.length} recent changes
+          </Text>
+        </HStack>
+      </HStack>
     </Box>
   );
 };

@@ -8,7 +8,7 @@ sqlalchemy==2.0.23
 alembic==1.12.1
 
 # SC2 Replay parsing
-sc2reader==1.9.0
+sc2reader==1.8.0
 
 # Rating system
 trueskill==0.4.5
@@ -25,6 +25,7 @@ shap>=0.43.0
 python-dateutil==2.8.2
 pydantic==2.5.0
 pydantic-settings==2.1.0
+watchdog==3.0.0
 
 # Testing
 pytest==7.4.3

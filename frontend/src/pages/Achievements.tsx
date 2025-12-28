@@ -17,7 +17,6 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
-  useColorModeValue,
   Skeleton,
   Tooltip,
   Tabs,
@@ -28,7 +27,7 @@ import {
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
-import { FiSearch, FiClock } from 'react-icons/fi';
+import { FiSearch, FiClock, FiAward, FiStar, FiActivity } from 'react-icons/fi';
 import { achievementsApi } from '../api/achievements';
 import {
   Achievement,
@@ -40,7 +39,11 @@ import {
   getCategoryInfo,
   RecentAchievementEntry,
 } from '../types/achievements';
-import { colors, layout } from '../theme/tokens';
+
+// Design tokens
+const cardBg = 'space.800';
+const borderColor = 'space.900';
+const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
 // =============================================================================
 // Animations
@@ -68,13 +71,12 @@ interface AchievementCardProps {
 const AchievementCard: React.FC<AchievementCardProps> = React.memo(({ achievement, index }) => {
   const rarityColors = RARITY_COLORS[achievement.rarity];
   const categoryInfo = getCategoryInfo(achievement.category);
-  const cardBg = useColorModeValue('gray.800', 'space.800');
 
   return (
     <Tooltip
       label={
         <Box p={2}>
-          <Text fontWeight="bold">{achievement.name}</Text>
+          <Text fontWeight="bold" fontFamily="heading">{achievement.name}</Text>
           <Text fontSize="sm" color="gray.300">{achievement.description}</Text>
           {achievement.flavor_text && (
             <Text fontSize="xs" color="gray.400" fontStyle="italic" mt={1}>
@@ -89,36 +91,23 @@ const AchievementCard: React.FC<AchievementCardProps> = React.memo(({ achievemen
       }
       placement="top"
       hasArrow
-      bg="gray.700"
+      bg="space.700"
       borderRadius="md"
     >
       <Box
-        bg={cardBg}
-        borderRadius="lg"
-        border="2px solid"
+        bg="space.800"
+        borderRadius="xl"
+        border="3px solid"
         borderColor={rarityColors.border}
         p={4}
         position="relative"
         overflow="hidden"
         cursor="pointer"
-        transition="all 0.3s"
+        transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
         animation={`${slideIn} 0.3s ease-out ${index * 0.05}s both`}
         _hover={{
-          transform: 'translateY(-4px) scale(1.02)',
-          boxShadow: rarityColors.glow,
-          borderColor: rarityColors.border,
-        }}
-        sx={{
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '3px',
-            background: `linear-gradient(90deg, transparent, ${rarityColors.border}, transparent)`,
-            animation: `${rarityGlow} 2s ease-in-out infinite`,
-          },
+          transform: 'translateY(-4px)',
+          boxShadow: brandShadow,
         }}
       >
         {/* Icon */}
@@ -130,8 +119,7 @@ const AchievementCard: React.FC<AchievementCardProps> = React.memo(({ achievemen
           mx="auto"
           mb={3}
           bg={rarityColors.bg}
-          borderRadius="lg"
-          clipPath={layout.hexagonClipPath}
+          borderRadius="xl"
           boxShadow={rarityColors.glow}
         >
           <Text fontSize="2xl">{achievement.icon || '🎖️'}</Text>
@@ -169,7 +157,6 @@ interface RecentAchievementItemProps {
 
 const RecentAchievementItem: React.FC<RecentAchievementItemProps> = React.memo(({ entry }) => {
   const rarityColors = RARITY_COLORS[entry.rarity];
-  const cardBg = useColorModeValue('gray.800', 'space.800');
 
   const timeAgo = useMemo(() => {
     const date = new Date(entry.earned_at);
@@ -187,12 +174,14 @@ const RecentAchievementItem: React.FC<RecentAchievementItemProps> = React.memo((
 
   return (
     <HStack
-      bg={cardBg}
+      bg="space.800"
       p={3}
-      borderRadius="md"
-      border="1px solid"
-      borderColor="whiteAlpha.100"
+      borderRadius="xl"
+      border="2px solid"
+      borderColor="space.700"
       spacing={3}
+      transition="all 0.2s"
+      _hover={{ borderColor: rarityColors.border, transform: 'translateX(4px)' }}
     >
       <Box
         w="40px"
@@ -285,7 +274,7 @@ const Achievements: React.FC = () => {
   const rarities: AchievementRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 
   return (
-    <Box bg={bgColor} minH="100vh" py={8}>
+    <Box bg="space.900" minH="100vh" py={8}>
       <Container maxW="container.xl">
         <VStack spacing={8} align="stretch">
           {/* Header */}
@@ -294,10 +283,9 @@ const Achievements: React.FC = () => {
               size="2xl"
               fontFamily="heading"
               color="brand.400"
-              textShadow={`0 0 30px ${colors.brand[500]}60`}
               letterSpacing="wider"
             >
-              🎖️ ACHIEVEMENT CATALOG
+              🎖️ Achievements
             </Heading>
             <Text color="gray.500" mt={2}>
               {achievements?.length || 0} achievements to earn
@@ -328,9 +316,12 @@ const Achievements: React.FC = () => {
                       placeholder="Search achievements..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      bg={cardBg}
-                      border="1px solid"
-                      borderColor="whiteAlpha.200"
+                      bg="space.800"
+                      border="2px solid"
+                      borderColor="space.700"
+                      fontFamily="heading"
+                      _hover={{ borderColor: 'brand.500' }}
+                      _focus={{ borderColor: 'brand.500' }}
                     />
                   </InputGroup>
 
@@ -338,9 +329,11 @@ const Achievements: React.FC = () => {
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value as AchievementCategory | 'all')}
                     maxW={{ base: '100%', md: '200px' }}
-                    bg={cardBg}
-                    border="1px solid"
-                    borderColor="whiteAlpha.200"
+                    bg="space.800"
+                    border="2px solid"
+                    borderColor="space.700"
+                    fontFamily="heading"
+                    _hover={{ borderColor: 'brand.500' }}
                   >
                     <option value="all">All Categories</option>
                     {categories.map((cat) => (
@@ -354,9 +347,11 @@ const Achievements: React.FC = () => {
                     value={selectedRarity}
                     onChange={(e) => setSelectedRarity(e.target.value as AchievementRarity | 'all')}
                     maxW={{ base: '100%', md: '200px' }}
-                    bg={cardBg}
-                    border="1px solid"
-                    borderColor="whiteAlpha.200"
+                    bg="space.800"
+                    border="2px solid"
+                    borderColor="space.700"
+                    fontFamily="heading"
+                    _hover={{ borderColor: 'brand.500' }}
                   >
                     <option value="all">All Rarities</option>
                     {rarities.map((rarity) => (

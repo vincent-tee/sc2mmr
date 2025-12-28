@@ -1,7 +1,8 @@
 /**
  * Rating System Transparency Page
- * Explains how the MMR system works and shows configuration
+ * Explains how the MMR system works with the Friend Squad aesthetic.
  */
+import React from 'react';
 import {
   Box,
   Container,
@@ -9,9 +10,6 @@ import {
   Text,
   VStack,
   HStack,
-  Card,
-  CardHeader,
-  CardBody,
   Stat,
   StatLabel,
   StatNumber,
@@ -19,6 +17,9 @@ import {
   Code,
   Divider,
   Badge,
+  SimpleGrid,
+  Grid,
+  GridItem,
   Table,
   Thead,
   Tbody,
@@ -30,7 +31,6 @@ import {
   TabPanels,
   Tab,
   TabPanel,
-  useColorModeValue,
   Alert,
   AlertIcon,
   AlertTitle,
@@ -43,6 +43,7 @@ import {
   AccordionButton,
   AccordionPanel,
   AccordionIcon,
+  Icon,
 } from '@chakra-ui/react';
 import {
   FiInfo,
@@ -51,797 +52,210 @@ import {
   FiActivity,
   FiTarget,
   FiClock,
+  FiZap,
 } from 'react-icons/fi';
 
 const RatingSystem: React.FC = () => {
-  const cardBg = useColorModeValue('white', 'gray.800');
-  const codeBg = useColorModeValue('gray.100', 'gray.900');
+  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
+  const cardBg = 'space.800';
+  const borderColor = 'space.700';
 
   return (
-    <Container maxW="container.xl" py={8}>
-      <VStack spacing={8} align="stretch">
-        {/* Header */}
-        <Box>
-          <Heading size="xl" mb={2}>
-            Rating System Transparency
-          </Heading>
-          <Text color="gray.500" fontSize="lg">
-            Understanding how your MMR is calculated and updated
-          </Text>
-        </Box>
+    <Box bg="space.900" minH="100vh" pb={10}>
+      <Container maxW="container.xl" py={8}>
+        <VStack spacing={8} align="stretch">
+          {/* Header */}
+          <Box>
+            <HStack spacing={3} mb={2}>
+              <Icon as={FiTarget} boxSize={8} color="brand.500" />
+              <Heading size="xl" fontFamily="heading" letterSpacing="wider">
+                Rating System
+              </Heading>
+            </HStack>
+            <Text color="gray.400" fontSize="lg">
+              Understanding how your skill is tracked and balanced.
+            </Text>
+          </Box>
 
-        {/* Overview Alert */}
-        <Alert
-          status="info"
-          variant="left-accent"
-          borderRadius="md"
-          flexDirection="column"
-          alignItems="start"
-        >
-          <HStack mb={2}>
-            <AlertIcon />
-            <AlertTitle>TrueSkill-Based Rating System</AlertTitle>
-          </HStack>
-          <AlertDescription>
-            This system uses Microsoft's TrueSkill algorithm adapted for team-based StarCraft 2 matches.
-            Your skill is represented as a probability distribution (mean and uncertainty) rather than a single number.
-          </AlertDescription>
-        </Alert>
+          {/* Overview Alert */}
+          <Alert
+            status="info"
+            bg="space.800"
+            borderLeft="4px solid"
+            borderColor="accent.400"
+            borderRadius="xl"
+            boxShadow={brandShadow}
+            p={6}
+          >
+            <AlertIcon color="accent.400" />
+            <Box>
+              <AlertTitle color="gray.100" mb={1}>TrueSkill™ Logic</AlertTitle>
+              <AlertDescription color="gray.400">
+                We use the TrueSkill algorithm to track skill. Your rating isn't just a number—it's a probability curve that accounts for your consistency and experience.
+              </AlertDescription>
+            </Box>
+          </Alert>
 
-        {/* Main Tabs */}
-        <Tabs variant="enclosed" colorScheme="brand">
-          <TabList>
-            <Tab>
-              <HStack>
-                <FiInfo />
-                <Text>How It Works</Text>
-              </HStack>
-            </Tab>
-            <Tab>
-              <HStack>
-                <FiActivity />
-                <Text>MMR Formula</Text>
-              </HStack>
-            </Tab>
-            <Tab>
-              <HStack>
-                <FiTrendingUp />
-                <Text>Rating Changes</Text>
-              </HStack>
-            </Tab>
-            <Tab>
-              <HStack>
-                <FiTarget />
-                <Text>Configuration</Text>
-              </HStack>
-            </Tab>
-          </TabList>
+          {/* Main Content Tabs */}
+          <Tabs variant="soft-rounded" colorScheme="brand">
+            <TabList bg="space.800" p={1.5} borderRadius="full" border="2px solid" borderColor="space.700">
+              <Tab borderRadius="full" px={6} fontWeight="bold">How It Works</Tab>
+              <Tab borderRadius="full" px={6} fontWeight="bold">The Formula</Tab>
+              <Tab borderRadius="full" px={6} fontWeight="bold">MMR Changes</Tab>
+              <Tab borderRadius="full" px={6} fontWeight="bold">Configuration</Tab>
+            </TabList>
 
-          <TabPanels>
-            {/* How It Works Tab */}
-            <TabPanel>
-              <VStack spacing={6} align="stretch">
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">Core Concepts</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <VStack spacing={4} align="stretch">
+            <TabPanels pt={6}>
+              {/* How It Works */}
+              <TabPanel p={0}>
+                <VStack spacing={6} align="stretch">
+                  <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={6}>
+                    <Heading size="md" mb={6} fontFamily="heading">Core Concepts</Heading>
+                    <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={6}>
                       <Box>
-                        <Heading size="sm" mb={2}>
-                          <HStack>
-                            <FiCheckCircle color="green" />
-                                <Text>Mu (μ) - Skill Estimate</Text>
-                          </HStack>
-                        </Heading>
-                        <Text color="gray.600">
-                          Represents the system's best guess at your true skill level.
-                          Starts at <Code>25.0</Code> for new players and adjusts based on match results.
+                        <HStack mb={2}>
+                          <Icon as={FiCheckCircle} color="green.400" />
+                          <Text fontWeight="bold">Skill (μ)</Text>
+                        </HStack>
+                        <Text fontSize="sm" color="gray.400">
+                          The system's best guess at your true skill level. Increases when you win against strong opponents.
                         </Text>
                       </Box>
-
-                      <Divider />
-
                       <Box>
-                        <Heading size="sm" mb={2}>
-                          <HStack>
-                            <FiActivity color="orange" />
-                            <Text>Sigma (σ) - Uncertainty</Text>
-                          </HStack>
-                        </Heading>
-                        <Text color="gray.600">
-                          Measures how confident the system is about your skill estimate.
-                          Starts at <Code>8.333</Code> for new players and decreases as you play more games.
-                          Lower sigma = more certain about your skill level.
+                        <HStack mb={2}>
+                          <Icon as={FiActivity} color="orange.400" />
+                          <Text fontWeight="bold">Uncertainty (σ)</Text>
+                        </HStack>
+                        <Text fontSize="sm" color="gray.400">
+                          How much the system trusts its guess. New players have high uncertainty; veterans have low.
                         </Text>
                       </Box>
-
-                      <Divider />
-
                       <Box>
-                        <Heading size="sm" mb={2}>
-                          <HStack>
-                            <FiTarget color="blue" />
-                            <Text>Displayed MMR</Text>
-                          </HStack>
-                        </Heading>
-                        <Text color="gray.600">
-                          The MMR number you see combines both mu and sigma using a scaled formula
-                          to provide an intuitive rating in the range of ~800-2200.
+                        <HStack mb={2}>
+                          <Icon as={FiTarget} color="brand.400" />
+                          <Text fontWeight="bold">Visible MMR</Text>
+                        </HStack>
+                        <Text fontSize="sm" color="gray.400">
+                          A conservative estimate that combines skill and uncertainty to give you a competitive rank.
                         </Text>
                       </Box>
-                    </VStack>
-                  </CardBody>
-                </Card>
-
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">Why This System?</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <List spacing={3}>
-                      <ListItem>
-                        <HStack align="start">
-                          <ListIcon as={FiCheckCircle} color="green.500" mt={1} />
-                          <Box>
-                            <Text fontWeight="semibold">Handles Team Games Naturally</Text>
-                            <Text fontSize="sm" color="gray.600">
-                              TrueSkill was designed for team-based games and handles 2v2-5v5 matches effectively
-                            </Text>
-                          </Box>
-                        </HStack>
-                      </ListItem>
-
-                      <ListItem>
-                        <HStack align="start">
-                          <ListIcon as={FiCheckCircle} color="green.500" mt={1} />
-                          <Box>
-                            <Text fontWeight="semibold">Uncertainty Tracking</Text>
-                            <Text fontSize="sm" color="gray.600">
-                              New players start with high uncertainty, so wins/losses have bigger impact.
-                              As you play more, the system becomes more confident and changes are smaller.
-                            </Text>
-                          </Box>
-                        </HStack>
-                      </ListItem>
-
-                      <ListItem>
-                        <HStack align="start">
-                          <ListIcon as={FiCheckCircle} color="green.500" mt={1} />
-                          <Box>
-                            <Text fontWeight="semibold">Balanced Matches</Text>
-                            <Text fontSize="sm" color="gray.600">
-                              The team balancer uses your rating to create fair teams with ~50% win probability
-                            </Text>
-                          </Box>
-                        </HStack>
-                      </ListItem>
-
-                      <ListItem>
-                        <HStack align="start">
-                          <ListIcon as={FiCheckCircle} color="green.500" mt={1} />
-                          <Box>
-                            <Text fontWeight="semibold">Recency Weighting</Text>
-                            <Text fontSize="sm" color="gray.600">
-                              Recent matches are weighted more heavily to reflect your current skill level
-                            </Text>
-                          </Box>
-                        </HStack>
-                      </ListItem>
-                    </List>
-                  </CardBody>
-                </Card>
-              </VStack>
-            </TabPanel>
-
-            {/* MMR Formula Tab */}
-            <TabPanel>
-              <VStack spacing={6} align="stretch">
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">MMR Calculation Formula</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <VStack spacing={4} align="stretch">
-                      <Box
-                        bg={codeBg}
-                        p={4}
-                        borderRadius="md"
-                        borderLeft="4px"
-                        borderColor="brand.500"
-                      >
-                        <Text fontFamily="mono" fontSize="lg" fontWeight="bold">
-                          MMR = 1000 + (40 × μ) - (120 × σ)
-                        </Text>
-                      </Box>
-
-                      <Table variant="simple" size="sm">
-                        <Thead>
-                          <Tr>
-                            <Th>Variable</Th>
-                            <Th>Description</Th>
-                            <Th isNumeric>Default</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          <Tr>
-                            <Td fontFamily="mono">μ (mu)</Td>
-                            <Td>Skill estimate</Td>
-                            <Td isNumeric>25.0</Td>
-                          </Tr>
-                          <Tr>
-                            <Td fontFamily="mono">σ (sigma)</Td>
-                            <Td>Uncertainty</Td>
-                            <Td isNumeric>8.333</Td>
-                          </Tr>
-                        </Tbody>
-                      </Table>
-                    </VStack>
-                  </CardBody>
-                </Card>
-
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">Example MMR Values</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <Table variant="simple">
-                      <Thead>
-                        <Tr>
-                          <Th>Scenario</Th>
-                          <Th isNumeric>μ (mu)</Th>
-                          <Th isNumeric>σ (sigma)</Th>
-                          <Th isNumeric>MMR</Th>
-                        </Tr>
-                      </Thead>
-                      <Tbody>
-                        <Tr>
-                          <Td>
-                            <Badge>New Player</Badge>
-                          </Td>
-                          <Td isNumeric>25.0</Td>
-                          <Td isNumeric>8.333</Td>
-                          <Td isNumeric fontWeight="bold">
-                            1000
-                          </Td>
-                        </Tr>
-                        <Tr>
-                          <Td>After 5 wins</Td>
-                          <Td isNumeric>28.5</Td>
-                          <Td isNumeric>6.2</Td>
-                          <Td isNumeric fontWeight="bold">
-                            1396
-                          </Td>
-                        </Tr>
-                        <Tr>
-                          <Td>Experienced winner</Td>
-                          <Td isNumeric>32.0</Td>
-                          <Td isNumeric>3.5</Td>
-                          <Td isNumeric fontWeight="bold">
-                            1860
-                          </Td>
-                        </Tr>
-                        <Tr>
-                          <Td>
-                            <Badge colorScheme="purple">Highly Skilled</Badge>
-                          </Td>
-                          <Td isNumeric>38.0</Td>
-                          <Td isNumeric>2.5</Td>
-                          <Td isNumeric fontWeight="bold" color="purple.500">
-                            2220
-                          </Td>
-                        </Tr>
-                        <Tr>
-                          <Td>After 5 losses</Td>
-                          <Td isNumeric>21.5</Td>
-                          <Td isNumeric>6.2</Td>
-                          <Td isNumeric fontWeight="bold">
-                            616
-                          </Td>
-                        </Tr>
-                      </Tbody>
-                    </Table>
-                  </CardBody>
-                </Card>
-
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">Why This Formula?</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <VStack spacing={3} align="stretch">
-                      <Text>
-                        The formula <Code>1000 + (40 × μ) - (120 × σ)</Code> provides several benefits:
-                      </Text>
-                      <List spacing={2} ml={4}>
-                        <ListItem>
-                          <HStack>
-                            <ListIcon as={FiCheckCircle} color="green.500" />
-                            <Text>
-                              <Text as="span" fontWeight="bold">Intuitive Range:</Text> MMR values roughly
-                              match familiar systems like Elo (~800-2200)
-                            </Text>
-                          </HStack>
-                        </ListItem>
-                        <ListItem>
-                          <HStack>
-                            <ListIcon as={FiCheckCircle} color="green.500" />
-                            <Text>
-                              <Text as="span" fontWeight="bold">Visible Differences:</Text> Players of different
-                              skill levels have meaningfully different MMR values
-                            </Text>
-                          </HStack>
-                        </ListItem>
-                        <ListItem>
-                          <HStack>
-                            <ListIcon as={FiCheckCircle} color="green.500" />
-                            <Text>
-                              <Text as="span" fontWeight="bold">Uncertainty Penalty:</Text> Higher uncertainty
-                              reduces displayed MMR (conservative estimate)
-                            </Text>
-                          </HStack>
-                        </ListItem>
-                      </List>
-                    </VStack>
-                  </CardBody>
-                </Card>
-              </VStack>
-            </TabPanel>
-
-            {/* Rating Changes Tab */}
-            <TabPanel>
-              <VStack spacing={6} align="stretch">
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">How Ratings Change After Matches</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <VStack spacing={4} align="stretch">
-                      <Accordion allowToggle>
-                        <AccordionItem>
-                          <h2>
-                            <AccordionButton>
-                              <Box flex="1" textAlign="left" fontWeight="semibold">
-                                Winning a Match
-                              </Box>
-                              <AccordionIcon />
-                            </AccordionButton>
-                          </h2>
-                          <AccordionPanel>
-                            <VStack spacing={3} align="stretch">
-                              <Text>
-                                <Text as="span" fontWeight="bold">μ increases:</Text> Your skill estimate goes up
-                              </Text>
-                              <Text>
-                                <Text as="span" fontWeight="bold">σ decreases:</Text> The system becomes more certain about your skill
-                              </Text>
-                              <Text color="gray.600" fontSize="sm">
-                                Typical MMR gain: +15 to +50 points depending on opponent strength and your uncertainty
-                              </Text>
-                            </VStack>
-                          </AccordionPanel>
-                        </AccordionItem>
-
-                        <AccordionItem>
-                          <h2>
-                            <AccordionButton>
-                              <Box flex="1" textAlign="left" fontWeight="semibold">
-                                Losing a Match
-                              </Box>
-                              <AccordionIcon />
-                            </AccordionButton>
-                          </h2>
-                          <AccordionPanel>
-                            <VStack spacing={3} align="stretch">
-                              <Text>
-                                <Text as="span" fontWeight="bold">μ decreases:</Text> Your skill estimate goes down
-                              </Text>
-                              <Text>
-                                <Text as="span" fontWeight="bold">σ decreases:</Text> The system becomes more certain about your skill
-                              </Text>
-                              <Text color="gray.600" fontSize="sm">
-                                Typical MMR loss: -15 to -50 points depending on opponent strength and your uncertainty
-                              </Text>
-                            </VStack>
-                          </AccordionPanel>
-                        </AccordionItem>
-
-                        <AccordionItem>
-                          <h2>
-                            <AccordionButton>
-                              <Box flex="1" textAlign="left" fontWeight="semibold">
-                                New Player Bonus
-                              </Box>
-                              <AccordionIcon />
-                            </AccordionButton>
-                          </h2>
-                          <AccordionPanel>
-                            <VStack spacing={3} align="stretch">
-                              <Text>
-                                New players have high σ (uncertainty), which means:
-                              </Text>
-                              <List spacing={2} ml={4}>
-                                <ListItem>
-                                  <ListIcon as={FiTrendingUp} color="blue.500" />
-                                  Larger MMR swings per match (~30-80 points)
-                                </ListItem>
-                                <ListItem>
-                                  <ListIcon as={FiTrendingUp} color="blue.500" />
-                                  Faster convergence to true skill level
-                                </ListItem>
-                                <ListItem>
-                                  <ListIcon as={FiTrendingUp} color="blue.500" />
-                                  After ~10-15 games, changes become more stable
-                                </ListItem>
-                              </List>
-                            </VStack>
-                          </AccordionPanel>
-                        </AccordionItem>
-
-                        <AccordionItem>
-                          <h2>
-                            <AccordionButton>
-                              <Box flex="1" textAlign="left" fontWeight="semibold">
-                                <HStack>
-                                  <FiClock />
-                                  <Text>Skill Decay (Inactivity)</Text>
-                                </HStack>
-                              </Box>
-                              <AccordionIcon />
-                            </AccordionButton>
-                          </h2>
-                          <AccordionPanel>
-                            <VStack spacing={3} align="stretch">
-                              <Text>
-                                If you don't play for a while:
-                              </Text>
-                              <List spacing={2} ml={4}>
-                                <ListItem>
-                                  <ListIcon as={FiClock} color="orange.500" />
-                                  σ (uncertainty) increases gradually (0.0833 per day)
-                                </ListItem>
-                                <ListItem>
-                                  <ListIcon as={FiClock} color="orange.500" />
-                                  μ (skill) stays the same
-                                </ListItem>
-                                <ListItem>
-                                  <ListIcon as={FiClock} color="orange.500" />
-                                  This results in slightly lower displayed MMR
-                                </ListItem>
-                                <ListItem>
-                                  <ListIcon as={FiClock} color="orange.500" />
-                                  σ caps at 8.333 (starting uncertainty)
-                                </ListItem>
-                              </List>
-                              <Text fontSize="sm" color="gray.600">
-                                This models potential skill deterioration from not playing
-                              </Text>
-                            </VStack>
-                          </AccordionPanel>
-                        </AccordionItem>
-
-                        <AccordionItem>
-                          <h2>
-                            <AccordionButton>
-                              <Box flex="1" textAlign="left" fontWeight="semibold">
-                                <HStack>
-                                  <FiActivity />
-                                  <Text>Performance-Based Adjustments</Text>
-                                </HStack>
-                              </Box>
-                              <AccordionIcon />
-                            </AccordionButton>
-                          </h2>
-                          <AccordionPanel>
-                            <VStack spacing={4} align="stretch">
-                              <Alert status="info" borderRadius="md">
-                                <AlertIcon />
-                                <Box>
-                                  <AlertTitle>Individual Performance Matters</AlertTitle>
-                                  <AlertDescription fontSize="sm">
-                                    Your MMR change is multiplied based on your individual performance compared to teammates and opponents.
-                                  </AlertDescription>
-                                </Box>
-                              </Alert>
-
-                              <Box>
-                                <Text fontWeight="bold" mb={2}>How It Works:</Text>
-                                <Text mb={3}>
-                                  After TrueSkill calculates your base MMR change, a <Text as="span" fontWeight="bold">performance multiplier</Text> is applied
-                                  based on your gameplay metrics (combat score, economic score, etc.).
-                                </Text>
-                                <Text fontSize="sm" color="gray.600">
-                                  Multiplier range: <Code>0.5×</Code> to <Code>1.5×</Code> (50% reduction to 50% boost)
-                                </Text>
-                              </Box>
-
-                              <Box>
-                                <Text fontWeight="bold" mb={2}>Performance Calculation:</Text>
-                                <VStack align="stretch" spacing={2} fontSize="sm">
-                                  <Text>
-                                    <Text as="span" fontWeight="semibold">Your Performance Score</Text> =
-                                    (60% vs teammates) + (40% vs opponents)
-                                  </Text>
-                                  <Text color="gray.600">
-                                    Based on your <Code>overall_impact</Code> metric, which combines combat effectiveness,
-                                    economy, and unit production from the replay
-                                  </Text>
-                                </VStack>
-                              </Box>
-
-                              <Box>
-                                <Text fontWeight="bold" mb={2}>When You Get Boosted MMR:</Text>
-                                <Table variant="simple" size="sm">
-                                  <Thead>
-                                    <Tr>
-                                      <Th>Result</Th>
-                                      <Th>Performance</Th>
-                                      <Th>Effect</Th>
-                                    </Tr>
-                                  </Thead>
-                                  <Tbody>
-                                    <Tr bg="green.50" _dark={{ bg: 'green.900' }}>
-                                      <Td><Badge colorScheme="green">Win</Badge></Td>
-                                      <Td>Carried team (high impact)</Td>
-                                      <Td>
-                                        <Text color="green.600" fontWeight="bold">+50% more MMR</Text>
-                                      </Td>
-                                    </Tr>
-                                    <Tr bg="red.50" _dark={{ bg: 'red.900' }}>
-                                      <Td><Badge colorScheme="red">Loss</Badge></Td>
-                                      <Td>Played well despite loss</Td>
-                                      <Td>
-                                        <Text color="orange.600" fontWeight="bold">-50% less MMR loss</Text>
-                                      </Td>
-                                    </Tr>
-                                  </Tbody>
-                                </Table>
-                              </Box>
-
-                              <Box>
-                                <Text fontWeight="bold" mb={2}>When You Get Reduced MMR:</Text>
-                                <Table variant="simple" size="sm">
-                                  <Thead>
-                                    <Tr>
-                                      <Th>Result</Th>
-                                      <Th>Performance</Th>
-                                      <Th>Effect</Th>
-                                    </Tr>
-                                  </Thead>
-                                  <Tbody>
-                                    <Tr bg="yellow.50" _dark={{ bg: 'yellow.900' }}>
-                                      <Td><Badge colorScheme="green">Win</Badge></Td>
-                                      <Td>Got carried (low impact)</Td>
-                                      <Td>
-                                        <Text color="orange.600" fontWeight="bold">-50% less MMR gain</Text>
-                                      </Td>
-                                    </Tr>
-                                    <Tr bg="red.50" _dark={{ bg: 'red.900' }}>
-                                      <Td><Badge colorScheme="red">Loss</Badge></Td>
-                                      <Td>Underperformed (low impact)</Td>
-                                      <Td>
-                                        <Text color="red.600" fontWeight="bold">-50% more MMR loss</Text>
-                                      </Td>
-                                    </Tr>
-                                  </Tbody>
-                                </Table>
-                              </Box>
-
-                              <Box>
-                                <Text fontWeight="bold" mb={2}>Example:</Text>
-                                <Box bg={codeBg} p={3} borderRadius="md" fontSize="sm" fontFamily="mono">
-                                  <Text>Base MMR change: +30 points (from TrueSkill)</Text>
-                                  <Text>Your performance: 1.4× team average</Text>
-                                  <Text>Multiplier applied: 1.14× (14% boost)</Text>
-                                  <Text color="green.600" fontWeight="bold">Final MMR change: +34 points</Text>
-                                </Box>
-                              </Box>
-
-                              <Alert status="success" borderRadius="md" variant="left-accent">
-                                <AlertIcon />
-                                <Box fontSize="sm">
-                                  <AlertTitle>Impact on Team Balancing</AlertTitle>
-                                  <AlertDescription>
-                                    Team balancing uses your <Text as="span" fontWeight="bold">MMR only</Text>, not performance scores.
-                                    This ensures fair team compositions regardless of playstyle. Performance adjustments only affect
-                                    how much your MMR changes after matches.
-                                  </AlertDescription>
-                                </Box>
-                              </Alert>
-                            </VStack>
-                          </AccordionPanel>
-                        </AccordionItem>
-                      </Accordion>
-                    </VStack>
-                  </CardBody>
-                </Card>
-
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">Match Impact Factors</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <Table variant="simple">
-                      <Thead>
-                        <Tr>
-                          <Th>Factor</Th>
-                          <Th>Impact on Rating Change</Th>
-                        </Tr>
-                      </Thead>
-                      <Tbody>
-                        <Tr>
-                          <Td fontWeight="semibold">Opponent Strength</Td>
-                          <Td>Win vs stronger team = bigger gain. Lose vs weaker team = bigger loss</Td>
-                        </Tr>
-                        <Tr>
-                          <Td fontWeight="semibold">Your Uncertainty</Td>
-                          <Td>Higher σ = larger MMR swings</Td>
-                        </Tr>
-                        <Tr>
-                          <Td fontWeight="semibold">Game Mode</Td>
-                          <Td>All modes (2v2-5v5) use same algorithm</Td>
-                        </Tr>
-                        <Tr>
-                          <Td fontWeight="semibold">Team Performance</Td>
-                          <Td>Individual skill extracted from team result</Td>
-                        </Tr>
-                      </Tbody>
-                    </Table>
-                  </CardBody>
-                </Card>
-              </VStack>
-            </TabPanel>
-
-            {/* Configuration Tab */}
-            <TabPanel>
-              <VStack spacing={6} align="stretch">
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">TrueSkill Configuration</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <Table variant="simple">
-                      <Thead>
-                        <Tr>
-                          <Th>Parameter</Th>
-                          <Th>Value</Th>
-                          <Th>Description</Th>
-                        </Tr>
-                      </Thead>
-                      <Tbody>
-                        <Tr>
-                          <Td fontFamily="mono">mu (μ)</Td>
-                          <Td><Code>25.0</Code></Td>
-                          <Td>Initial skill estimate for new players</Td>
-                        </Tr>
-                        <Tr>
-                          <Td fontFamily="mono">sigma (σ)</Td>
-                          <Td><Code>8.333</Code></Td>
-                          <Td>Initial uncertainty for new players</Td>
-                        </Tr>
-                        <Tr>
-                          <Td fontFamily="mono">beta (β)</Td>
-                          <Td><Code>4.166</Code></Td>
-                          <Td>Skill class width (half of sigma)</Td>
-                        </Tr>
-                        <Tr>
-                          <Td fontFamily="mono">tau (τ)</Td>
-                          <Td><Code>0.0833</Code></Td>
-                          <Td>Skill decay per day of inactivity</Td>
-                        </Tr>
-                        <Tr>
-                          <Td fontFamily="mono">draw_probability</Td>
-                          <Td><Code>0.0</Code></Td>
-                          <Td>SC2 has no draws</Td>
-                        </Tr>
-                      </Tbody>
-                    </Table>
-                  </CardBody>
-                </Card>
-
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">Recency Weighting</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <VStack spacing={4} align="stretch">
-                      <HStack justify="space-between">
-                        <Stat>
-                          <StatLabel>Enabled</StatLabel>
-                          <StatNumber>
-                            <Badge colorScheme="green" fontSize="lg">YES</Badge>
-                          </StatNumber>
-                          <StatHelpText>Recent matches weighted more</StatHelpText>
-                        </Stat>
-
-                        <Stat>
-                          <StatLabel>Half-Life</StatLabel>
-                          <StatNumber>60 days</StatNumber>
-                          <StatHelpText>Match from 60 days ago = 50% weight</StatHelpText>
-                        </Stat>
-                      </HStack>
-
-                      <Divider />
-
-                      <Box>
-                        <Heading size="sm" mb={2}>How It Works</Heading>
-                        <Text fontSize="sm" color="gray.600">
-                          Your "recency-weighted MMR" gives more importance to recent matches.
-                          A match from today has 100% weight, a match from 60 days ago has 50% weight,
-                          and a match from 120 days ago has 25% weight. This better reflects current skill.
-                        </Text>
-                      </Box>
-                    </VStack>
-                  </CardBody>
-                </Card>
-
-                <Card bg={cardBg}>
-                  <CardHeader>
-                    <Heading size="md">MMR Display Settings</Heading>
-                  </CardHeader>
-                  <CardBody>
-                    <VStack spacing={4} align="stretch">
-                      <HStack justify="space-between">
-                        <Stat>
-                          <StatLabel>Rounding</StatLabel>
-                          <StatNumber>1 decimal</StatNumber>
-                          <StatHelpText>MMR shown as 1234.5</StatHelpText>
-                        </Stat>
-
-                        <Stat>
-                          <StatLabel>Win Rate Format</StatLabel>
-                          <StatNumber>Percentage</StatNumber>
-                          <StatHelpText>Shown as 62.5%</StatHelpText>
-                        </Stat>
-                      </HStack>
-                    </VStack>
-                  </CardBody>
-                </Card>
-
-                <Alert status="warning" borderRadius="md">
-                  <AlertIcon />
-                  <Box>
-                    <AlertTitle>Configuration is Fixed</AlertTitle>
-                    <AlertDescription>
-                      These parameters are currently fixed to ensure fair and consistent ratings across all players.
-                      Changing them would require recalculating all historical ratings.
-                    </AlertDescription>
+                    </Grid>
                   </Box>
-                </Alert>
-              </VStack>
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
 
-        {/* Footer Note */}
-        <Card bg={cardBg} borderColor="brand.500" borderWidth={2}>
-          <CardBody>
-            <VStack spacing={3} align="start">
-              <HStack>
-                <FiInfo />
-                <Heading size="sm">Learn More</Heading>
-              </HStack>
-              <Text fontSize="sm">
-                TrueSkill was developed by Microsoft Research for ranking and matchmaking in multiplayer games.
-                It's used in Xbox Live and is particularly well-suited for team-based games like StarCraft 2.
-              </Text>
-              <Text fontSize="sm" color="gray.600">
-                For technical details, see:{' '}
-                <Text
-                  as="a"
-                  href="https://www.microsoft.com/en-us/research/project/trueskill-ranking-system/"
-                  target="_blank"
-                  color="brand.500"
-                  textDecoration="underline"
-                >
-                  Microsoft Research - TrueSkill
+                  <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={6}>
+                    <Heading size="md" mb={4} fontFamily="heading">Why use this?</Heading>
+                    <List spacing={4}>
+                      {[
+                        { title: 'Natural Team Balancing', desc: 'Handles team games (2v2, 3v3, 4v4) by analyzing individual contributions to the team result.' },
+                        { title: 'Uncertainty Tracking', desc: 'New players move fast through ranks until their "true" skill is found.' },
+                        { title: 'Fair Teams', desc: 'Uses your hidden metrics to create the closest matches possible, aiming for a 50% win chance.' }
+                      ].map((item, i) => (
+                        <ListItem key={i}>
+                          <HStack align="start">
+                            <ListIcon as={FiZap} color="accent.400" mt={1} />
+                            <Box>
+                              <Text fontWeight="bold" fontSize="sm">{item.title}</Text>
+                              <Text fontSize="xs" color="gray.500">{item.desc}</Text>
+                            </Box>
+                          </HStack>
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                </VStack>
+              </TabPanel>
+
+              {/* The Formula */}
+              <TabPanel p={0}>
+                <VStack spacing={6} align="stretch">
+                  <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={8} textAlign="center">
+                    <Text fontSize="sm" color="gray.500" mb={4} fontWeight="bold" letterSpacing="widest">THE CALCULATION</Text>
+                    <Box bg="space.900" p={6} borderRadius="xl" display="inline-block" border="2px dashed" borderColor="brand.500">
+                      <Text fontSize="2xl" fontWeight="black" fontFamily="mono" color="brand.400">
+                        MMR = 1000 + (100 × μ) - (300 × σ)
+                      </Text>
+                    </Box>
+                    <Text mt={6} fontSize="sm" color="gray.400" maxW="600px" mx="auto">
+                      We start with a baseline of 1000, add 100 points per skill level (mu), and subtract 300 points per uncertainty level (sigma). 
+                      This ensures that as the system gets more certain about you, your MMR stabilizes upwards.
+                    </Text>
+                  </Box>
+
+                  <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={6}>
+                    <Table variant="simple" size="sm">
+                      <Thead>
+                        <Tr><Th color="gray.500">Player State</Th><Th isNumeric color="gray.500">Skill (μ)</Th><Th isNumeric color="gray.500">Uncertainty (σ)</Th><Th isNumeric color="gray.500">Final MMR</Th></Tr>
+                      </Thead>
+                      <Tbody>
+                        <Tr><Td><Badge>New Recruit</Badge></Td><Td isNumeric>25.0</Td><Td isNumeric>8.3</Td><Td isNumeric fontWeight="bold">1,010</Td></Tr>
+                        <Tr><Td><Badge colorScheme="brand">Rising Star</Badge></Td><Td isNumeric>32.0</Td><Td isNumeric>3.5</Td><Td isNumeric fontWeight="bold">3,150</Td></Tr>
+                        <Tr><Td><Badge colorScheme="purple">Squad Leader</Badge></Td><Td isNumeric>38.0</Td><Td isNumeric>2.5</Td><Td isNumeric fontWeight="bold" color="purple.400">4,050</Td></Tr>
+                      </Tbody>
+                    </Table>
+                  </Box>
+                </VStack>
+              </TabPanel>
+
+              {/* MMR Changes */}
+              <TabPanel p={0}>
+                <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={6}>
+                  <Heading size="md" mb={6} fontFamily="heading">Dynamic Adjustments</Heading>
+                  <Accordion allowToggle>
+                    {[
+                      { title: 'Winning a Match', content: 'Your skill estimate (μ) increases and uncertainty (σ) decreases. MMR typically rises by 25-75 points.' },
+                      { title: 'Losing a Match', content: 'Your skill estimate (μ) decreases and uncertainty (σ) decreases. MMR typically drops by 25-75 points.' },
+                      { title: 'Performance Multipliers', content: 'The system analyzes your combat and economy. Carrying your team can boost gains by 50% or mitigate losses by 50%.' },
+                      { title: 'Skill Decay', content: 'Extended inactivity increases your uncertainty (σ). While your skill stays the same, your displayed rank will become more conservative until you play again.' }
+                    ].map((item, i) => (
+                      <AccordionItem key={i} border="none" mb={2}>
+                        <AccordionButton bg="space.700" borderRadius="lg" _hover={{ bg: 'space.600' }}>
+                          <Box flex="1" textAlign="left" fontWeight="bold" fontSize="sm">{item.title}</Box>
+                          <AccordionIcon />
+                        </AccordionButton>
+                        <AccordionPanel pb={4} color="gray.400" fontSize="sm">{item.content}</AccordionPanel>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                </Box>
+              </TabPanel>
+
+              {/* Configuration */}
+              <TabPanel p={0}>
+                <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={6}>
+                  <Table variant="simple" size="sm">
+                    <Thead>
+                      <Tr><Th color="gray.500">System Parameter</Th><Th color="gray.500">Current Value</Th><Th color="gray.500">Description</Th></Tr>
+                    </Thead>
+                    <Tbody>
+                      <Tr><Td fontWeight="bold">Starting Skill</Td><Td><Code>25.0</Code></Td><Td fontSize="xs" color="gray.400">Baseline for all new players</Td></Tr>
+                      <Tr><Td fontWeight="bold">Starting Uncertainty</Td><Td><Code>8.333</Code></Td><Td fontSize="xs" color="gray.400">Maximum initial volatility</Td></Tr>
+                      <Tr><Td fontWeight="bold">MMR Base</Td><Td><Code>1000</Code></Td><Td fontSize="xs" color="gray.400">Floor for all displayed ratings</Td></Tr>
+                      <Tr><Td fontWeight="bold">Display Scale</Td><Td><Code>100x</Code></Td><Td fontSize="xs" color="gray.400">Points awarded per mu point</Td></Tr>
+                      <Tr><Td fontWeight="bold">Recency Half-Life</Td><Td><Code>90 Days</Code></Td><Td fontSize="xs" color="gray.400">Recent matches count for more</Td></Tr>
+                      <Tr><Td fontWeight="bold">Performance Cap</Td><Td><Code>1.5x</Code></Td><Td fontSize="xs" color="gray.400">Max boost from individual performance</Td></Tr>
+                    </Tbody>
+                  </Table>
+                </Box>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+
+          {/* Footer Footer */}
+          <Box bg="rgba(78, 205, 196, 0.1)" border="2px solid" borderColor="accent.400" borderRadius="xl" p={6}>
+            <HStack align="start" spacing={4}>
+              <Icon as={FiInfo} color="accent.400" boxSize={6} mt={1} />
+              <VStack align="start" spacing={2}>
+                <Heading size="sm">Technical Roots</Heading>
+                <Text fontSize="sm" color="gray.300">
+                  Developed by Microsoft Research, TrueSkill is used by global platforms like Xbox Live to provide fair matching. 
+                  Our implementation is tuned specifically for our squad's play frequency and team dynamics.
                 </Text>
-              </Text>
-            </VStack>
-          </CardBody>
-        </Card>
-      </VStack>
-    </Container>
+              </VStack>
+            </HStack>
+          </Box>
+        </VStack>
+      </Container>
+    </Box>
   );
 };
 

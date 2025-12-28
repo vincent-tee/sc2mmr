@@ -3,7 +3,7 @@
  *
  * Features:
  * - Team selection with player search
- * - Win probability prediction via TrueSkill
+ * - Win probability prediction
  * - Team synergy and chemistry analysis
  * - Confidence indicators with visual feedback
  * - Upset potential alerts
@@ -17,8 +17,6 @@ import {
   Text,
   VStack,
   HStack,
-  Card,
-  CardBody,
   Button,
   Badge,
   Icon,
@@ -26,17 +24,16 @@ import {
   Select,
   IconButton,
   Divider,
-  useColorModeValue,
   Alert,
   AlertIcon,
   Stat,
   StatNumber,
   StatHelpText,
   Progress,
-  Spinner,
   Tooltip,
   Flex,
   SimpleGrid,
+  Circle,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -56,9 +53,14 @@ import {
 } from 'react-icons/fi';
 import { playersApi, teamsApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
-import TacticalBackground from '../components/common/TacticalBackground';
 import type { Player, MatchPredictionResponse, SynergyInfo, TeamChemistry } from '@/types/api';
-import { colors, shadows } from '../theme/tokens';
+
+// Design tokens
+const cardBg = 'space.800';
+const borderColor = 'space.900';
+const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
+const team1Glow = '0 0 15px rgba(0, 212, 255, 0.4)';
+const team2Glow = '0 0 15px rgba(255, 140, 26, 0.4)';
 
 // Animation keyframes
 const pulseGlow = keyframes`
@@ -120,11 +122,9 @@ const LineupPredictor: React.FC = () => {
   const [team2Players, setTeam2Players] = useState<number[]>([]);
   const [prediction, setPrediction] = useState<MatchPredictionResponse | null>(null);
 
-  const cardBg = useColorModeValue('white', 'rgba(17, 25, 40, 0.9)');
-  const borderColor = useColorModeValue('gray.200', 'rgba(0, 212, 255, 0.2)');
-  const team1Bg = useColorModeValue('cyan.50', 'rgba(0, 212, 255, 0.08)');
-  const team2Bg = useColorModeValue('orange.50', 'rgba(255, 140, 26, 0.08)');
-  const overlayBg = useColorModeValue('gray.50', 'rgba(0, 0, 0, 0.3)');
+  const team1Bg = 'rgba(0, 212, 255, 0.08)';
+  const team2Bg = 'rgba(255, 140, 26, 0.08)';
+  const overlayBg = 'rgba(0, 0, 0, 0.3)';
 
   // Fetch all players
   const { data: playersData, isLoading: playersLoading } = useQuery<Player[]>({
@@ -214,28 +214,22 @@ const LineupPredictor: React.FC = () => {
   }
 
   return (
-    <Box position="relative" minH="100vh">
-      <TacticalBackground opacity={0.02} gridSize={60} />
-
+    <Box position="relative" minH="100vh" bg="space.900">
       <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
-          {/* Header */}
-          <Box animation={`${slideInUp} 0.5s ease-out`}>
-            <HStack mb={2}>
-              <Icon as={FiTarget} boxSize={8} color="brand.400" />
-              <Heading
-                size="2xl"
-                fontFamily="heading"
-                textTransform="uppercase"
-                letterSpacing="wider"
-                bgGradient="linear(to-r, brand.400, accent.400)"
-                bgClip="text"
-              >
-                Match Predictor
-              </Heading>
-            </HStack>
-            <Text color="gray.500" fontSize="lg">
-              Select teams and get AI-powered win predictions with synergy analysis
+          <Box animation={`${slideInUp} 0.5s ease-out`} textAlign="center">
+            <Heading
+              size="2xl"
+              fontFamily="heading"
+              fontWeight="black"
+              letterSpacing="wider"
+              color="brand.400"
+              mb={2}
+            >
+              <Text as="span" className="emoji-font">🎯</Text> Match Predictor
+            </Heading>
+            <Text color="gray.400" fontSize="lg">
+              Assemble lineups to calculate win probability and synergy
             </Text>
           </Box>
 
@@ -317,28 +311,19 @@ interface PredictionDisplayProps {
 const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
   prediction,
   isLoading,
-  cardBg,
-  borderColor,
-  team1Bg,
-  team2Bg,
 }) => {
   if (isLoading) {
     return (
-      <Card
+      <Box
         bg={cardBg}
-        border="2px solid"
+        borderRadius="xl"
+        border="3px solid"
         borderColor={borderColor}
-        animation={`${pulseGlow} 2s ease-in-out infinite`}
+        boxShadow={brandShadow}
+        p={8}
       >
-        <CardBody>
-          <VStack spacing={4} py={8}>
-            <Spinner size="xl" color="brand.400" thickness="4px" />
-            <Text color="gray.400" fontFamily="heading" textTransform="uppercase" letterSpacing="wide">
-              Calculating prediction...
-            </Text>
-          </VStack>
-        </CardBody>
-      </Card>
+        <LoadingState message="Calculating win probabilities..." />
+      </Box>
     );
   }
 
@@ -349,216 +334,209 @@ const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
   const confidenceConfig = getConfidenceConfig(prediction.confidence);
 
   return (
-    <Card
+    <Box
       bg={cardBg}
-      border="2px solid"
-      borderColor={prediction.upset_potential ? colors.shield[500] : borderColor}
-      boxShadow={prediction.upset_potential ? shadows.accentGlow : shadows.brandGlow}
+      borderRadius="xl"
+      border="3px solid"
+      borderColor={prediction.upset_potential ? 'yellow.500' : borderColor}
+      boxShadow={prediction.upset_potential ? '0 0 20px rgba(255, 179, 0, 0.4)' : brandShadow}
+      p={6}
       animation={prediction.upset_potential ? `${upsetPulse} 2s ease-in-out infinite` : `${slideInUp} 0.5s ease-out`}
     >
-      <CardBody>
-        <VStack spacing={6}>
-          {/* Header with confidence and upset alert */}
-          <Flex justify="space-between" align="center" w="full" flexWrap="wrap" gap={2}>
-            <HStack>
-              <Icon as={FiTarget} color="brand.400" boxSize={6} />
-              <Heading size="md" fontFamily="heading" textTransform="uppercase" color="brand.400">
-                Match Prediction
-              </Heading>
-            </HStack>
+      <VStack spacing={6}>
+        {/* Header with confidence and upset alert */}
+        <Flex justify="space-between" align="center" w="full" flexWrap="wrap" gap={2}>
+          <HStack>
+            <Icon as={FiTarget} color="brand.400" boxSize={6} />
+            <Heading size="md" fontFamily="heading" textTransform="uppercase" color="brand.400" letterSpacing="wide">
+              Strategic Forecast
+            </Heading>
+          </HStack>
 
-            <HStack spacing={3}>
-              <Tooltip label={`Prediction confidence: ${prediction.confidence}`}>
-                <Badge
-                  colorScheme={confidenceConfig.colorScheme}
-                  fontSize="sm"
-                  px={3}
-                  py={1}
-                  borderRadius="full"
-                  animation={`${confidencePulse} 2s ease-in-out infinite`}
-                >
-                  <HStack spacing={1}>
-                    <Icon as={confidenceConfig.icon} />
-                    <Text>{prediction.confidence} Confidence</Text>
-                  </HStack>
-                </Badge>
-              </Tooltip>
+          <HStack spacing={3}>
+            <Tooltip label={`Prediction confidence: ${prediction.confidence}`}>
+              <Badge
+                colorScheme={confidenceConfig.colorScheme}
+                fontSize="sm"
+                px={3}
+                py={1}
+                borderRadius="full"
+                animation={`${confidencePulse} 2s ease-in-out infinite`}
+              >
+                <HStack spacing={1}>
+                  <Icon as={confidenceConfig.icon} />
+                  <Text>{prediction.confidence} Confidence</Text>
+                </HStack>
+              </Badge>
+            </Tooltip>
 
-              {prediction.upset_potential && (
-                <Badge
-                  colorScheme="yellow"
-                  fontSize="sm"
-                  px={3}
-                  py={1}
-                  borderRadius="full"
-                  animation={`${upsetPulse} 1s ease-in-out infinite`}
-                >
-                  <HStack spacing={1}>
-                    <Icon as={FiZap} />
-                    <Text>UPSET ALERT!</Text>
-                  </HStack>
-                </Badge>
-              )}
-            </HStack>
-          </Flex>
+            {prediction.upset_potential && (
+              <Badge
+                colorScheme="yellow"
+                variant="solid"
+                fontSize="sm"
+                px={3}
+                py={1}
+                borderRadius="full"
+              >
+                <HStack spacing={1}>
+                  <Icon as={FiZap} />
+                  <Text>UPSET ALERT!</Text>
+                </HStack>
+              </Badge>
+            )}
+          </HStack>
+        </Flex>
 
-          {/* Win Probability Cards */}
-          <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={6} w="full">
-            {/* Team 1 */}
-            <Card bg={team1Bg} border="2px solid" borderColor={prediction.predicted_winner === 1 ? 'green.400' : 'brand.500'}>
-              <CardBody>
-                <VStack spacing={3}>
-                  <HStack>
-                    <Icon as={FiShield} color="brand.400" boxSize={5} />
-                    <Text fontFamily="heading" fontWeight="bold" textTransform="uppercase" color="brand.400">
-                      Team 1
-                    </Text>
-                    {prediction.predicted_winner === 1 && (
-                      <Badge colorScheme="green" ml={2}>
-                        <HStack spacing={1}>
-                          <Icon as={FiAward} />
-                          <Text>FAVORED</Text>
-                        </HStack>
-                      </Badge>
-                    )}
-                  </HStack>
-                  <Stat textAlign="center">
-                    <StatNumber
-                      fontSize="4xl"
-                      fontFamily="heading"
-                      color={team1WinProb > 50 ? 'green.400' : team1WinProb < 50 ? 'red.400' : 'gray.400'}
-                    >
-                      {team1WinProb.toFixed(1)}%
-                    </StatNumber>
-                    <StatHelpText>
-                      Avg MMR: {prediction.team_1.avg_mmr.toFixed(0)}
-                    </StatHelpText>
-                  </Stat>
-
-                  {/* Chemistry Badge */}
-                  <ChemistryBadge chemistry={prediction.team_1.team_chemistry} />
-                </VStack>
-              </CardBody>
-            </Card>
-
-            {/* VS Divider with Match Quality */}
-            <VStack justify="center" spacing={4}>
-              <Icon as={FiZap} boxSize={12} color="accent.500" />
-              <Text fontFamily="heading" fontSize="2xl" fontWeight="black" color="accent.500">
-                VS
-              </Text>
-              <VStack spacing={2}>
-                <Tooltip label="How competitive this match should be (higher = more even)">
-                  <Badge colorScheme="purple" fontSize="md" px={3} py={1}>
-                    <HStack>
-                      <Icon as={FiActivity} />
-                      <Text>Quality: {(prediction.match_quality * 100).toFixed(0)}%</Text>
-                    </HStack>
+        {/* Win Probability Cards */}
+        <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={6} w="full">
+          {/* Team 1 */}
+          <Box
+            bg="space.900"
+            p={5}
+            borderRadius="xl"
+            border="2px solid"
+            borderColor={prediction.predicted_winner === 1 ? 'brand.400' : 'space.700'}
+            boxShadow={prediction.predicted_winner === 1 ? team1Glow : 'none'}
+          >
+            <VStack spacing={3}>
+              <HStack>
+                <Icon as={FiShield} color="brand.400" boxSize={5} />
+                <Text fontFamily="heading" fontWeight="bold" textTransform="uppercase" color="brand.400" letterSpacing="wide">
+                  Squad Alpha
+                </Text>
+                {prediction.predicted_winner === 1 && (
+                  <Badge colorScheme="green" ml={2} variant="solid">
+                    FAVORED
                   </Badge>
-                </Tooltip>
-              </VStack>
+                )}
+              </HStack>
+              <Stat textAlign="center">
+                <StatNumber
+                  fontSize="4xl"
+                  fontFamily="heading"
+                  color={team1WinProb > 50 ? 'green.400' : team1WinProb < 50 ? 'red.400' : 'gray.400'}
+                >
+                  {team1WinProb.toFixed(1)}%
+                </StatNumber>
+                <StatHelpText fontFamily="mono" color="gray.500">
+                  Total MMR: {Math.round(prediction.team_1.total_mmr)}
+                </StatHelpText>
+              </Stat>
+
+              <ChemistryBadge chemistry={prediction.team_1.team_chemistry} />
             </VStack>
-
-            {/* Team 2 */}
-            <Card bg={team2Bg} border="2px solid" borderColor={prediction.predicted_winner === 2 ? 'green.400' : 'accent.500'}>
-              <CardBody>
-                <VStack spacing={3}>
-                  <HStack>
-                    <Icon as={FiShield} color="accent.400" boxSize={5} />
-                    <Text fontFamily="heading" fontWeight="bold" textTransform="uppercase" color="accent.400">
-                      Team 2
-                    </Text>
-                    {prediction.predicted_winner === 2 && (
-                      <Badge colorScheme="green" ml={2}>
-                        <HStack spacing={1}>
-                          <Icon as={FiAward} />
-                          <Text>FAVORED</Text>
-                        </HStack>
-                      </Badge>
-                    )}
-                  </HStack>
-                  <Stat textAlign="center">
-                    <StatNumber
-                      fontSize="4xl"
-                      fontFamily="heading"
-                      color={team2WinProb > 50 ? 'green.400' : team2WinProb < 50 ? 'red.400' : 'gray.400'}
-                    >
-                      {team2WinProb.toFixed(1)}%
-                    </StatNumber>
-                    <StatHelpText>
-                      Avg MMR: {prediction.team_2.avg_mmr.toFixed(0)}
-                    </StatHelpText>
-                  </Stat>
-
-                  <ChemistryBadge chemistry={prediction.team_2.team_chemistry} />
-                </VStack>
-              </CardBody>
-            </Card>
-          </Grid>
-
-          {/* Visual probability bar */}
-          <Box w="full">
-            <HStack spacing={1}>
-              <Box flex={team1WinProb}>
-                <Progress
-                  value={100}
-                  size="lg"
-                  colorScheme="cyan"
-                  borderRadius="md"
-                  bg="gray.700"
-                  sx={{
-                    '& > div': {
-                      background: 'linear-gradient(90deg, rgba(0, 212, 255, 0.6), rgba(0, 212, 255, 1))',
-                      boxShadow: '0 0 15px rgba(0, 212, 255, 0.6)',
-                    },
-                  }}
-                />
-              </Box>
-              <Box flex={team2WinProb}>
-                <Progress
-                  value={100}
-                  size="lg"
-                  colorScheme="orange"
-                  borderRadius="md"
-                  bg="gray.700"
-                  sx={{
-                    '& > div': {
-                      background: 'linear-gradient(90deg, rgba(255, 140, 26, 1), rgba(255, 140, 26, 0.6))',
-                      boxShadow: '0 0 15px rgba(255, 140, 26, 0.6)',
-                    },
-                  }}
-                />
-              </Box>
-            </HStack>
-            <HStack justify="space-between" mt={1}>
-              <Text fontSize="xs" color="brand.400">{team1WinProb.toFixed(1)}%</Text>
-              <Text fontSize="xs" color="accent.400">{team2WinProb.toFixed(1)}%</Text>
-            </HStack>
           </Box>
 
-          {/* Prediction Factors */}
-          {prediction.factors.length > 0 && (
-            <Box w="full" p={4} bg="rgba(0, 0, 0, 0.2)" borderRadius="md">
-              <Text fontSize="sm" fontWeight="bold" color="gray.400" mb={2} textTransform="uppercase">
-                Analysis Factors
-              </Text>
-              <VStack align="start" spacing={1}>
-                {prediction.factors.map((factor, idx) => (
-                  <HStack key={idx} spacing={2}>
-                    <Icon
-                      as={factor.includes('⚡') ? FiZap : FiTrendingUp}
-                      color={factor.includes('⚡') ? 'yellow.400' : 'gray.500'}
-                      boxSize={4}
-                    />
-                    <Text fontSize="sm" color="gray.300">{factor}</Text>
-                  </HStack>
-                ))}
-              </VStack>
+          {/* VS Divider with Match Quality */}
+          <VStack justify="center" spacing={2}>
+            <Circle size="12" bg="space.900" border="2px solid" borderColor="accent.500">
+              <Icon as={FiZap} boxSize={6} color="accent.500" />
+            </Circle>
+            <Text fontFamily="heading" fontSize="2xl" fontWeight="black" color="accent.500">
+              VS
+            </Text>
+            <VStack spacing={2}>
+              <Tooltip label="Match Quality (higher = more even)">
+                <Badge colorScheme="purple" fontSize="sm" px={3} py={1} borderRadius="full" variant="outline">
+                   Quality: {(prediction.match_quality * 100).toFixed(0)}%
+                </Badge>
+              </Tooltip>
+            </VStack>
+          </VStack>
+
+          {/* Team 2 */}
+          <Box
+            bg="space.900"
+            p={5}
+            borderRadius="xl"
+            border="2px solid"
+            borderColor={prediction.predicted_winner === 2 ? 'accent.400' : 'space.700'}
+            boxShadow={prediction.predicted_winner === 2 ? team2Glow : 'none'}
+          >
+            <VStack spacing={3}>
+              <HStack>
+                <Icon as={FiShield} color="accent.400" boxSize={5} />
+                <Text fontFamily="heading" fontWeight="bold" textTransform="uppercase" color="accent.400" letterSpacing="wide">
+                  Squad Bravo
+                </Text>
+                {prediction.predicted_winner === 2 && (
+                  <Badge colorScheme="green" ml={2} variant="solid">
+                    FAVORED
+                  </Badge>
+                )}
+              </HStack>
+              <Stat textAlign="center">
+                <StatNumber
+                  fontSize="4xl"
+                  fontFamily="heading"
+                  color={team2WinProb > 50 ? 'green.400' : team2WinProb < 50 ? 'red.400' : 'gray.400'}
+                >
+                  {team2WinProb.toFixed(1)}%
+                </StatNumber>
+                <StatHelpText fontFamily="mono" color="gray.500">
+                  Total MMR: {Math.round(prediction.team_2.total_mmr)}
+                </StatHelpText>
+              </Stat>
+
+              <ChemistryBadge chemistry={prediction.team_2.team_chemistry} />
+            </VStack>
+          </Box>
+        </Grid>
+
+        {/* Visual probability bar */}
+        <Box w="full">
+          <HStack spacing={1}>
+            <Box flex={team1WinProb / 100}>
+              <Progress
+                value={100}
+                size="md"
+                colorScheme="cyan"
+                borderRadius="full"
+                bg="space.900"
+              />
             </Box>
-          )}
-        </VStack>
-      </CardBody>
-    </Card>
+            <Box flex={team2WinProb / 100}>
+              <Progress
+                value={100}
+                size="md"
+                colorScheme="orange"
+                borderRadius="full"
+                bg="space.900"
+              />
+            </Box>
+          </HStack>
+          <HStack justify="space-between" mt={2} px={1}>
+            <Text fontSize="xs" fontWeight="bold" color="brand.400" fontFamily="mono">{team1WinProb.toFixed(1)}%</Text>
+            <Text fontSize="xs" fontWeight="bold" color="accent.400" fontFamily="mono">{team2WinProb.toFixed(1)}%</Text>
+          </HStack>
+        </Box>
+
+        {/* Prediction Factors */}
+        {prediction.factors.length > 0 && (
+          <Box w="full" p={5} bg="rgba(0, 0, 0, 0.4)" borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100">
+            <HStack mb={3}>
+                <Icon as={FiActivity} color="gray.500" />
+                <Text fontSize="xs" fontWeight="black" color="gray.500" textTransform="uppercase" letterSpacing="widest">
+                Forecast Analysis
+                </Text>
+            </HStack>
+            <VStack align="start" spacing={2}>
+              {prediction.factors.map((factor, idx) => (
+                <HStack key={idx} spacing={3}>
+                  <Icon
+                    as={factor.includes('⚡') ? FiZap : FiTrendingUp}
+                    color={factor.includes('⚡') ? 'yellow.400' : 'gray.500'}
+                    boxSize={3}
+                  />
+                  <Text fontSize="sm" color="gray.300" fontWeight="medium">{factor}</Text>
+                </HStack>
+              ))}
+            </VStack>
+          </Box>
+        )}
+      </VStack>
+    </Box>
   );
 };
 
@@ -654,146 +632,172 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
 
   const totalMMR = teamPlayers.reduce((sum, id) => {
     const player = getPlayerById(id);
-    return sum + (player?.mmr || 0);
+    return sum + (player?.recency_weighted_mmr || player?.mmr || 0);
   }, 0);
 
   const avgMMR = teamPlayers.length > 0 ? totalMMR / teamPlayers.length : 0;
 
   return (
-    <Card bg={bg} border="2px solid" borderColor={borderColor}>
-      <CardBody>
-        <VStack align="stretch" spacing={4}>
-          {/* Header */}
-          <HStack justify="space-between">
-            <HStack>
-              <Icon as={FiUsers} color={iconColor} boxSize={6} />
-              <Heading size="md" fontFamily="heading" textTransform="uppercase">
-                Team {teamNumber}
-              </Heading>
-            </HStack>
-            <Badge colorScheme={teamNumber === 1 ? 'cyan' : 'orange'} fontSize="md">
-              {teamPlayers.length} Players
-            </Badge>
+    <Box
+      bg={cardBg}
+      borderRadius="xl"
+      border="3px solid"
+      borderColor={borderColor}
+      boxShadow={brandShadow}
+      p={6}
+    >
+      <VStack align="stretch" spacing={5}>
+        {/* Header */}
+        <HStack justify="space-between">
+          <HStack spacing={3}>
+            <Icon as={FiUsers} color={iconColor} boxSize={6} />
+            <Heading size="md" fontFamily="heading" textTransform="uppercase" letterSpacing="wider" color="gray.200">
+              Squad {teamNumber === 1 ? 'Alpha' : 'Bravo'}
+            </Heading>
           </HStack>
+          <Badge bg={teamNumber === 1 ? 'cyan.500' : 'orange.500'} color="white" fontSize="sm" px={3} py={1} borderRadius="full">
+            {teamPlayers.length} Active
+          </Badge>
+        </HStack>
 
-          {/* Stats Row */}
-          {teamPlayers.length > 0 && (
-            <SimpleGrid columns={2} spacing={3}>
-              <Box p={3} bg="rgba(0, 0, 0, 0.2)" borderRadius="md">
-                <Text fontSize="xs" color="gray.500" textTransform="uppercase">Avg MMR</Text>
-                <Text fontSize="xl" fontWeight="bold" color={iconColor}>
-                  {Math.round(avgMMR)}
+        {/* Stats Row */}
+        {teamPlayers.length > 0 && (
+          <SimpleGrid columns={2} spacing={3}>
+            <Box p={3} bg="space.900" borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100">
+              <Text fontSize="10px" fontWeight="black" color="gray.500" textTransform="uppercase" letterSpacing="widest" mb={1}>Total Power</Text>
+              <Text fontSize="xl" fontWeight="black" color={iconColor} fontFamily="mono">
+                {Math.round(totalMMR)}
+              </Text>
+            </Box>
+            {prediction && (
+              <Box p={3} bg="space.900" borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100">
+                <Text fontSize="10px" fontWeight="black" color="gray.500" textTransform="uppercase" letterSpacing="widest" mb={1}>Synergy Score</Text>
+                <Text fontSize="xl" fontWeight="black" color={iconColor} fontFamily="mono">
+                  {prediction.avg_synergy_score.toFixed(1)}
                 </Text>
               </Box>
-              {prediction && (
-                <Box p={3} bg="rgba(0, 0, 0, 0.2)" borderRadius="md">
-                  <Text fontSize="xs" color="gray.500" textTransform="uppercase">Synergy</Text>
-                  <Text fontSize="xl" fontWeight="bold" color={iconColor}>
-                    {prediction.avg_synergy_score.toFixed(1)}
-                  </Text>
-                </Box>
-              )}
-            </SimpleGrid>
-          )}
-
-          {/* Synergy Info */}
-          {prediction && prediction.synergies.length > 0 && (
-            <Box>
-              <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2} textTransform="uppercase">
-                Team Synergies
-              </Text>
-              <SynergyDisplay synergies={prediction.synergies} />
-            </Box>
-          )}
-
-          {/* Player List */}
-          <VStack align="stretch" spacing={2} minH="150px">
-            {teamPlayers.length === 0 ? (
-              <Box p={6} textAlign="center" color="gray.500">
-                <Icon as={FiPlus} boxSize={8} mb={2} />
-                <Text>No players selected</Text>
-              </Box>
-            ) : (
-              teamPlayers.map((playerId) => {
-                const player = getPlayerById(playerId);
-                if (!player) return null;
-
-                return (
-                  <HStack
-                    key={playerId}
-                    p={3}
-                    bg="rgba(0, 0, 0, 0.2)"
-                    borderRadius="md"
-                    justify="space-between"
-                    transition="all 0.2s"
-                    _hover={{ bg: 'rgba(0, 0, 0, 0.3)' }}
-                  >
-                    <VStack align="start" spacing={0} flex={1}>
-                      <Text fontWeight="bold" fontFamily="heading">
-                        {player.name}
-                      </Text>
-                      <HStack spacing={2}>
-                        <Text fontSize="xs" color="gray.500">
-                          MMR: {Math.round(player.mmr)}
-                        </Text>
-                        <Badge
-                          colorScheme={player.win_rate >= 50 ? 'green' : 'red'}
-                          fontSize="xs"
-                          variant="subtle"
-                        >
-                          {(player.win_rate * 100).toFixed(0)}% WR
-                        </Badge>
-                      </HStack>
-                    </VStack>
-                    <IconButton
-                      icon={<FiX />}
-                      size="sm"
-                      variant="ghost"
-                      colorScheme="red"
-                      onClick={() => onRemovePlayer(teamNumber, playerId)}
-                      aria-label="Remove player"
-                    />
-                  </HStack>
-                );
-              })
             )}
-          </VStack>
+          </SimpleGrid>
+        )}
 
-          <Divider />
-
-          {/* Add Player */}
-          <VStack align="stretch" spacing={2}>
-            <Text fontSize="sm" fontWeight="bold" color="gray.400" textTransform="uppercase">
-              Add Player
+        {/* Synergy Info */}
+        {prediction && prediction.synergies.length > 0 && (
+          <Box>
+            <Text fontSize="xs" fontWeight="black" color="gray.500" mb={2} textTransform="uppercase" letterSpacing="widest">
+              Team Synergies
             </Text>
-            <HStack>
-              <Select
-                placeholder="Select player..."
-                value={selectedPlayerId}
-                onChange={(e: ChangeEvent<HTMLSelectElement>) => setSelectedPlayerId(e.target.value)}
-                size="sm"
-                bg="rgba(0, 0, 0, 0.2)"
-              >
-                {availablePlayers.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.name} ({Math.round(player.mmr)} MMR)
-                  </option>
-                ))}
-              </Select>
-              <Button
-                leftIcon={<FiPlus />}
-                size="sm"
-                colorScheme={teamNumber === 1 ? 'cyan' : 'orange'}
-                onClick={handleAddPlayer}
-                isDisabled={!selectedPlayerId}
-              >
-                Add
-              </Button>
-            </HStack>
-          </VStack>
+            <SynergyDisplay synergies={prediction.synergies} />
+          </Box>
+        )}
+
+        {/* Player List */}
+        <VStack align="stretch" spacing={2} minH="120px">
+          {teamPlayers.length === 0 ? (
+            <Box
+              p={8}
+              textAlign="center"
+              color="gray.600"
+              border="2px dashed"
+              borderColor="space.700"
+              borderRadius="xl"
+            >
+              <Icon as={FiPlus} boxSize={8} mb={2} opacity={0.5} />
+              <Text fontSize="sm" fontFamily="heading">Draft players to this squad</Text>
+            </Box>
+          ) : (
+            teamPlayers.map((playerId) => {
+              const player = getPlayerById(playerId);
+              if (!player) return null;
+
+              return (
+                <HStack
+                  key={playerId}
+                  p={3}
+                  bg="space.900"
+                  borderRadius="xl"
+                  border="1px solid"
+                  borderColor="whiteAlpha.100"
+                  justify="space-between"
+                  transition="all 0.2s"
+                  _hover={{ borderColor: iconColor }}
+                >
+                  <VStack align="start" spacing={0} flex={1}>
+                    <Text fontWeight="bold" color="gray.200">
+                      {player.name}
+                    </Text>
+                    <HStack spacing={2}>
+                      <Text fontSize="xs" color="gray.500" fontFamily="mono">
+                        {Math.round(player.recency_weighted_mmr || player.mmr)} MMR
+                      </Text>
+                      <Badge
+                        colorScheme={player.win_rate >= 0.5 ? 'green' : 'red'}
+                        fontSize="10px"
+                        variant="subtle"
+                        borderRadius="sm"
+                      >
+                        {(player.win_rate * 100).toFixed(0)}% WR
+                      </Badge>
+                    </HStack>
+                  </VStack>
+                  <IconButton
+                    icon={<FiX />}
+                    size="xs"
+                    variant="ghost"
+                    colorScheme="red"
+                    onClick={() => onRemovePlayer(teamNumber, playerId)}
+                    aria-label="Remove player"
+                    borderRadius="full"
+                  />
+                </HStack>
+              );
+            })
+          )}
         </VStack>
-      </CardBody>
-    </Card>
+
+        <Divider borderColor="whiteAlpha.100" />
+
+        {/* Add Player */}
+        <VStack align="stretch" spacing={3}>
+          <Text fontSize="xs" fontWeight="black" color="gray.500" textTransform="uppercase" letterSpacing="widest">
+            Recruit Player
+          </Text>
+          <HStack>
+            <Select
+              placeholder="Search squad..."
+              value={selectedPlayerId}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => setSelectedPlayerId(e.target.value)}
+              size="sm"
+              bg="space.900"
+              borderRadius="md"
+              borderColor="space.700"
+              fontFamily="heading"
+              _hover={{ borderColor: iconColor }}
+            >
+              {availablePlayers.map((player) => (
+                <option key={player.id} value={player.id} style={{ background: '#1A202C' }}>
+                  {player.name} ({Math.round(player.recency_weighted_mmr || player.mmr)})
+                </option>
+              ))}
+            </Select>
+            <Button
+              leftIcon={<FiPlus />}
+              size="sm"
+              bg={teamNumber === 1 ? 'brand.500' : 'accent.500'}
+              color={teamNumber === 1 ? 'white' : 'space.900'}
+              onClick={handleAddPlayer}
+              isDisabled={!selectedPlayerId}
+              _hover={{ bg: teamNumber === 1 ? 'brand.600' : 'accent.400' }}
+              fontFamily="heading"
+              px={6}
+            >
+              Draft
+            </Button>
+          </HStack>
+        </VStack>
+      </VStack>
+    </Box>
+  );
+};
   );
 };
 

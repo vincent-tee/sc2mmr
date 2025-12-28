@@ -1,40 +1,40 @@
 /**
  * Design Tokens for SC2 MMR Tracker
- * Centralized color, spacing, and styling values
- * Replaces hardcoded values throughout the codebase
+ * "Friend Squad" Edition - Warm, Personable, Comic-Book Inspired
+ * Philosophy: Cozy gaming cafe, not sterile command center
  */
 
-// Color palette - Warm oranges, reds, golds SC2 theme
+// Color palette - Friend Squad warm comic-book theme
 export const colors = {
-  // Brand/Primary palette - Warm Orange/Amber (primary warmth)
+  // Brand/Primary palette - Sunset Orange (warm, inviting)
   brand: {
-    50: '#FFF7ED',
-    100: '#FFEAD5',
-    200: '#FFD6A8',
-    300: '#FFC178',
-    400: '#FFAA44',
-    500: '#FF8C1A', // Primary warm orange
-    600: '#E67E0A',
-    700: '#CC6B1F',
-    800: '#B35E1F',
-    900: '#8B4513',
+    50: '#FFF5F0',
+    100: '#FFE4D6',
+    200: '#FFCBB3',
+    300: '#FFAB85',
+    400: '#FF8C5A',
+    500: '#FF6B35', // Sunset Orange - Main CTA
+    600: '#E85A2A',
+    700: '#CC4A22',
+    800: '#A33D1C',
+    900: '#7A2E15',
   },
 
-  // Accent palette - Deep Red/Burgundy (warm secondary)
+  // Accent palette - Friendly Teal (complementary, fresh)
   accent: {
-    50: '#FEF2F2',
-    100: '#FEE2E2',
-    200: '#FECACA',
-    300: '#FCA5A5',
-    400: '#F87171',
-    500: '#EF4444', // Deep red accent
-    600: '#DC2626',
-    700: '#B91C1C',
-    800: '#991B1B',
-    900: '#7F1D1D',
+    50: '#E6FAF8',
+    100: '#C2F2ED',
+    200: '#9AE8E0',
+    300: '#7EDCD6',
+    400: '#66D4CC',
+    500: '#4ECDC4', // Friendly Teal - Accents
+    600: '#3DBDB4',
+    700: '#2EA39B',
+    800: '#1F8A82',
+    900: '#106B65',
   },
 
-  // Gold/Bronze (success/positive & accents)
+  // Gold/Bronze (success/positive & achievements)
   shield: {
     50: '#FFFBEB',
     100: '#FEF3C7',
@@ -48,102 +48,109 @@ export const colors = {
     900: '#78350F',
   },
 
-  // Warm grays & dark warm tones (background) - Warm aesthetic
+  // Cozy dark backgrounds (warm purple-brown, not cold black)
   space: {
-    50: '#FAF5F0',
-    100: '#F5EFE7',
-    200: '#EAE5DC',
-    300: '#D4C9B9',
-    400: '#B5A89A',
-    500: '#8B7355', // Warm brown-gray
-    600: '#6B5B47',
-    700: '#504535',
-    800: '#3C3428',
-    900: '#2A241F', // Deep warm brown
+    50: '#F5F3F7',
+    100: '#E8E4ED',
+    200: '#D4CDE0',
+    300: '#B5AAC7',
+    400: '#9286A8',
+    500: '#6B5B7A',
+    600: '#4A3D5C',
+    700: '#2F2A40', // Elevated surface
+    800: '#252136', // Card background
+    900: '#1A1625', // Deep background (warm purple)
   },
 
-  // StarCraft 2 race colors
+  // StarCraft 2 race colors - FRIENDLIER versions (softer, warmer)
   race: {
     terran: {
-      50: '#E0F2FF',
-      100: '#BAE0FF',
-      200: '#7FCBFF',
-      300: '#48B5FF',
-      400: '#1A9FFF',
-      500: '#0080FF', // Terran blue
-      600: '#0066CC',
-      700: '#004D99',
-      800: '#003366',
-      900: '#001A33',
+      50: '#EBF4FB',
+      100: '#D1E6F6',
+      200: '#A3CEF0',
+      300: '#89B8E5',
+      400: '#6FA6DB',
+      500: '#5B9BD5', // Soft Sky Blue (friendlier)
+      600: '#4A8AC4',
+      700: '#3A7BBD',
+      800: '#2A5A8A',
+      900: '#1A3A5A',
     },
     protoss: {
-      50: '#FFFAF0',
-      100: '#FFE8B3',
-      200: '#FFD700', // Protoss gold
-      300: '#E6C200',
-      400: '#CCAC00',
-      500: '#CCAC00',
-      600: '#998100',
-      700: '#665600',
-      800: '#332B00',
-      900: '#1A1600',
+      50: '#FFFEF5',
+      100: '#FFF9E0',
+      200: '#FFF0B3',
+      300: '#FFE566',
+      400: '#FFDF4D',
+      500: '#FFD93D', // Warm Butter Gold (friendlier)
+      600: '#E5C235',
+      700: '#CCAC2D',
+      800: '#998122',
+      900: '#665617',
     },
     zerg: {
-      50: '#F3E5F5',
-      100: '#E1BEE7',
-      200: '#CE93D8',
-      300: '#BA68C8',
-      400: '#AB47BC',
-      500: '#9C27B0', // Zerg purple
-      600: '#7D1F8D',
-      700: '#5E176A',
-      800: '#3E0D47',
-      900: '#1F0624',
+      50: '#FAF0FF',
+      100: '#F2E0FF',
+      200: '#E5C2FF',
+      300: '#D9A3FF',
+      400: '#CC85FF',
+      500: '#C77DFF', // Soft Lavender (friendlier)
+      600: '#B366E6',
+      700: '#A855F7',
+      800: '#8B3ECF',
+      900: '#6B2FA8',
     },
     random: {
-      50: '#F5F5F5',
-      100: '#E0E0E0',
-      200: '#BDBDBD',
-      300: '#9E9E9E',
-      400: '#757575',
-      500: '#616161', // Random gray
-      600: '#424242',
-      700: '#212121',
-      800: '#121212',
-      900: '#000000',
+      50: '#F8FAFC',
+      100: '#F1F5F9',
+      200: '#E2E8F0',
+      300: '#CBD5E1',
+      400: '#94A3B8', // Warm Slate (friendlier)
+      500: '#64748B',
+      600: '#475569',
+      700: '#334155',
+      800: '#1E293B',
+      900: '#0F172A',
     },
   },
 
-  // Status/semantic colors
+  // Status/semantic colors (fun, not harsh)
   status: {
-    win: '#00FF88', // Shield green
-    loss: '#FF4444',
-    draw: '#FFB300', // Accent gold
-    neutral: '#808080',
+    win: '#4ADE80', // Victory Green (softer)
+    loss: '#F87171', // Defeat Red (not harsh)
+    draw: '#FBBF24', // Draw Gold
+    neutral: '#94A3B8',
+    hotStreak: '#FF6B35', // On Fire!
+    coldStreak: '#60A5FA', // Ice Cold
+    rivalry: '#F472B6', // Rivalry Pink
   },
 
-  // Background colors
+  // Background colors (cozy, warm)
   background: {
-    card: 'rgba(26, 32, 44, 0.8)',
-    cardHover: 'rgba(45, 55, 72, 0.8)',
-    overlay: 'rgba(13, 17, 33, 0.95)',
-    selected: 'rgba(0, 82, 102, 0.3)',
+    deep: '#1A1625', // Main background (warm purple)
+    card: '#252136', // Card surfaces
+    cardHover: '#2F2A40', // Elevated surface
+    elevated: '#2F2A40', // Modals, dropdowns
+    overlay: 'rgba(26, 22, 37, 0.9)', // Modal overlay
+    selected: 'rgba(78, 205, 196, 0.2)', // Teal selection
   },
 
-  // Text/semantic colors
+  // Text colors (warm, readable)
   text: {
-    primary: '#FFFFFF',
-    secondary: '#A0AEC0',
-    disabled: '#718096',
-    muted: '#4A5568',
+    primary: '#F8FAFC',
+    secondary: '#CBD5E1',
+    disabled: '#64748B',
+    muted: '#475569',
+    accent: '#4ECDC4', // Teal accent text
   },
 
-  // Border colors
+  // Border colors (comic-book style)
   border: {
     light: 'rgba(255, 255, 255, 0.1)',
-    medium: 'rgba(0, 212, 255, 0.3)',
-    brand: '#00D4FF',
-    accent: '#FFB300',
+    medium: 'rgba(255, 107, 53, 0.3)', // Orange tint
+    heavy: '#1A1625', // Bold comic border
+    brand: '#FF6B35', // Orange brand
+    accent: '#4ECDC4', // Teal accent
   },
 } as const;
 
@@ -169,28 +176,33 @@ export const radii = {
   full: '9999px',
 } as const;
 
-// Shadow definitions
+// Shadow definitions - Comic-book style (hard offset shadows, not glows)
 export const shadows = {
   none: 'none',
-  sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-  md: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-  lg: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-  xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-  // Brand/tactical shadows
-  brandGlow: '0 0 20px rgba(0, 212, 255, 0.4)',
-  brandGlowLarge: '0 0 40px rgba(0, 212, 255, 0.8)',
-  brandGlowSubtle: '0 0 10px rgba(0, 212, 255, 0.6)',
-  accentGlow: '0 0 20px rgba(255, 179, 0, 0.4)',
-  accentGlowSubtle: '0 0 10px rgba(255, 179, 0, 0.6)',
-  shieldGlow: '0 0 20px rgba(0, 255, 136, 0.4)',
-  shieldGlowSubtle: '0 0 8px rgba(0, 255, 136, 0.5)',
-  zergGlow: '0 0 20px rgba(156, 39, 176, 0.4)',
-  zergGlowSubtle: '0 0 10px rgba(156, 39, 176, 0.6)',
-  elevation: '0 0 20px rgba(0, 212, 255, 0.2)',
-  hoverElevation: '0 8px 30px rgba(0, 212, 255, 0.4), 0 0 20px rgba(0, 212, 255, 0.4)',
+  sm: '2px 2px 0 rgba(26, 22, 37, 0.3)',
+  md: '4px 4px 0 rgba(26, 22, 37, 0.4)',
+  lg: '6px 6px 0 rgba(26, 22, 37, 0.5)',
+  xl: '8px 8px 0 rgba(26, 22, 37, 0.6)',
+  // Comic-book card shadows (hard offset, not soft glow)
+  comic: '4px 4px 0 #1A1625',
+  comicHover: '6px 6px 0 #1A1625',
+  comicLarge: '8px 8px 0 #1A1625',
+  // Subtle glows for special states (not tactical neon)
+  brandGlow: '0 4px 14px rgba(255, 107, 53, 0.3)',
+  brandGlowSubtle: '0 2px 8px rgba(255, 107, 53, 0.2)',
+  accentGlow: '0 4px 14px rgba(78, 205, 196, 0.3)',
+  accentGlowSubtle: '0 2px 8px rgba(78, 205, 196, 0.2)',
+  shieldGlow: '0 4px 14px rgba(245, 158, 11, 0.3)',
+  // Fire effect for hot streaks
+  fireGlow: '0 0 15px rgba(255, 107, 53, 0.5), 0 0 30px rgba(255, 107, 53, 0.3)',
+  // Ice effect for cold streaks
+  iceGlow: '0 0 15px rgba(96, 165, 250, 0.5), 0 0 30px rgba(96, 165, 250, 0.3)',
+  // Elevation for modals/dropdowns
+  elevation: '0 10px 40px rgba(0, 0, 0, 0.3)',
+  hoverElevation: '0 12px 28px rgba(255, 107, 53, 0.2)',
 } as const;
 
-// Typography scale
+// Typography scale - Friendly Modern (Nunito + Quicksand)
 export const typography = {
   fontSize: {
     xs: '12px',
@@ -201,6 +213,7 @@ export const typography = {
     '2xl': '24px',
     '3xl': '30px',
     '4xl': '36px',
+    '5xl': '48px', // Hero titles
   },
   fontWeight: {
     light: 300,
@@ -212,8 +225,9 @@ export const typography = {
     black: 900,
   },
   fontFamily: {
-    heading: "'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    body: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    heading: "'Quicksand', 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif",
+    body: "'Nunito', 'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif",
+    mono: "'JetBrains Mono', 'Fira Code', monospace",
   },
   lineHeight: {
     none: '1',
@@ -224,26 +238,31 @@ export const typography = {
     loose: '2',
   },
   letterSpacing: {
+    tighter: '-0.02em',
+    tight: '-0.01em',
     none: '0',
-    xs: '0.04em',
-    sm: '0.05em',
-    md: '0.1em',
-    lg: '0.15em',
-    wide: '0.15em',
-    wider: '0.2em',
+    wide: '0.02em',
+    wider: '0.05em',
+    widest: '0.1em',
   },
 } as const;
 
-// Transition/animation timing
+// Transition/animation timing - Medium Playful (bouncy but not excessive)
 export const transitions = {
   fast: '150ms',
   base: '250ms',
   slow: '350ms',
   slowest: '500ms',
   easing: {
+    // Smooth easing
     easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
     easeOut: 'cubic-bezier(0.0, 0, 0.2, 1)',
     easeIn: 'cubic-bezier(0.4, 0, 1, 1)',
+    // Bouncy easing (medium playful)
+    bounce: 'cubic-bezier(0.68, -0.35, 0.265, 1.35)',
+    bouncier: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+    // Spring easing
+    spring: 'cubic-bezier(0.175, 0.885, 0.32, 1.275)',
   },
 } as const;
 
@@ -340,64 +359,85 @@ export const layout = {
   hexagonClipPath: 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)',
 } as const;
 
-// Animation keyframes
+// Animation keyframes - Friend Squad style (bouncy, playful)
 export const keyframes = {
+  // Bouncy entrance
+  bounceIn: {
+    '0%': { transform: 'scale(0)', opacity: 0 },
+    '50%': { transform: 'scale(1.08)' },
+    '70%': { transform: 'scale(0.95)' },
+    '100%': { transform: 'scale(1)', opacity: 1 },
+  },
+  // Subtle wobble on hover
+  wiggle: {
+    '0%, 100%': { transform: 'rotate(0deg)' },
+    '25%': { transform: 'rotate(-2deg)' },
+    '75%': { transform: 'rotate(2deg)' },
+  },
+  // Victory celebration
+  celebrate: {
+    '0%, 100%': { transform: 'rotate(0deg) scale(1)' },
+    '25%': { transform: 'rotate(-5deg) scale(1.05)' },
+    '75%': { transform: 'rotate(5deg) scale(1.05)' },
+  },
+  // Fire glow for hot streaks
+  fireGlow: {
+    '0%, 100%': { boxShadow: '0 0 8px rgba(255, 107, 53, 0.4)' },
+    '50%': { boxShadow: '0 0 20px rgba(255, 107, 53, 0.6), 0 0 40px rgba(255, 107, 53, 0.3)' },
+  },
+  // Gentle pulse (softer than tactical)
   pulse: {
-    '0%, 100%': { opacity: 0.2 },
-    '50%': { opacity: 0.4 },
-  },
-  twinkle: {
-    '0%, 100%': { opacity: 0.6 },
+    '0%, 100%': { opacity: 0.8 },
     '50%': { opacity: 1 },
   },
-  shimmer: {
-    '0%, 100%': { opacity: 0.5 },
-    '50%': { opacity: 1 },
+  // Slide in from bottom
+  slideUp: {
+    from: { transform: 'translateY(20px)', opacity: 0 },
+    to: { transform: 'translateY(0)', opacity: 1 },
   },
-  scanline: {
-    '0%': { transform: 'translateY(0)' },
-    '100%': { transform: 'translateY(400px)' },
-  },
-  slideIn: {
-    from: { transform: 'translateX(-100%)' },
-    to: { transform: 'translateX(0)' },
-  },
+  // Fade in
   fadeIn: {
     from: { opacity: 0 },
     to: { opacity: 1 },
   },
+  // Card hover lift
+  lift: {
+    from: { transform: 'translateY(0)' },
+    to: { transform: 'translateY(-4px)' },
+  },
 } as const;
 
-// Preset combinations for common patterns
+// Preset combinations for common patterns - Friend Squad style
 export const presets = {
-  // Card styles
+  // Card styles - Comic-book inspired
   card: {
     base: {
       bg: colors.background.card,
-      border: '2px solid',
-      borderColor: colors.border.medium,
+      border: '3px solid',
+      borderColor: colors.border.heavy,
       borderRadius: radii.lg,
-      transition: `all ${transitions.base} ${transitions.easing.easeInOut}`,
+      boxShadow: shadows.comic,
+      transition: `all ${transitions.base} ${transitions.easing.bounce}`,
     },
     hover: {
-      transform: 'translateY(-4px)',
-      borderColor: colors.border.brand,
-      boxShadow: shadows.hoverElevation,
+      transform: 'translateY(-4px) rotate(0.5deg)',
+      boxShadow: shadows.comicHover,
     },
   },
 
-  // Button styles
+  // Button styles - Friendly, chunky
   button: {
     base: {
+      fontFamily: typography.fontFamily.heading,
       fontWeight: typography.fontWeight.bold,
-      borderRadius: radii.md,
-      textTransform: 'uppercase',
-      letterSpacing: typography.letterSpacing.sm,
-      transition: `all ${transitions.base} ${transitions.easing.easeInOut}`,
+      borderRadius: radii.lg,
+      border: '3px solid',
+      borderColor: colors.border.heavy,
+      transition: `all ${transitions.base} ${transitions.easing.bounce}`,
     },
     primary: {
       bg: colors.brand[500],
-      color: '#1A1A1A',
+      color: '#FFFFFF',
       _hover: {
         bg: colors.brand[400],
         transform: 'translateY(-2px)',
@@ -410,7 +450,7 @@ export const presets = {
     },
     accent: {
       bg: colors.accent[500],
-      color: '#1A1A1A',
+      color: '#1A1625',
       _hover: {
         bg: colors.accent[400],
         transform: 'translateY(-2px)',
@@ -423,25 +463,32 @@ export const presets = {
     },
   },
 
-  // Text shadow for tactical look
+  // Background - Subtle warm gradient
+  background: {
+    gradient: 'linear-gradient(135deg, #1A1625 0%, #252136 50%, #1F1A2E 100%)',
+    gradientSubtle: 'linear-gradient(180deg, #1A1625 0%, #1F1A2E 100%)',
+  },
+
+  // Halftone pattern for comic effect
+  halftone: {
+    pattern: 'radial-gradient(circle, #1A1625 1px, transparent 1px)',
+    size: '4px 4px',
+    opacity: 0.15,
+  },
+
+  // Text styles
   textShadow: {
-    glow: `0 0 40px rgba(0, 212, 255, 0.6)`,
-    glowSubtle: `0 0 20px rgba(0, 212, 255, 0.3)`,
-    accentGlow: `0 0 20px rgba(255, 179, 0, 0.3)`,
+    comic: '2px 2px 0 #1A1625',
+    comicLight: '1px 1px 0 rgba(26, 22, 37, 0.5)',
+    glow: '0 0 20px rgba(255, 107, 53, 0.4)',
   },
 
-  // Gradient overlays
-  gradient: {
-    brandGradient: 'linear-gradient(45deg, transparent, rgba(0, 212, 255, 0.3), transparent)',
-    accentGradient: 'linear-gradient(45deg, transparent, rgba(255, 179, 0, 0.3), transparent)',
-    commandGradient: 'linear-gradient(135deg, transparent 40%, rgba(0, 212, 255, 0.4) 100%)',
-  },
-
-  // Corner bracket styling
-  cornerBracket: {
-    size: '16px',
-    width: '2px',
-    color: colors.brand[300],
+  // Race mascot colors (for future mascot components)
+  mascot: {
+    terran: { primary: colors.race.terran[500], accent: colors.race.terran[300] },
+    protoss: { primary: colors.race.protoss[500], accent: colors.race.protoss[300] },
+    zerg: { primary: colors.race.zerg[500], accent: colors.race.zerg[300] },
+    random: { primary: colors.race.random[400], accent: colors.race.random[200] },
   },
 } as const;
 

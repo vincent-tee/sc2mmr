@@ -1,6 +1,6 @@
 /**
  * PlayerCard Component
- * Tactical unit card with hexagonal styling and multi-race support
+ * Friend Squad edition - Warm, personable, comic-book inspired
  */
 import React, { useCallback, KeyboardEvent } from 'react';
 import {
@@ -14,9 +14,12 @@ import {
   Tooltip,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { getInitials, getRaceColor, getPlayerRaces } from '../utils/formatting';
+import { 
+  getRaceColor, 
+  getPlayerRaces, 
+  getPlayerAvatarUrl 
+} from '../utils/formatting';
 import RankBadge from './RankBadge';
-import RaceBackground from './RaceBackground';
 
 type CardSize = 'sm' | 'md' | 'lg';
 
@@ -47,6 +50,7 @@ export interface PlayerCardData {
   zerg_games?: number;
   random_games?: number;
   favorite_race?: string;
+  is_ai?: boolean;
 }
 
 interface PlayerCardProps {
@@ -62,7 +66,9 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
   onClick,
   size = 'md',
 }) => {
-  const borderColor = useColorModeValue('gray.200', 'whiteAlpha.100');
+  const cardBg = useColorModeValue('white', 'space.800');
+  const borderColorDefault = useColorModeValue('gray.200', 'space.900');
+  const avatarBorderColor = useColorModeValue('gray.800', 'space.900');
 
   const sizes: Record<CardSize, SizeConfig> = {
     sm: {
@@ -98,16 +104,14 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
   }, [onClick]);
 
   return (
-    <RaceBackground
-      race={primaryRace.toLowerCase()}
-      intensity="subtle"
-      showRaceIcon={false}
-      hoverGlow={true}
-      borderStyle="subtle"
-      showPattern={true}
-      borderRadius="lg"
-      borderWidth={2}
-      borderColor={isSelected ? 'brand.500' : borderColor}
+    <Box
+      bg={cardBg}
+      borderRadius="xl"
+      border="3px solid"
+      borderColor={isSelected ? 'brand.500' : borderColorDefault}
+      boxShadow={isSelected 
+        ? '6px 6px 0 var(--chakra-colors-brand-500)' 
+        : '4px 4px 0 var(--chakra-colors-space-900)'}
       p={sizeConfig.padding}
       cursor={onClick ? 'pointer' : 'default'}
       onClick={onClick}
@@ -116,120 +120,105 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
       role={onClick ? 'button' : undefined}
       aria-label={onClick ? `Select player ${player.name}` : undefined}
       aria-pressed={onClick ? isSelected : undefined}
-      transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+      transition="all 0.25s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
       _hover={onClick ? {
-        transform: 'translateY(-4px)',
-        boxShadow: isSelected
-          ? '0 8px 30px rgba(255, 140, 26, 0.4), 0 0 0 1px rgba(255, 140, 26, 0.5)'
-          : '0 8px 20px rgba(255, 140, 26, 0.2)',
+        transform: 'translateY(-4px) rotate(1deg)',
+        boxShadow: '6px 6px 0 var(--chakra-colors-space-900)',
         borderColor: 'brand.400',
       } : {}}
       _focus={onClick ? {
         outline: 'none',
-        boxShadow: `0 0 0 3px rgba(255, 140, 26, 0.5)`,
+        boxShadow: '0 0 0 3px rgba(255, 107, 53, 0.5)',
         borderColor: 'brand.400',
       } : {}}
       position="relative"
-      overflow="visible"
-      boxShadow={isSelected ? '0 4px 20px rgba(255, 140, 26, 0.3)' : 'md'}
+      overflow="hidden"
     >
-      {/* Corner Brackets - Top Left */}
+      {/* Top accent bar showing primary race color */}
       <Box
         position="absolute"
-        top={-1}
-        left={-1}
-        width="16px"
-        height="16px"
-        borderTop="2px solid"
-        borderLeft="2px solid"
-        borderColor={isSelected ? 'brand.400' : 'transparent'}
-        transition="all 0.3s"
-        opacity={isSelected ? 1 : 0}
+        top={0}
+        left={0}
+        right={0}
+        height="4px"
+        bg={`${getRaceColor(primaryRace)}.500`}
+        borderTopRadius="lg"
       />
 
-      {/* Corner Brackets - Bottom Right */}
-      <Box
-        position="absolute"
-        bottom={-1}
-        right={-1}
-        width="16px"
-        height="16px"
-        borderBottom="2px solid"
-        borderRight="2px solid"
-        borderColor={isSelected ? 'brand.400' : 'transparent'}
-        transition="all 0.3s"
-        opacity={isSelected ? 1 : 0}
-      />
-
-      {/* Selection Indicator */}
+      {/* Selection checkmark */}
       {isSelected && (
         <Box
           position="absolute"
           top={2}
           right={2}
-          color="brand.400"
-          fontSize="xl"
+          bg="brand.500"
+          color="white"
+          borderRadius="full"
+          width="24px"
+          height="24px"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          fontSize="sm"
           fontWeight="bold"
-          textShadow="0 0 10px rgba(255, 140, 26, 0.8)"
+          border="2px solid"
+          borderColor="space.900"
         >
-          [check]
+          ✓
         </Box>
       )}
 
-      <VStack spacing={3} align="center">
-        {/* Hexagonal Avatar Frame */}
+      <VStack spacing={3} align="center" pt={2}>
+        {/* Avatar - circular with thick comic border */}
         <Box position="relative">
-          {/* Hexagonal glow effect */}
-          {isSelected && (
-            <Box
-              position="absolute"
-              top="50%"
-              left="50%"
-              transform="translate(-50%, -50%)"
-              width="calc(100% + 16px)"
-              height="calc(100% + 16px)"
-              borderRadius="full"
-              bg="brand.500"
-              opacity={0.2}
-              filter="blur(8px)"
-              animation="pulse 2s ease-in-out infinite"
-              sx={{
-                '@keyframes pulse': {
-                  '0%, 100%': { opacity: 0.2 },
-                  '50%': { opacity: 0.4 },
-                },
-              }}
-            />
-          )}
-
           <Avatar
             size={sizeConfig.avatarSize}
+            src={getPlayerAvatarUrl(player.name, primaryRace, player.is_ai)}
             name={player.name}
             bg={`${getRaceColor(primaryRace)}.500`}
-            color="white"
             border="3px solid"
-            borderColor={isSelected ? 'brand.400' : 'whiteAlpha.200'}
-            boxShadow={isSelected ? '0 0 20px rgba(255, 140, 26, 0.4)' : 'md'}
+            borderColor={avatarBorderColor}
+            boxShadow="2px 2px 0 var(--chakra-colors-space-900)"
             position="relative"
             zIndex={1}
-          >
-            {getInitials(player.name)}
-          </Avatar>
+          />
+          
+          {/* Race emoji indicator */}
+          {playerRaces.length > 0 && (
+            <Box
+              position="absolute"
+              bottom={-1}
+              right={-1}
+              bg="space.800"
+              border="2px solid"
+              borderColor="space.900"
+              borderRadius="full"
+              px={1}
+              fontSize="xs"
+            >
+              {playerRaces[0].emoji}
+            </Box>
+          )}
         </Box>
 
         <VStack spacing={1.5} align="center" width="100%">
-          <Text
-            fontSize={sizeConfig.nameSize}
-            fontWeight="bold"
-            textAlign="center"
-            noOfLines={1}
-            fontFamily="heading"
-            letterSpacing="wide"
-            color={isSelected ? 'brand.300' : 'inherit'}
-            textShadow={isSelected ? '0 0 8px rgba(255, 140, 26, 0.3)' : 'none'}
-          >
-            {player.name}
-          </Text>
+          <HStack justify="center" width="100%">
+            <Text
+              fontSize={sizeConfig.nameSize}
+              fontWeight="bold"
+              textAlign="center"
+              noOfLines={1}
+              fontFamily="heading"
+              color={isSelected ? 'brand.400' : 'inherit'}
+            >
+              {player.name}
+            </Text>
+            {player.is_ai && (
+              <Badge colorScheme="purple" variant="solid" fontSize="2xs" borderRadius="full">
+                AI
+              </Badge>
+            )}
+          </HStack>
 
           {/* Rank Badge - Shows SC2 rank based on MMR */}
           <RankBadge
@@ -310,7 +299,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
           )}
         </VStack>
       </VStack>
-    </RaceBackground>
+    </Box>
   );
 };
 

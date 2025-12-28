@@ -9,6 +9,7 @@ TrueSkill is a Bayesian skill rating system that:
 - Increases uncertainty over time without games (skill decay)
 - Recency weighting: Recent matches count more than older matches
 """
+
 from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timedelta
 import trueskill
@@ -29,7 +30,7 @@ trueskill.setup(
     sigma=settings.trueskill_sigma,
     beta=settings.trueskill_beta,
     tau=settings.trueskill_tau,
-    draw_probability=settings.trueskill_draw_probability
+    draw_probability=settings.trueskill_draw_probability,
 )
 
 # Recency weighting configuration from settings
@@ -43,8 +44,8 @@ class RatingSystem:
 
     MMR Calculation Constants (Single Source of Truth from config):
     - MMR_BASE: Base MMR value for all players (default 1000)
-    - MMR_MU_MULTIPLIER: How much each mu point affects MMR (default 40)
-    - MMR_SIGMA_MULTIPLIER: How much sigma affects conservative MMR (default 120)
+    - MMR_MU_MULTIPLIER: How much each mu point affects MMR (default 100)
+    - MMR_SIGMA_MULTIPLIER: How much sigma affects conservative MMR (default 300)
 
     Two MMR formulas exist for different purposes:
     1. Display MMR: MMR_BASE + MMR_MU_MULTIPLIER*mu (used for player cards, leaderboards)
@@ -77,18 +78,18 @@ class RatingSystem:
         """
         Calculate MMR for display purposes (player cards, leaderboards).
 
-        Formula: MMR = 1000 + 40*mu
+        Formula: MMR = 1000 + 100*mu
 
         This formula does NOT include sigma (uncertainty) because:
         - Inactive players shouldn't have their displayed rating penalized
         - Provides a stable, intuitive rating that only changes with match results
-        - New players start at ~2000 MMR (mu=25)
+        - New players start at ~3500 MMR (mu=25)
 
         Args:
             mu: Skill estimate from TrueSkill
 
         Returns:
-            Display MMR value (typically 800-2400 range)
+            Display MMR value (typically 1500-4500 range)
         """
         return RatingSystem.MMR_BASE + (RatingSystem.MMR_MU_MULTIPLIER * mu)
 
@@ -97,7 +98,7 @@ class RatingSystem:
         """
         Get conservative MMR rating for matchmaking and team balancing.
 
-        Formula: MMR = 1000 + 40*mu - 120*sigma
+        Formula: MMR = 1000 + 100*mu - 300*sigma
 
         This formula INCLUDES sigma (uncertainty) because:
         - Provides a "worst case" estimate for fair matchmaking
@@ -111,14 +112,15 @@ class RatingSystem:
         Returns:
             Conservative MMR value
         """
-        return (RatingSystem.MMR_BASE +
-                (RatingSystem.MMR_MU_MULTIPLIER * mu) -
-                (RatingSystem.MMR_SIGMA_MULTIPLIER * sigma))
+        return (
+            RatingSystem.MMR_BASE
+            + (RatingSystem.MMR_MU_MULTIPLIER * mu)
+            - (RatingSystem.MMR_SIGMA_MULTIPLIER * sigma)
+        )
 
     @staticmethod
     def calculate_win_probability(
-        team1_ratings: List[trueskill.Rating],
-        team2_ratings: List[trueskill.Rating]
+        team1_ratings: List[trueskill.Rating], team2_ratings: List[trueskill.Rating]
     ) -> Tuple[float, float]:
         """
         Calculate win probability for each team using TrueSkill.
@@ -142,8 +144,8 @@ class RatingSystem:
         team2_mu = sum(r.mu for r in team2_ratings)
 
         # Calculate team uncertainties (sum of sigma squared, then sqrt)
-        team1_sigma_sq = sum(r.sigma ** 2 for r in team1_ratings)
-        team2_sigma_sq = sum(r.sigma ** 2 for r in team2_ratings)
+        team1_sigma_sq = sum(r.sigma**2 for r in team1_ratings)
+        team2_sigma_sq = sum(r.sigma**2 for r in team2_ratings)
 
         # Total variance
         total_sigma = math.sqrt(team1_sigma_sq + team2_sigma_sq)
@@ -153,16 +155,21 @@ class RatingSystem:
 
         # Calculate win probability using cumulative distribution function
         # P(team1 wins) = P(team1_strength > team2_strength)
-        team1_win_prob = norm.cdf(delta_mu / total_sigma)
+        import numpy as np
+
+        result = norm.cdf(delta_mu / total_sigma)
+        team1_win_prob = (
+            float(result)
+            if not isinstance(result, np.ndarray)
+            else float(result.item())
+        )
         team2_win_prob = 1.0 - team1_win_prob
 
         return (team1_win_prob, team2_win_prob)
 
     @staticmethod
     def apply_skill_decay(
-        player: Player,
-        days_since_last_game: int,
-        db: Session = None
+        player: Player, days_since_last_game: int, db: Optional[Session] = None
     ) -> None:
         """
         Apply adaptive skill decay based on player's typical session gaps.
@@ -184,7 +191,11 @@ class RatingSystem:
         base_decay_per_day = 0.0833
 
         # Use adaptive decay if enabled and we have enough data
-        if settings.adaptive_decay_enabled and db and player.total_games >= settings.min_games_for_adaptive_decay:
+        if (
+            settings.adaptive_decay_enabled
+            and db
+            and player.total_games >= settings.min_games_for_adaptive_decay
+        ):
             typical_gap = RatingSystem.calculate_typical_session_gap(db, player)
 
             if typical_gap > 0:
@@ -246,9 +257,13 @@ class RatingSystem:
             Typical gap in days (0 if not enough data)
         """
         # Get player's match history ordered by date
-        match_players = db.query(MatchPlayer).filter(
-            MatchPlayer.player_id == player.id
-        ).join(Match).order_by(Match.played_at).all()
+        match_players = (
+            db.query(MatchPlayer)
+            .filter(MatchPlayer.player_id == player.id)
+            .join(Match)
+            .order_by(Match.played_at)
+            .all()
+        )
 
         if len(match_players) < settings.min_games_for_adaptive_decay:
             return 0.0
@@ -261,7 +276,9 @@ class RatingSystem:
             match = db.query(Match).filter(Match.id == mp.match_id).first()
             if match and match.played_at:
                 if previous_match_time:
-                    gap_days = (match.played_at - previous_match_time).total_seconds() / 86400
+                    gap_days = (
+                        match.played_at - previous_match_time
+                    ).total_seconds() / 86400
                     # Only count gaps > 4 hours as session gaps (ignore matches within same session)
                     if gap_days >= settings.session_gap_hours / 24:
                         gaps.append(gap_days)
@@ -286,7 +303,9 @@ class RatingSystem:
         return typical_gap
 
     @staticmethod
-    def calculate_recency_weight(days_ago: float, reference_date: Optional[datetime] = None) -> float:
+    def calculate_recency_weight(
+        days_ago: float, reference_date: Optional[datetime] = None
+    ) -> float:
         """
         Calculate exponential recency weight for a match.
 
@@ -316,9 +335,7 @@ class RatingSystem:
 
     @staticmethod
     def update_recency_weighted_rating(
-        db: Session,
-        player: Player,
-        reference_date: Optional[datetime] = None
+        db: Session, player: Player, reference_date: Optional[datetime] = None
     ) -> None:
         """
         Calculate and update a player's recency-weighted MMR.
@@ -335,9 +352,13 @@ class RatingSystem:
             reference_date = datetime.utcnow()
 
         # Get all matches for this player, ordered by date
-        match_players = db.query(MatchPlayer).filter(
-            MatchPlayer.player_id == player.id
-        ).join(Match).order_by(Match.played_at).all()
+        match_players = (
+            db.query(MatchPlayer)
+            .filter(MatchPlayer.player_id == player.id)
+            .join(Match)
+            .order_by(Match.played_at)
+            .all()
+        )
 
         if not match_players:
             # No matches, use standard MMR
@@ -375,9 +396,7 @@ class RatingSystem:
 
     @staticmethod
     def update_ratings_from_match(
-        db: Session,
-        replay_data: ReplayData,
-        match: Match
+        db: Session, replay_data: ReplayData, match: Match
     ) -> None:
         """
         Update player ratings based on match results.
@@ -405,7 +424,9 @@ class RatingSystem:
         for player_data in team_1_players:
             player = db.query(Player).filter(Player.name == player_data.name).first()
             if not player:
-                player = Player(name=player_data.name)
+                player = Player(
+                    name=player_data.name, is_ai=1 if player_data.is_ai else 0
+                )
                 db.add(player)
                 db.flush()
             team_1_db.append((player, player_data))
@@ -413,7 +434,9 @@ class RatingSystem:
         for player_data in team_2_players:
             player = db.query(Player).filter(Player.name == player_data.name).first()
             if not player:
-                player = Player(name=player_data.name)
+                player = Player(
+                    name=player_data.name, is_ai=1 if player_data.is_ai else 0
+                )
                 db.add(player)
                 db.flush()
             team_2_db.append((player, player_data))
@@ -452,10 +475,7 @@ class RatingSystem:
             ranks = [1, 0]  # Team 2 wins
 
         # Calculate new ratings
-        new_ratings = trueskill.rate(
-            [team_1_ratings, team_2_ratings],
-            ranks=ranks
-        )
+        new_ratings = trueskill.rate([team_1_ratings, team_2_ratings], ranks=ranks)
 
         new_team_1_ratings = new_ratings[0]
         new_team_2_ratings = new_ratings[1]
@@ -465,19 +485,32 @@ class RatingSystem:
             old_rating = team_1_ratings[i]
             new_rating = new_team_1_ratings[i]
 
-            # Create MatchPlayer record
-            match_player = MatchPlayer(
-                match_id=match.id,
-                player_id=player.id,
-                team_number=1,
-                race=player_data.race,
-                won=1 if player_data.won else 0,
-                mu_before=old_rating.mu,
-                sigma_before=old_rating.sigma,
-                mu_after=new_rating.mu,
-                sigma_after=new_rating.sigma
+            # Upsert MatchPlayer record
+            match_player = (
+                db.query(MatchPlayer)
+                .filter(
+                    MatchPlayer.match_id == match.id, MatchPlayer.player_id == player.id
+                )
+                .first()
             )
-            db.add(match_player)
+            if not match_player:
+                match_player = MatchPlayer(
+                    match_id=match.id,
+                    player_id=player.id,
+                    team_number=1,
+                    race=player_data.race,
+                    won=1 if player_data.won else 0,
+                    mu_before=old_rating.mu,
+                    sigma_before=old_rating.sigma,
+                    mu_after=new_rating.mu,
+                    sigma_after=new_rating.sigma,
+                )
+                db.add(match_player)
+            else:
+                match_player.mu_before = old_rating.mu
+                match_player.sigma_before = old_rating.sigma
+                match_player.mu_after = new_rating.mu
+                match_player.sigma_after = new_rating.sigma
 
             # Update player
             player.mu = new_rating.mu
@@ -498,19 +531,32 @@ class RatingSystem:
             old_rating = team_2_ratings[i]
             new_rating = new_team_2_ratings[i]
 
-            # Create MatchPlayer record
-            match_player = MatchPlayer(
-                match_id=match.id,
-                player_id=player.id,
-                team_number=2,
-                race=player_data.race,
-                won=1 if player_data.won else 0,
-                mu_before=old_rating.mu,
-                sigma_before=old_rating.sigma,
-                mu_after=new_rating.mu,
-                sigma_after=new_rating.sigma
+            # Upsert MatchPlayer record
+            match_player = (
+                db.query(MatchPlayer)
+                .filter(
+                    MatchPlayer.match_id == match.id, MatchPlayer.player_id == player.id
+                )
+                .first()
             )
-            db.add(match_player)
+            if not match_player:
+                match_player = MatchPlayer(
+                    match_id=match.id,
+                    player_id=player.id,
+                    team_number=2,
+                    race=player_data.race,
+                    won=1 if player_data.won else 0,
+                    mu_before=old_rating.mu,
+                    sigma_before=old_rating.sigma,
+                    mu_after=new_rating.mu,
+                    sigma_after=new_rating.sigma,
+                )
+                db.add(match_player)
+            else:
+                match_player.mu_before = old_rating.mu
+                match_player.sigma_before = old_rating.sigma
+                match_player.mu_after = new_rating.mu
+                match_player.sigma_after = new_rating.sigma
 
             # Update player
             player.mu = new_rating.mu
@@ -539,9 +585,9 @@ class RatingSystem:
             pi_calculator = PICalculator()
 
             # Get all match players (need fresh query after commit)
-            all_match_players = db.query(MatchPlayer).filter(
-                MatchPlayer.match_id == match.id
-            ).all()
+            all_match_players = (
+                db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
+            )
 
             # Calculate match averages once for efficiency
             match_averages = pi_calculator.calculate_match_averages(db, match.id)
@@ -549,8 +595,9 @@ class RatingSystem:
             # Process each player
             for mp in all_match_players:
                 # Calculate raw MMR change
-                raw_mmr_change = RatingSystem.calculate_display_mmr(mp.mu_after) - \
-                                 RatingSystem.calculate_display_mmr(mp.mu_before)
+                raw_mmr_change = RatingSystem.calculate_display_mmr(
+                    mp.mu_after
+                ) - RatingSystem.calculate_display_mmr(mp.mu_before)
 
                 # Calculate and store PIM + features
                 features = pi_calculator.calculate_and_store_features(
@@ -562,10 +609,15 @@ class RatingSystem:
                 if player:
                     # Initialize hybrid_mmr if None
                     if player.hybrid_mmr is None:
-                        player.hybrid_mmr = RatingSystem.calculate_display_mmr(player.mu)
+                        player.hybrid_mmr = RatingSystem.calculate_display_mmr(
+                            player.mu
+                        )
 
                     # Apply hybrid change
-                    player.hybrid_mmr += features.hybrid_mmr_change
+                    if features.hybrid_mmr_change is not None:
+                        player.hybrid_mmr = (
+                            player.hybrid_mmr or 0.0
+                        ) + features.hybrid_mmr_change
 
                     # Update rolling average PIM
                     if player.avg_pim is None:
@@ -573,20 +625,22 @@ class RatingSystem:
                     else:
                         # Exponential moving average (more weight to recent)
                         alpha = 0.2  # Weight for new value
-                        player.avg_pim = alpha * features.pim + (1 - alpha) * player.avg_pim
+                        player.avg_pim = (
+                            alpha * features.pim + (1 - alpha) * player.avg_pim
+                        )
 
             db.commit()
 
         # Update recency-weighted ratings for all players in this match
         if RECENCY_ENABLED:
             for player, _ in team_1_db + team_2_db:
-                RatingSystem.update_recency_weighted_rating(db, player, replay_data.played_at)
+                RatingSystem.update_recency_weighted_rating(
+                    db, player, replay_data.played_at
+                )
 
     @staticmethod
     def calibrate_new_player(
-        db: Session,
-        new_player_name: str,
-        similar_to_player_id: int
+        db: Session, new_player_name: str, similar_to_player_id: int
     ) -> Player:
         """
         Calibrate a new outsider player based on a similar core player.
@@ -600,7 +654,9 @@ class RatingSystem:
             New Player object with calibrated rating
         """
         # Get the similar player
-        similar_player = db.query(Player).filter(Player.id == similar_to_player_id).first()
+        similar_player = (
+            db.query(Player).filter(Player.id == similar_to_player_id).first()
+        )
         if not similar_player:
             raise ValueError(f"Player with ID {similar_to_player_id} not found")
 
@@ -609,7 +665,7 @@ class RatingSystem:
             name=new_player_name,
             mu=similar_player.mu,
             sigma=min(similar_player.sigma + 2.0, 8.333),  # Add uncertainty
-            is_core_player=0  # Mark as outsider
+            is_core_player=0,  # Mark as outsider
         )
 
         db.add(new_player)

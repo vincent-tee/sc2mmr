@@ -111,6 +111,8 @@ class DuplicateReplayError(SC2MMRException):
     """
 
     def __init__(self, replay_hash: str, match_id: Optional[int] = None):
+        self.replay_hash = replay_hash
+        self.match_id = match_id
         message = f"Replay already exists (hash: {replay_hash[:16]}...)"
         if match_id:
             message += f" - associated with match ID {match_id}"

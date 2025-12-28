@@ -5,7 +5,7 @@ API endpoints for replay upload and management.
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional, Any, cast
+from typing import List, Optional, Any, cast, Tuple
 from datetime import datetime
 import os
 import tempfile
@@ -110,6 +110,85 @@ def _log_failed_upload(
     except Exception as e:
         logger.error(f"Failed to log failed upload: {e}", exc_info=True)
         db.rollback()
+
+
+def upsert_match(
+    db: Session,
+    replay_data: Any,
+    replay_file_path: Optional[str] = None,
+) -> Tuple[Match, bool]:
+    """
+    Insert or update match based on replay_hash.
+    Returns (match, created) tuple where created is True for new match.
+
+    Args:
+        db: Database session
+        replay_data: Parsed replay data from sc2reader
+        replay_file_path: Path to saved replay file
+
+    Returns:
+        Tuple of (Match, bool) where Match is the match object and bool indicates
+        if this was a new insertion or an update of existing match.
+    """
+    existing = (
+        db.query(Match).filter(Match.replay_hash == replay_data.replay_hash).first()
+    )
+
+    if existing:
+        # UPDATE existing match
+        match = existing
+        logger.info(f"Updating existing match ID: {match.id}")
+
+        # Update fields that may have changed on re-upload
+        if (
+            hasattr(replay_data, "predicted_team1_win_prob")
+            and replay_data.predicted_team1_win_prob is not None
+        ):
+            match.predicted_team1_win_prob = replay_data.predicted_team1_win_prob
+        if (
+            hasattr(replay_data, "predicted_team2_win_prob")
+            and replay_data.predicted_team2_win_prob is not None
+        ):
+            match.predicted_team2_win_prob = replay_data.predicted_team2_win_prob
+
+        # Update replay file path (if changed)
+        if replay_file_path:
+            match.replay_file_path = replay_file_path
+
+        # Update replay hash (in case algorithm changes)
+        match.replay_hash = replay_data.replay_hash
+
+        # Keep original upload time (created_at stays the same)
+        # Track update time
+        match.updated_at = datetime.utcnow()
+
+        db.commit()
+        db.refresh(match)
+
+        return match, False  # Updated existing match
+    else:
+        # CREATE new match
+        match = Match(
+            played_at=replay_data.played_at,
+            game_mode=replay_data.game_mode,
+            map_name=replay_data.map_name,
+            duration_seconds=replay_data.duration_seconds,
+            replay_file_path=replay_file_path,
+            replay_hash=replay_data.replay_hash,
+            predicted_team1_win_prob=getattr(
+                replay_data, "predicted_team1_win_prob", None
+            ),
+            predicted_team2_win_prob=getattr(
+                replay_data, "predicted_team2_win_prob", None
+            ),
+            created_at=datetime.utcnow(),
+        )
+
+        db.add(match)
+        db.commit()
+        db.refresh(match)
+
+        return match, True  # Created new match
 
 
 # Request/Response models
@@ -262,30 +341,20 @@ async def upload_replay(file: UploadFile = File(...), db: Session = Depends(get_
                 status_code=400, detail=f"Validation failed: {error_msg}"
             )
 
-        existing_match = (
-            db.query(Match).filter(Match.replay_hash == replay_data.replay_hash).first()
-        )
-
-        if existing_match:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Replay already uploaded. Match ID: {existing_match.id}",
-            )
-
+        # Save replay file first
         replay_file_path = _save_replay_file(content, fn, replay_data.replay_hash)
 
-        match = Match(
-            played_at=replay_data.played_at,
-            game_mode=replay_data.game_mode,
-            map_name=replay_data.map_name,
-            duration_seconds=replay_data.duration_seconds,
-            replay_file_path=replay_file_path,
-            replay_hash=replay_data.replay_hash,
-        )
-        db.add(match)
+        # Use upsert logic - allows re-uploading to update data
+        match, created = upsert_match(db, replay_data, replay_file_path)
+
+        if not created:
+            logger.info(f"Updated existing match ID: {match.id}")
+
         db.flush()
 
-        RatingSystem.update_ratings_from_match(db, replay_data, match)
+        # Only update ratings for new matches to avoid double-counting MMR changes
+        if created:
+            RatingSystem.update_ratings_from_match(db, replay_data, match)
 
         if replay_file_path:
             try:
@@ -1051,36 +1120,22 @@ async def upload_replay_advanced(
                 status_code=400, detail=f"Validation failed: {error_msg}"
             )
 
-        # Check duplicate
-        existing_match = (
-            db.query(Match).filter(Match.replay_hash == replay_data.replay_hash).first()
-        )
-
-        if existing_match:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Replay already uploaded. Match ID: {existing_match.id}",
-            )
-
-        # Save file
+        # Save file first
         replay_file_path = _save_replay_file(content, fn, replay_data.replay_hash)
 
-        # Create match
-        match = Match(
-            played_at=replay_data.played_at,
-            game_mode=replay_data.game_mode,
-            map_name=replay_data.map_name,
-            duration_seconds=replay_data.duration_seconds,
-            replay_file_path=replay_file_path,
-            replay_hash=replay_data.replay_hash,
-        )
-        db.add(match)
+        # Use upsert logic - allows re-uploading to update data
+        match, created = upsert_match(db, replay_data, replay_file_path)
+
+        if not created:
+            logger.info(f"Updated existing match ID: {match.id} with advanced parsing")
+
         db.flush()
 
-        # Update ratings
-        RatingSystem.update_ratings_from_match(db, replay_data, match)
+        # Update ratings only for new matches to avoid double-counting MMR changes
+        if created:
+            RatingSystem.update_ratings_from_match(db, replay_data, match)
 
-        # Save metrics
+        # Save/update metrics (always update to get latest parsing improvements)
         for player_metrics in advanced_data.player_metrics:
             player = (
                 db.query(Player)
@@ -1103,9 +1158,12 @@ async def upload_replay_advanced(
                     )
                     ImpactService.update_player_averages(db, player.id)
 
-        # Update synergies and adjustments
+        # Update synergies (always update for re-uploads to refresh data)
         ImpactService.update_synergies(db, int(match.id))
-        PerformanceRatingAdjuster.adjust_ratings_for_match(db, int(match.id))
+
+        # Only adjust ratings for new matches to avoid double-counting
+        if created:
+            PerformanceRatingAdjuster.adjust_ratings_for_match(db, int(match.id))
 
         # Extract and save ML features
         if replay_file_path:

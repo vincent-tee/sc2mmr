@@ -28,6 +28,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { keyframes } from '@emotion/react';
 import { leaderboardApi } from '../api/leaderboard';
+import RankBadge from '../components/RankBadge';
 import {
   LEADERBOARD_CATEGORIES,
   LeaderboardCategoryKey,
@@ -78,17 +79,17 @@ const CategoryTab: React.FC<CategoryTabProps> = React.memo(({ category, isActive
       size="sm"
       px={4}
       py={2}
-      borderRadius="md"
+      borderRadius="lg"
       fontWeight="bold"
       fontFamily="heading"
       letterSpacing="wide"
-      transition="all 0.2s"
+      transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
       _hover={{
         bg: isActive ? activeBg : 'gray.600',
         transform: 'translateY(-2px)',
       }}
       sx={isActive ? {
-        animation: `${pulseGlow} 2s ease-in-out infinite`,
+        boxShadow: '3px 3px 0 space.900',
       } : {}}
     >
       <HStack spacing={2}>
@@ -165,9 +166,14 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(({ entries, categ
               <RankCell rank={entry.rank} />
             </Td>
             <Td>
-              <Text fontWeight="semibold" color="gray.100" fontFamily="heading">
-                {entry.name}
-              </Text>
+              <HStack spacing={3}>
+                <Text fontWeight="semibold" color="gray.100" fontFamily="heading">
+                  {entry.name}
+                </Text>
+                {['mmr', 'trueskill', 'hybrid'].includes(category) && (
+                  <RankBadge mmr={entry.value} size="xs" showMMR={false} />
+                )}
+              </HStack>
             </Td>
             <Td isNumeric>
               <Text
@@ -318,7 +324,7 @@ const Leaderboard: React.FC = () => {
   );
 
   return (
-    <Box bg={bgColor} minH="100vh" py={8}>
+    <Box bg="space.900" minH="100vh" py={8}>
       <Container maxW="container.xl">
         <VStack spacing={8} align="stretch">
           {/* Header */}
@@ -327,10 +333,9 @@ const Leaderboard: React.FC = () => {
               size="2xl"
               fontFamily="heading"
               color="brand.400"
-              textShadow={`0 0 30px ${colors.brand[500]}60`}
               letterSpacing="wider"
             >
-              🏆 LEADERBOARDS
+              🏆 Leaderboards
             </Heading>
             <Text color="gray.500" mt={2}>
               Rankings across all categories
@@ -360,27 +365,48 @@ const Leaderboard: React.FC = () => {
 
           {/* Category Header */}
           {categoryInfo && (
-            <Box textAlign="center" py={4}>
-              <HStack justify="center" spacing={3}>
-                <Text fontSize="3xl">{categoryInfo.icon}</Text>
-                <Heading size="lg" color="gray.100" fontFamily="heading">
-                  {categoryInfo.name}
-                </Heading>
-              </HStack>
-              <Text color="gray.500" mt={1}>
-                {categoryInfo.description}
-              </Text>
+            <Box
+              textAlign="center"
+              py={6}
+              bg="rgba(0, 0, 0, 0.2)"
+              borderRadius="xl"
+              border="1px solid"
+              borderColor="whiteAlpha.100"
+              position="relative"
+              overflow="hidden"
+            >
+              <VStack spacing={2} position="relative" zIndex={1}>
+                <HStack justify="center" spacing={4}>
+                  <Text fontSize="4xl" className="emoji-font">{categoryInfo.icon}</Text>
+                  <Heading size="xl" color="gray.100" fontFamily="heading" letterSpacing="widest" textTransform="uppercase">
+                    {categoryInfo.name}
+                  </Heading>
+                </HStack>
+                <Text color="gray.400" fontSize="lg" maxW="container.md" mx="auto" fontWeight="medium">
+                  {categoryInfo.description}
+                </Text>
+              </VStack>
+              {/* Background Icon Watermark */}
+              <Icon
+                as={FiTarget}
+                position="absolute"
+                right="-20px"
+                bottom="-20px"
+                boxSize={32}
+                color="whiteAlpha.05"
+                transform="rotate(-15deg)"
+              />
             </Box>
           )}
 
           {/* Leaderboard Table */}
           <Box
-            bg={cardBg}
+            bg="space.800"
             borderRadius="xl"
-            border="2px solid"
-            borderColor="whiteAlpha.100"
+            border="3px solid"
+            borderColor="space.700"
+            boxShadow="3px 3px 0 space.900"
             overflow="hidden"
-            boxShadow={shadows.elevation}
           >
             {isLoading ? (
               <VStack spacing={4} p={8}>

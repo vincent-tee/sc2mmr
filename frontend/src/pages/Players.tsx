@@ -1,5 +1,5 @@
 /**
- * Players List Page - Tactical Operative Database
+ * Players List Page - Player Roster
  * View all players with statistics
  */
 import {
@@ -27,11 +27,9 @@ import { useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { playersApi } from '../api/endpoints';
-import TacticalCard from '../components/TacticalCard';
-import TacticalBackground from '../components/common/TacticalBackground';
 import EmptyState from '../components/EmptyState';
 import LoadingState from '../components/LoadingState';
-import { formatWinRate, getPlayerRaces, getRaceColor } from '../utils/formatting';
+import { formatWinRate, getPlayerRaces, getRaceColor, getPlayerAvatarUrl } from '../utils/formatting';
 import RankBadge from '../components/RankBadge';
 import type { Player } from '../types/api';
 
@@ -58,18 +56,21 @@ const Players: React.FC = () => {
     .filter((player) =>
       player.name.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'mmr':
-          return b.mmr - a.mmr;
-        case 'name':
-          return a.name.localeCompare(b.name);
-        case 'games':
-          return b.total_games - a.total_games;
-        default:
-          return 0;
-      }
-    });
+      .sort((a, b) => {
+        switch (sortBy) {
+          case 'mmr': {
+            const mmrA = a.recency_weighted_mmr ?? a.mmr;
+            const mmrB = b.recency_weighted_mmr ?? b.mmr;
+            return mmrB - mmrA;
+          }
+          case 'name':
+            return a.name.localeCompare(b.name);
+          case 'games':
+            return b.total_games - a.total_games;
+          default:
+            return 0;
+        }
+      });
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>): void => {
     setSearchTerm(e.target.value);
@@ -81,53 +82,54 @@ const Players: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Container maxW="container.xl" py={8}>
-        <VStack spacing={8} align="stretch">
-          <Heading
-            size="2xl"
-            fontFamily="heading"
-            letterSpacing="wider"
-            color="brand.400"
-            textAlign="center"
-          >
-            Player Database
-          </Heading>
-          <LoadingState variant="players" count={8} />
-        </VStack>
-      </Container>
+      <Box bg="space.900">
+        <Container maxW="container.xl" py={8}>
+          <VStack spacing={8} align="stretch">
+            <Heading
+              size="2xl"
+              fontFamily="heading"
+              letterSpacing="wider"
+              color="brand.400"
+              textAlign="center"
+            >
+              Player Roster
+            </Heading>
+            <LoadingState variant="players" count={8} />
+          </VStack>
+        </Container>
+      </Box>
     );
   }
 
   if (players.length === 0) {
     return (
-      <Container maxW="container.xl" py={8}>
-        <VStack spacing={8} align="stretch">
-          <Heading
-            size="2xl"
-            fontFamily="heading"
-            letterSpacing="wider"
-            color="brand.400"
-            textAlign="center"
-          >
-            Player Database
-          </Heading>
-          <EmptyState
-            variant="players"
-            onAction={() => navigate('/upload')}
-          />
-        </VStack>
-      </Container>
+      <Box bg="space.900">
+        <Container maxW="container.xl" py={8}>
+          <VStack spacing={8} align="stretch">
+            <Heading
+              size="2xl"
+              fontFamily="heading"
+              letterSpacing="wider"
+              color="brand.400"
+              textAlign="center"
+            >
+              Player Roster
+            </Heading>
+            <EmptyState
+              variant="players"
+              onAction={() => navigate('/upload')}
+            />
+          </VStack>
+        </Container>
+      </Box>
     );
   }
 
   return (
-    <Box position="relative">
-      {/* Animated grid background */}
-      <TacticalBackground />
-
+    <Box position="relative" bg="space.900">
       <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
-          {/* Tactical Header */}
+          {/* Header */}
           <Box textAlign="center" py={6}>
             <Heading
               size="2xl"
@@ -136,30 +138,8 @@ const Players: React.FC = () => {
               letterSpacing="wider"
               mb={2}
               color="brand.400"
-              textShadow="0 0 30px rgba(0, 212, 255, 0.6)"
-              position="relative"
             >
-              <Box
-                as="span"
-                display="inline-block"
-                position="relative"
-                _before={{
-                  content: '"▸"',
-                  position: 'absolute',
-                  left: '-40px',
-                  color: 'brand.500',
-                  fontSize: 'xl',
-                }}
-                _after={{
-                  content: '"◂"',
-                  position: 'absolute',
-                  right: '-40px',
-                  color: 'brand.500',
-                  fontSize: 'xl',
-                }}
-              >
-                Player Database
-              </Box>
+              Player Roster
             </Heading>
             <Text
               fontSize="md"
@@ -167,82 +147,94 @@ const Players: React.FC = () => {
               fontFamily="heading"
               letterSpacing="wide"
             >
-              [ {players.length} Active Players ]
+              {players.length} Active Players
             </Text>
           </Box>
 
-          {/* Tactical Filters */}
-          <TacticalCard variant="command" glowColor="rgba(0, 212, 255, 0.4)">
-            <Box p={4}>
-              <HStack spacing={4}>
-                <FormControl flex={1}>
-                  <VisuallyHidden>
-                    <FormLabel htmlFor="player-search">Search players</FormLabel>
-                  </VisuallyHidden>
-                  <InputGroup>
-                    <InputLeftElement pointerEvents="none">
-                      <Icon as={FiSearch} color="brand.400" />
-                    </InputLeftElement>
-                    <Input
-                      id="player-search"
-                      placeholder="Search players..."
-                      value={searchTerm}
-                      onChange={handleSearchChange}
-                      fontFamily="heading"
-                      letterSpacing="wide"
-                      borderColor="whiteAlpha.200"
-                      _placeholder={{ color: 'gray.600' }}
-                      _focus={{
-                        borderColor: 'brand.500',
-                        boxShadow: '0 0 10px rgba(0, 212, 255, 0.3)',
-                      }}
-                    />
-                  </InputGroup>
-                </FormControl>
-
-                <FormControl as={HStack} maxW="280px">
-                  <VisuallyHidden>
-                    <FormLabel htmlFor="player-sort">Sort players by</FormLabel>
-                  </VisuallyHidden>
-                  <Icon as={FiFilter} color="brand.400" />
-                  <Select
-                    id="player-sort"
-                    value={sortBy}
-                    onChange={handleSortChange}
-                    maxW="250px"
+          {/* Filters */}
+          <Box
+            bg="space.800"
+            border="3px solid"
+            borderColor="space.700"
+            borderRadius="xl"
+            boxShadow="3px 3px 0 space.900"
+            p={4}
+          >
+            <HStack spacing={4}>
+              <FormControl flex={1}>
+                <VisuallyHidden>
+                  <FormLabel htmlFor="player-search">Search players</FormLabel>
+                </VisuallyHidden>
+                <InputGroup>
+                  <InputLeftElement pointerEvents="none">
+                    <Icon as={FiSearch} color="brand.400" />
+                  </InputLeftElement>
+                  <Input
+                    id="player-search"
+                    placeholder="Search players..."
+                    value={searchTerm}
+                    onChange={handleSearchChange}
                     fontFamily="heading"
                     letterSpacing="wide"
-                    fontSize="sm"
-                    borderColor="whiteAlpha.200"
+                    borderColor="space.700"
+                    bg="space.800"
+                    _placeholder={{ color: 'gray.600' }}
                     _focus={{
                       borderColor: 'brand.500',
-                      boxShadow: '0 0 10px rgba(0, 212, 255, 0.3)',
+                      boxShadow: '0 0 0 2px rgba(255, 107, 53, 0.3)',
                     }}
-                  >
-                    <option value="mmr">Sort by MMR</option>
-                    <option value="name">Sort by Name</option>
-                    <option value="games">Sort by Matches</option>
-                  </Select>
-                </FormControl>
-              </HStack>
-            </Box>
-          </TacticalCard>
+                  />
+                </InputGroup>
+              </FormControl>
+
+              <FormControl as={HStack} maxW="280px">
+                <VisuallyHidden>
+                  <FormLabel htmlFor="player-sort">Sort players by</FormLabel>
+                </VisuallyHidden>
+                <Icon as={FiFilter} color="brand.400" />
+                <Select
+                  id="player-sort"
+                  value={sortBy}
+                  onChange={handleSortChange}
+                  maxW="250px"
+                  fontFamily="heading"
+                  letterSpacing="wide"
+                  fontSize="sm"
+                  borderColor="space.700"
+                  bg="space.800"
+                  _focus={{
+                    borderColor: 'brand.500',
+                  }}
+                >
+                  <option value="mmr">Sort by MMR</option>
+                  <option value="name">Sort by Name</option>
+                  <option value="games">Sort by Matches</option>
+                </Select>
+              </FormControl>
+            </HStack>
+          </Box>
 
           {/* Player Grid */}
           {filteredPlayers.length === 0 ? (
-            <TacticalCard variant="angled" glowColor="rgba(255, 179, 0, 0.4)">
-              <Box p={12} textAlign="center">
-                <Icon as={FiTarget} boxSize={16} color="gray.600" mb={4} />
-                <Text
-                  color="gray.500"
-                  fontFamily="heading"
-                  letterSpacing="wide"
-                  fontSize="lg"
-                >
-                  No players matching "{searchTerm}"
-                </Text>
-              </Box>
-            </TacticalCard>
+            <Box
+              bg="space.800"
+              border="3px solid"
+              borderColor="space.700"
+              borderRadius="xl"
+              boxShadow="3px 3px 0 space.900"
+              p={12}
+              textAlign="center"
+            >
+              <Icon as={FiTarget} boxSize={16} color="gray.600" mb={4} />
+              <Text
+                color="gray.500"
+                fontFamily="heading"
+                letterSpacing="wide"
+                fontSize="lg"
+              >
+                No players matching "{searchTerm}"
+              </Text>
+            </Box>
           ) : (
             <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
               {filteredPlayers.map((player, index) => {
@@ -250,64 +242,60 @@ const Players: React.FC = () => {
                 const primaryRace = playerRaces.length > 0 ? playerRaces[0].name : 'Random';
 
                 return (
-                  <TacticalCard
+                  <Box
                     key={player.id}
-                    variant={index % 3 === 0 ? 'command' : index % 3 === 1 ? 'angled' : 'default'}
-                    glowColor="rgba(0, 212, 255, 0.4)"
+                    bg="space.800"
+                    border="3px solid"
+                    borderColor="space.700"
+                    borderRadius="xl"
+                    boxShadow="3px 3px 0 space.900"
+                    p={5}
+                    cursor="pointer"
+                    transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
+                    _hover={{
+                      transform: 'translateY(-4px)',
+                      borderColor: 'brand.500',
+                    }}
                     onClick={() => navigate(`/players/${player.id}`)}
                   >
-                    <VStack p={5} spacing={4} align="stretch">
+                    <VStack spacing={4} align="stretch">
                       {/* Header with Avatar */}
                       <HStack spacing={4}>
                         <Box position="relative">
                           <Avatar
+                            src={getPlayerAvatarUrl(player.name, primaryRace, player.is_ai)}
                             name={player.name}
                             size="lg"
                             bg={`${getRaceColor(primaryRace)}.500`}
                             color="white"
                             border="3px solid"
-                            borderColor="brand.400"
-                            boxShadow="0 0 20px rgba(0, 212, 255, 0.4)"
-                          />
-                          {/* Corner brackets */}
-                          <Box
-                            position="absolute"
-                            top={-1}
-                            left={-1}
-                            width="12px"
-                            height="12px"
-                            borderTop="2px solid"
-                            borderLeft="2px solid"
-                            borderColor="brand.400"
-                          />
-                          <Box
-                            position="absolute"
-                            bottom={-1}
-                            right={-1}
-                            width="12px"
-                            height="12px"
-                            borderBottom="2px solid"
-                            borderRight="2px solid"
-                            borderColor="brand.400"
+                            borderColor="brand.500"
                           />
                         </Box>
 
                         <VStack flex={1} align="start" spacing={1}>
-                          <Text
-                            fontWeight="black"
-                            fontSize="xl"
-                            fontFamily="heading"
-                            letterSpacing="wide"
-                            color="brand.300"
-                          >
-                            {player.name}
-                          </Text>
-                          <RankBadge
-                            mmr={player.hybrid_mmr || player.mmr}
-                            size="md"
-                            showMMR={true}
-                            showIcon={true}
-                          />
+                          <HStack>
+                            <Text
+                              fontWeight="black"
+                              fontSize="xl"
+                              fontFamily="heading"
+                              letterSpacing="wide"
+                              color="brand.300"
+                            >
+                              {player.name}
+                            </Text>
+                            {player.is_ai && (
+                              <Badge colorScheme="purple" variant="solid" fontSize="xs">
+                                AI
+                              </Badge>
+                            )}
+                          </HStack>
+                           <RankBadge
+                             mmr={player.recency_weighted_mmr || player.mmr}
+                             size="md"
+                             showMMR={true}
+                             showIcon={true}
+                           />
                         </VStack>
                       </HStack>
 
@@ -329,11 +317,11 @@ const Players: React.FC = () => {
                       {/* Stats Grid */}
                       <SimpleGrid columns={2} spacing={3}>
                         <Box
-                          bg="whiteAlpha.50"
+                          bg="space.700"
                           p={3}
-                          borderRadius="md"
-                          border="1px solid"
-                          borderColor="whiteAlpha.100"
+                          borderRadius="lg"
+                          border="2px solid"
+                          borderColor="space.600"
                         >
                           <Text
                             fontSize="xs"
@@ -354,11 +342,11 @@ const Players: React.FC = () => {
                         </Box>
 
                         <Box
-                          bg="whiteAlpha.50"
+                          bg="space.700"
                           p={3}
-                          borderRadius="md"
-                          border="1px solid"
-                          borderColor="whiteAlpha.100"
+                          borderRadius="lg"
+                          border="2px solid"
+                          borderColor="space.600"
                         >
                           <Text
                             fontSize="xs"
@@ -387,7 +375,7 @@ const Players: React.FC = () => {
                             color="gray.500"
                             fontFamily="heading"
                           >
-                            Combat Record
+                            Win/Loss Record
                           </Text>
                           <Text fontSize="xs" color="gray.400" fontFamily="heading">
                             {player.wins}W - {player.losses}L
@@ -398,11 +386,11 @@ const Players: React.FC = () => {
                           size="sm"
                           colorScheme={player.win_rate >= 0.55 ? 'green' : player.win_rate >= 0.45 ? 'blue' : 'orange'}
                           borderRadius="full"
-                          bg="whiteAlpha.100"
+                          bg="space.700"
                         />
                       </Box>
 
-                      {/* Tactical Footer */}
+                      {/* Footer */}
                       <HStack justify="center" pt={2}>
                         <Icon as={FiTarget} color="brand.400" boxSize={4} />
                         <Text
@@ -415,7 +403,7 @@ const Players: React.FC = () => {
                         </Text>
                       </HStack>
                     </VStack>
-                  </TacticalCard>
+                  </Box>
                 );
               })}
             </SimpleGrid>

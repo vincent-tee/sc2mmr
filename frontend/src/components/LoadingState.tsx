@@ -27,14 +27,12 @@ interface PlayerGridSkeletonProps {
 }
 
 export const PlayerCardSkeleton: React.FC = () => {
-  const bgColor = useColorModeValue('white', 'gray.800');
-
   return (
-    <Box bg={bgColor} borderRadius="lg" p={4}>
+    <Box bg="space.800" border="2px solid" borderColor="space.700" borderRadius="xl" p={4}>
       <VStack spacing={2}>
-        <SkeletonCircle size="16" />
-        <Skeleton height="20px" width="100px" />
-        <Skeleton height="16px" width="80px" />
+        <SkeletonCircle size="16" startColor="space.700" endColor="space.600" />
+        <Skeleton height="20px" width="100px" startColor="space.700" endColor="space.600" />
+        <Skeleton height="16px" width="80px" startColor="space.700" endColor="space.600" />
       </VStack>
     </Box>
   );
@@ -42,7 +40,7 @@ export const PlayerCardSkeleton: React.FC = () => {
 
 export const PlayerGridSkeleton: React.FC<PlayerGridSkeletonProps> = ({ count = 8 }) => {
   return (
-    <SimpleGrid columns={{ base: 2, md: 3, lg: 4 }} spacing={4}>
+    <SimpleGrid columns={{ base: 2, md: 3, lg: 4, xl: 5 }} spacing={4}>
       {Array.from({ length: count }).map((_, idx) => (
         <PlayerCardSkeleton key={idx} />
       ))}
@@ -51,48 +49,44 @@ export const PlayerGridSkeleton: React.FC<PlayerGridSkeletonProps> = ({ count = 
 };
 
 export const TeamResultSkeleton: React.FC = () => {
-  const bgColor = useColorModeValue('white', 'gray.800');
-
   return (
-    <Box bg={bgColor} borderRadius="lg" p={6}>
+    <Box bg="space.800" border="3px solid" borderColor="space.700" borderRadius="xl" p={6}>
       <VStack spacing={4} align="stretch">
-        <Skeleton height="24px" width="150px" />
-        <Skeleton height="40px" width="200px" />
+        <Skeleton height="24px" width="150px" startColor="space.700" endColor="space.600" />
+        <Skeleton height="40px" width="200px" startColor="space.700" endColor="space.600" />
 
         <HStack spacing={8} align="start">
           <VStack flex={1} spacing={2}>
-            <Skeleton height="20px" width="60px" />
+            <Skeleton height="20px" width="60px" startColor="space.700" endColor="space.600" />
             {Array.from({ length: 3 }).map((_, idx) => (
-              <Skeleton key={idx} height="60px" width="100%" />
+              <Skeleton key={idx} height="60px" width="100%" startColor="space.700" endColor="space.600" borderRadius="lg" />
             ))}
           </VStack>
 
           <VStack flex={1} spacing={2}>
-            <Skeleton height="20px" width="60px" />
+            <Skeleton height="20px" width="60px" startColor="space.700" endColor="space.600" />
             {Array.from({ length: 3 }).map((_, idx) => (
-              <Skeleton key={idx} height="60px" width="100%" />
+              <Skeleton key={idx} height="60px" width="100%" startColor="space.700" endColor="space.600" borderRadius="lg" />
             ))}
           </VStack>
         </HStack>
 
-        <Skeleton height="16px" width="100%" />
-        <Skeleton height="40px" width="120px" />
+        <Skeleton height="16px" width="100%" startColor="space.700" endColor="space.600" />
+        <Skeleton height="40px" width="120px" startColor="space.700" endColor="space.600" borderRadius="lg" />
       </VStack>
     </Box>
   );
 };
 
 export const MatchCardSkeleton: React.FC = () => {
-  const bgColor = useColorModeValue('white', 'gray.800');
-
   return (
-    <Box bg={bgColor} borderRadius="lg" p={4}>
+    <Box bg="space.800" border="2px solid" borderColor="space.700" borderRadius="xl" p={4}>
       <HStack spacing={4} justify="space-between">
         <VStack align="start" flex={1}>
-          <Skeleton height="20px" width="150px" />
-          <Skeleton height="16px" width="100px" />
+          <Skeleton height="20px" width="150px" startColor="space.700" endColor="space.600" />
+          <Skeleton height="16px" width="100px" startColor="space.700" endColor="space.600" />
         </VStack>
-        <Skeleton height="24px" width="80px" />
+        <Skeleton height="24px" width="80px" startColor="space.700" endColor="space.600" borderRadius="md" />
       </HStack>
     </Box>
   );
@@ -113,19 +107,29 @@ const LoadingState: React.FC<LoadingStateProps> = ({ variant = 'players', count 
 
   return (
     <VStack
-      spacing={4}
+      spacing={6}
       align="stretch"
       role="status"
       aria-live="polite"
       aria-busy="true"
       aria-label={message || defaultMessages[variant]}
+      pt={8}
     >
       {message && (
-        <Text color="gray.400" textAlign="center" fontSize="sm">
-          {message}
+        <Text 
+          color="brand.400" 
+          textAlign="center" 
+          fontSize="lg" 
+          fontWeight="bold"
+          fontFamily="heading"
+          letterSpacing="wide"
+        >
+          {message.toUpperCase()}
         </Text>
       )}
-      {variants[variant] || variants.players}
+      <Box px={message ? 4 : 0}>
+        {variants[variant] || variants.players}
+      </Box>
     </VStack>
   );
 };

@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from backend.app.models import (
+from app.models import (
     Base,
     Match,
     MatchPlayer,
@@ -10,7 +10,7 @@ from backend.app.models import (
     Race,
     GameMode,
 )
-from backend.app.services.build_order_classifier import (
+from app.services.build_order_classifier import (
     train_classifier,
     classify_build,
     get_classifier,

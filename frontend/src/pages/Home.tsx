@@ -1,6 +1,7 @@
 /**
- * Home/Dashboard Page
- * Tactical Command Center Interface
+ * Home Page - Friend Squad Edition
+ * A cozy gaming clubhouse, not a sterile command center
+ * Desktop-first design with personality
  */
 import {
   Box,
@@ -11,19 +12,215 @@ import {
   SimpleGrid,
   VStack,
   HStack,
-  Icon,
   Flex,
+  Avatar,
+  AvatarGroup,
+  Badge,
+  Divider,
 } from '@chakra-ui/react';
-import { FiUpload, FiUsers, FiZap, FiTrendingUp, FiTarget, FiActivity } from 'react-icons/fi';
+import { FiUpload, FiUsers, FiZap, FiTrendingUp, FiCalendar, FiAward } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { playersApi, replaysApi } from '../api/endpoints';
-import TacticalCard from '../components/TacticalCard';
-import TacticalBackground from '../components/common/TacticalBackground';
-import HexagonalStat from '../components/HexagonalStat';
-import MMRTicker from '../components/MMRTicker';
-import { formatDateOnly } from '../utils/formatting';
-import type { Player, Match } from '../types/api';
+import FriendlyStat from '../components/FriendlyStat';
+import { formatDateOnly, getInitials, getPlayerAvatarUrl, getPlayerRaces, getRaceColor } from '../utils/formatting';
+import type { Player, MatchWithPlayers } from '../types/api';
+
+/**
+ * Quick Action Card - Comic book style button
+ */
+interface QuickActionProps {
+  emoji: string;
+  title: string;
+  subtitle: string;
+  color: string;
+  onClick: () => void;
+  isPrimary?: boolean;
+}
+
+const QuickAction: React.FC<QuickActionProps> = ({ 
+  emoji, title, subtitle, color, onClick, isPrimary 
+}) => (
+  <Box
+    as="button"
+    onClick={onClick}
+    bg={isPrimary ? color : 'space.800'}
+    borderRadius="xl"
+    border="3px solid"
+    borderColor="space.900"
+    boxShadow="4px 4px 0 var(--chakra-colors-space-900)"
+    p={5}
+    textAlign="left"
+    transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
+    _hover={{
+      transform: 'translateY(-4px) rotate(1deg)',
+      boxShadow: '6px 6px 0 var(--chakra-colors-space-900)',
+    }}
+    _active={{
+      transform: 'translateY(-2px)',
+      boxShadow: '3px 3px 0 var(--chakra-colors-space-900)',
+    }}
+    width="100%"
+  >
+    <HStack spacing={4}>
+      <Text fontSize="3xl" className="emoji-font">
+        {emoji}
+      </Text>
+      <VStack align="start" spacing={0}>
+        <Text
+          fontWeight="bold"
+          fontSize="lg"
+          fontFamily="heading"
+          color={isPrimary ? 'space.900' : 'gray.100'}
+        >
+          {title}
+        </Text>
+        <Text 
+          fontSize="sm" 
+          color={isPrimary ? 'space.700' : 'gray.500'}
+        >
+          {subtitle}
+        </Text>
+      </VStack>
+    </HStack>
+  </Box>
+);
+
+/**
+ * Recent Match Card - Friendly style
+ */
+interface MatchCardProps {
+  match: MatchWithPlayers;
+  onClick: () => void;
+}
+
+const MatchCard: React.FC<MatchCardProps> = ({ match, onClick }) => (
+  <Box
+    as="button"
+    onClick={onClick}
+    bg="space.800"
+    borderRadius="xl"
+    border="3px solid"
+    borderColor="space.900"
+    boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
+    p={4}
+    width="100%"
+    textAlign="left"
+    transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
+    _hover={{
+      transform: 'translateY(-2px)',
+      boxShadow: '5px 5px 0 var(--chakra-colors-space-900)',
+      borderColor: 'brand.500',
+    }}
+  >
+    <Flex justify="space-between" align="center">
+      <HStack spacing={3}>
+        <Text fontSize="xl" className="emoji-font">
+          🎮
+        </Text>
+        <VStack align="start" spacing={0}>
+          <Text fontWeight="bold" fontFamily="heading" color="gray.100">
+            {match.map_name}
+          </Text>
+          <Text fontSize="xs" color="gray.500">
+            {match.game_mode} • {formatDateOnly(match.played_at)}
+          </Text>
+        </VStack>
+      </HStack>
+      <AvatarGroup size="sm" max={4}>
+        {(match.players || []).slice(0, 4).map((player, idx) => (
+          <Avatar
+            key={player.player_id || idx}
+            src={getPlayerAvatarUrl(player.player_name, player.race)}
+            name={player.player_name}
+            size="sm"
+            bg={`${getRaceColor(player.race)}.500`}
+            color="white"
+            border="2px solid"
+            borderColor="space.900"
+          />
+        ))}
+      </AvatarGroup>
+    </Flex>
+  </Box>
+);
+
+/**
+ * Player Spotlight - Shows top players
+ */
+interface PlayerSpotlightProps {
+  players: Player[];
+  onClick: (id: number) => void;
+}
+
+const PlayerSpotlight: React.FC<PlayerSpotlightProps> = ({ players, onClick }) => {
+  const topPlayers = [...players]
+    .filter(p => p.total_games >= 5) // Minimum 5 games to be featured on Home
+    .sort((a, b) => (b.recency_weighted_mmr || b.mmr) - (a.recency_weighted_mmr || a.mmr))
+    .slice(0, 5);
+
+  return (
+    <VStack spacing={2} align="stretch">
+      {topPlayers.map((player, idx) => {
+        const playerRaces = getPlayerRaces(player);
+        const primaryRace = playerRaces.length > 0 ? playerRaces[0].name : 'Random';
+
+        return (
+          <HStack
+            key={player.id}
+            as="button"
+            onClick={() => onClick(player.id)}
+            bg="space.800"
+            borderRadius="lg"
+            border="2px solid"
+            borderColor="space.900"
+            p={3}
+            justify="space-between"
+            transition="all 0.2s"
+            _hover={{
+              bg: 'space.700',
+              borderColor: 'brand.500',
+            }}
+          >
+            <HStack spacing={3}>
+              <Text
+                fontSize="lg"
+                fontWeight="bold"
+                color="gray.500"
+                width="24px"
+                className="emoji-font"
+              >
+                {idx === 0 ? '👑' : `#${idx + 1}`}
+              </Text>
+              <Avatar
+                size="sm"
+                src={getPlayerAvatarUrl(player.name, primaryRace, player.is_ai)}
+                name={player.name}
+                bg={`${getRaceColor(primaryRace)}.500`}
+                color="white"
+                border="2px solid"
+                borderColor="space.900"
+              />
+              <Text fontWeight="bold" fontFamily="heading" color="gray.100">
+                {player.name}
+              </Text>
+            </HStack>
+            <Badge
+              bg="space.700"
+              color="brand.400"
+              fontSize="sm"
+              fontFamily="mono"
+              px={2}
+              borderRadius="md"
+            >
+              {Math.round(player.recency_weighted_mmr || player.mmr)}
+            </Badge>
+          </HStack>
+        );
+      })}
+    </VStack>
+  );
+};
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -37,395 +234,255 @@ const Home: React.FC = () => {
     },
   });
 
-  const { data: matchesData, isLoading: loadingMatches } = useQuery<Match[]>({
-    queryKey: ['matches'],
+  const { data: matchesData, isLoading: loadingMatches } = useQuery<{matches: MatchWithPlayers[], total_count: number}>({
+    queryKey: ['matches-with-players-home'],
     queryFn: async () => {
-      const response = await replaysApi.getMatches(10);
-      return response.data as Match[];
+      const response = await replaysApi.getMatchesWithPlayers(10);
+      return response.data;
     },
   });
 
   const players = playersData || [];
-  const matches = matchesData || [];
+  const matches = matchesData?.matches || [];
+  const totalMatches = matchesData?.total_count || 0; // Use actual match count from API
 
   // Calculate stats
   const totalPlayers = players.length;
-  const totalGames = players.reduce((sum, p) => sum + (p.total_games || 0), 0);
-  const avgMMR =
-    players.length > 0
-      ? Math.round(players.reduce((sum, p) => sum + p.mmr, 0) / players.length)
-      : 0;
+  const avgMMR = players.length > 0
+    ? Math.round(players.reduce((sum, p) => sum + (p.recency_weighted_mmr || p.mmr), 0) / players.length)
+    : 0;
 
   const isLoading = loadingPlayers || loadingMatches;
 
-  // TODO: Backend API needed for recent MMR changes
-  // For now, generate mock data from recent matches and player MMR changes
-  // Backend should provide: GET /api/recent-mmr-changes?limit=20
-  // Response: [{ playerName: string, change: number, timestamp: Date }]
-  const mmrChanges = matches.slice(0, 10).flatMap((match) => {
-    // Mock MMR changes - in real implementation, this would come from match results
-    return [
-      {
-        playerName: `Player from Match ${match.id}`,
-        change: Math.floor(Math.random() * 40) - 20, // Random change between -20 and +20
-        timestamp: new Date(match.played_at),
-        id: `${match.id}-1`,
-      },
-    ];
-  });
-
   return (
-    <Box position="relative">
-      {/* Animated grid background */}
-      <TacticalBackground />
+    <Box minH="100vh" py={8}>
+      <Container maxW="container.xl">
+        {/* Hero Section - Welcome message */}
+        <Box textAlign="center" mb={10}>
+          <Heading
+            size="2xl"
+            fontFamily="heading"
+            fontWeight="bold"
+            mb={3}
+            color="gray.100"
+          >
+            Welcome to the{' '}
+            <Text as="span" color="brand.500">
+              Squad
+            </Text>{' '}
+            🎮
+          </Heading>
+          <Text fontSize="lg" color="gray.500" maxW="600px" mx="auto">
+            Track your friend group's StarCraft matches, generate balanced teams, 
+            and settle the debate of who's actually the best.
+          </Text>
+        </Box>
 
-      {/* MMR Ticker - Scrolling recent rating changes */}
-      <MMRTicker changes={mmrChanges} isLoading={isLoading} />
-
-      <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
-        <VStack spacing={12} align="stretch">
-          {/* Tactical Hero Section */}
-          <Box position="relative" textAlign="center" py={12}>
-            {/* Title with dramatic styling */}
-            <Heading
-              size="3xl"
-              fontFamily="heading"
-              fontWeight="black"
-              letterSpacing="wider"
-              mb={2}
-              color="brand.400"
-              textShadow="0 0 40px rgba(0, 212, 255, 0.6)"
-              position="relative"
-            >
-              <Box
-                as="span"
-                display="inline-block"
-                position="relative"
-                _before={{
-                  content: '"◢"',
-                  position: 'absolute',
-                  left: '-40px',
-                  color: 'brand.500',
-                  fontSize: '2xl',
-                }}
-                _after={{
-                  content: '"◣"',
-                  position: 'absolute',
-                  right: '-40px',
-                  color: 'brand.500',
-                  fontSize: '2xl',
-                }}
-              >
-                Command Center
-              </Box>
+        {/* Main Layout - Desktop First: 3 columns */}
+        <SimpleGrid columns={{ base: 1, lg: 3 }} spacing={8}>
+          
+          {/* Left Column - Quick Actions */}
+          <VStack spacing={4} align="stretch">
+            <Heading size="md" fontFamily="heading" color="gray.300" mb={2}>
+              <Text className="emoji-font" as="span">⚡</Text> Quick Actions
             </Heading>
+            
+            <QuickAction
+              emoji="⚡"
+              title="Generate Teams"
+              subtitle="Fair and balanced matchups"
+              color="brand.500"
+              onClick={() => navigate('/balance')}
+              isPrimary
+            />
+            
+            <QuickAction
+              emoji="📤"
+              title="Upload Replays"
+              subtitle="Add new match data"
+              color="accent.500"
+              onClick={() => navigate('/upload')}
+            />
+            
+            <QuickAction
+              emoji="🎯"
+              title="Predict Match"
+              subtitle="Who will win?"
+              color="shield.500"
+              onClick={() => navigate('/predictor')}
+            />
+            
+            <QuickAction
+              emoji="👥"
+              title="View Squad"
+              subtitle="All player stats"
+              color="zerg.500"
+              onClick={() => navigate('/players')}
+            />
+          </VStack>
 
-            <Text
-              fontSize="xl"
-              color="gray.400"
-              mb={8}
-              fontFamily="heading"
-              letterSpacing="wide"
-            >
-              [ MMR Tracking & Team Balancing System ]
-            </Text>
-
-            {/* Primary action with dramatic styling */}
-            <HStack spacing={6} justify="center" mt={8}>
-              <Button
-                size="lg"
-                variant="accent"
-                leftIcon={<FiZap />}
-                onClick={() => navigate('/balance')}
-                fontSize="lg"
-                px={8}
-                py={7}
-                position="relative"
-                overflow="visible"
-                _before={{
-                  content: '""',
-                  position: 'absolute',
-                  top: -2,
-                  left: -2,
-                  right: -2,
-                  bottom: -2,
-                  background: 'linear-gradient(45deg, transparent, rgba(255, 179, 0, 0.3), transparent)',
-                  animation: 'shimmer 2s ease-in-out infinite',
-                  borderRadius: 'md',
-                  zIndex: -1,
-                }}
-                sx={{
-                  '@keyframes shimmer': {
-                    '0%, 100%': { opacity: 0.5 },
-                    '50%': { opacity: 1 },
-                  },
-                }}
-              >
-                ⚡ Generate Teams
-              </Button>
-              <Button
-                size="lg"
-                variant="primary"
-                leftIcon={<FiUpload />}
-                onClick={() => navigate('/upload')}
-                fontSize="lg"
-                px={8}
-                py={7}
-              >
-                Upload Replays
-              </Button>
-            </HStack>
-          </Box>
-
-          {/* Hexagonal Stats Display */}
-          <Box>
-            <Heading
-              size="md"
-              mb={8}
-              textAlign="center"
-              fontFamily="heading"
-              letterSpacing="wider"
-              color="brand.400"
-            >
-              — System Status —
-            </Heading>
-            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={8}>
-              <HexagonalStat
-                label="Players"
-                value={isLoading ? '—' : totalPlayers}
-                subtext="Active Players"
-                color="brand.500"
-              />
-              <HexagonalStat
-                label="Matches"
-                value={isLoading ? '—' : totalGames}
-                subtext="Completed"
-                color="accent.500"
-              />
-              <HexagonalStat
-                label="Avg Rating"
-                value={isLoading ? '—' : avgMMR}
-                subtext="MMR Score"
-                color="shield.500"
-              />
-            </SimpleGrid>
-          </Box>
-
-          {/* Tactical Command Grid */}
-          <Box>
-            <Heading
-              size="md"
-              mb={6}
-              fontFamily="heading"
-              letterSpacing="wider"
-              color="brand.400"
-            >
-              ▸ Command Modules
-            </Heading>
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
-              <TacticalCard
-                variant="command"
-                glowColor="rgba(0, 212, 255, 0.6)"
-                onClick={() => navigate('/balance')}
-              >
-                <VStack align="start" spacing={3}>
-                  <HStack>
-                    <Box
-                      bg="brand.500"
-                      p={3}
-                      borderRadius="md"
-                      boxShadow="0 0 20px rgba(0, 212, 255, 0.4)"
-                    >
-                      <Icon as={FiZap} boxSize={8} color="gray.900" />
-                    </Box>
-                    <VStack align="start" spacing={0}>
-                      <Text
-                        fontWeight="black"
-                        fontSize="xl"
-                        fontFamily="heading"
-                        letterSpacing="wide"
-                      >
-                        Team Generator
-                      </Text>
-                      <Text fontSize="xs" color="brand.400" fontFamily="heading">
-                        Primary System
-                      </Text>
-                    </VStack>
-                  </HStack>
-                  <Text color="gray.500" fontSize="sm">
-                    Generate balanced team compositions using advanced MMR algorithms.
-                    Fair matches guaranteed.
-                  </Text>
-                </VStack>
-              </TacticalCard>
-
-              <TacticalCard
-                variant="angled"
-                glowColor="rgba(255, 179, 0, 0.6)"
-                onClick={() => navigate('/upload')}
-              >
-                <VStack align="start" spacing={3}>
-                  <HStack>
-                    <Box
-                      bg="accent.500"
-                      p={3}
-                      borderRadius="md"
-                      boxShadow="0 0 20px rgba(255, 179, 0, 0.4)"
-                    >
-                      <Icon as={FiUpload} boxSize={8} color="gray.900" />
-                    </Box>
-                    <VStack align="start" spacing={0}>
-                      <Text
-                        fontWeight="black"
-                        fontSize="xl"
-                        fontFamily="heading"
-                        letterSpacing="wide"
-                      >
-                        Replay Upload
-                      </Text>
-                      <Text fontSize="xs" color="accent.400" fontFamily="heading">
-                        Data Processing
-                      </Text>
-                    </VStack>
-                  </HStack>
-                  <Text color="gray.500" fontSize="sm">
-                    Import SC2 replay files for automatic analysis and rating updates.
-                  </Text>
-                </VStack>
-              </TacticalCard>
-
-              <TacticalCard
-                variant="default"
-                glowColor="rgba(156, 39, 176, 0.6)"
-                onClick={() => navigate('/players')}
-              >
-                <VStack align="start" spacing={3}>
-                  <HStack>
-                    <Box
-                      bg="zerg.500"
-                      p={3}
-                      borderRadius="md"
-                      boxShadow="0 0 20px rgba(156, 39, 176, 0.4)"
-                    >
-                      <Icon as={FiUsers} boxSize={8} color="white" />
-                    </Box>
-                    <VStack align="start" spacing={0}>
-                      <Text
-                        fontWeight="black"
-                        fontSize="xl"
-                        fontFamily="heading"
-                        letterSpacing="wide"
-                      >
-                        Player Roster
-                      </Text>
-                      <Text fontSize="xs" color="zerg.400" fontFamily="heading">
-                        Personnel Database
-                      </Text>
-                    </VStack>
-                  </HStack>
-                  <Text color="gray.500" fontSize="sm">
-                    View detailed player statistics, ratings, and performance metrics.
-                  </Text>
-                </VStack>
-              </TacticalCard>
-
-              <TacticalCard
-                variant="angled"
-                glowColor="rgba(0, 255, 136, 0.6)"
-                onClick={() => navigate('/history')}
-              >
-                <VStack align="start" spacing={3}>
-                  <HStack>
-                    <Box
-                      bg="shield.500"
-                      p={3}
-                      borderRadius="md"
-                      boxShadow="0 0 20px rgba(0, 255, 136, 0.4)"
-                    >
-                      <Icon as={FiTrendingUp} boxSize={8} color="gray.900" />
-                    </Box>
-                    <VStack align="start" spacing={0}>
-                      <Text
-                        fontWeight="black"
-                        fontSize="xl"
-                        fontFamily="heading"
-                        letterSpacing="wide"
-                      >
-                        Match Archive
-                      </Text>
-                      <Text fontSize="xs" color="shield.400" fontFamily="heading">
-                        Historical Data
-                      </Text>
-                    </VStack>
-                  </HStack>
-                  <Text color="gray.500" fontSize="sm">
-                    Browse complete match history with AI-powered analysis and insights.
-                  </Text>
-                </VStack>
-              </TacticalCard>
-            </SimpleGrid>
-          </Box>
-
-          {/* Recent Activity with tactical styling */}
-          {matches.length > 0 && (
+          {/* Center Column - Stats & Recent Activity */}
+          <VStack spacing={6} align="stretch">
+            {/* Stats Row */}
             <Box>
-              <HStack justify="space-between" mb={6}>
-                <Heading
-                  size="md"
-                  fontFamily="heading"
-                  letterSpacing="wider"
-                  color="brand.400"
-                >
-                  ▸ Recent Matches
+              <Heading size="md" fontFamily="heading" color="gray.300" mb={4}>
+                <Text className="emoji-font" as="span">📊</Text> Squad Stats
+              </Heading>
+              <SimpleGrid columns={3} spacing={3}>
+                <FriendlyStat
+                  label="Players"
+                  value={isLoading ? '—' : totalPlayers}
+                  emoji="👥"
+                  color="brand.500"
+                  size="sm"
+                />
+                <FriendlyStat
+                  label="Matches"
+                  value={isLoading ? '—' : totalMatches}
+                  emoji="🎮"
+                  color="accent.500"
+                  size="sm"
+                />
+                <FriendlyStat
+                  label="Avg MMR"
+                  value={isLoading ? '—' : avgMMR}
+                  emoji="📈"
+                  color="shield.500"
+                  size="sm"
+                />
+              </SimpleGrid>
+            </Box>
+
+            <Divider borderColor="space.700" />
+
+            {/* Recent Matches */}
+            <Box>
+              <HStack justify="space-between" mb={4}>
+                <Heading size="md" fontFamily="heading" color="gray.300">
+                  <Text className="emoji-font" as="span">🕐</Text> Recent Matches
                 </Heading>
                 <Button
                   size="sm"
                   variant="ghost"
+                  color="brand.400"
                   onClick={() => navigate('/history')}
                   fontFamily="heading"
                 >
                   View All →
                 </Button>
               </HStack>
-              <VStack spacing={3} align="stretch">
-                {matches.slice(0, 5).map((match) => (
-                  <TacticalCard
-                    key={match.id}
-                    variant="command"
-                    glowColor="rgba(0, 212, 255, 0.4)"
-                    onClick={() => navigate(`/history/${match.id}`)}
-                  >
-                    <Flex justify="space-between" align="center">
-                      <HStack spacing={4}>
-                        <Box
-                          bg="brand.500"
-                          p={2}
-                          borderRadius="md"
-                          boxShadow="0 0 10px rgba(0, 212, 255, 0.3)"
-                        >
-                          <Icon as={FiActivity} boxSize={5} color="gray.900" />
-                        </Box>
-                        <VStack align="start" spacing={0}>
-                          <Text
-                            fontWeight="bold"
-                            fontFamily="heading"
-                            letterSpacing="wide"
-                          >
-                            {match.map_name}
-                          </Text>
-                          <Text fontSize="sm" color="gray.500" fontFamily="heading">
-                            {match.game_mode} • {formatDateOnly(match.played_at)}
-                          </Text>
-                        </VStack>
-                      </HStack>
-                      <Icon as={FiTarget} color="brand.400" />
-                    </Flex>
-                  </TacticalCard>
-                ))}
+              
+              {matches.length > 0 ? (
+                <VStack spacing={2} align="stretch">
+                  {matches.slice(0, 5).map((match) => (
+                    <MatchCard
+                      key={match.id}
+                      match={match}
+                      onClick={() => navigate(`/history/${match.id}`)}
+                    />
+                  ))}
+                </VStack>
+              ) : (
+                <Box
+                  bg="space.800"
+                  borderRadius="xl"
+                  border="3px solid"
+                  borderColor="space.900"
+                  p={6}
+                  textAlign="center"
+                >
+                  <Text fontSize="3xl" mb={2} className="emoji-font">
+                    🎮
+                  </Text>
+                  <Text color="gray.500">
+                    No matches yet. Upload some replays to get started!
+                  </Text>
+                </Box>
+              )}
+            </Box>
+          </VStack>
+
+          {/* Right Column - Leaderboard */}
+          <VStack spacing={4} align="stretch">
+            <HStack justify="space-between">
+              <Heading size="md" fontFamily="heading" color="gray.300">
+                <Text className="emoji-font" as="span">🏆</Text> Leaderboard
+              </Heading>
+              <Button
+                size="sm"
+                variant="ghost"
+                color="brand.400"
+                onClick={() => navigate('/leaderboard')}
+                fontFamily="heading"
+              >
+                View Rankings →
+              </Button>
+            </HStack>
+            
+            {players.length > 0 ? (
+              <PlayerSpotlight 
+                players={players} 
+                onClick={(id) => navigate(`/players/${id}`)}
+              />
+            ) : (
+              <Box
+                bg="space.800"
+                borderRadius="xl"
+                border="3px solid"
+                borderColor="space.900"
+                p={6}
+                textAlign="center"
+              >
+                <Text fontSize="3xl" mb={2} className="emoji-font">
+                  👥
+                </Text>
+                <Text color="gray.500">
+                  No players yet. Upload replays to add players!
+                </Text>
+              </Box>
+            )}
+
+            <Divider borderColor="space.700" my={2} />
+
+            {/* Fun Stats / Achievements teaser */}
+            <Box
+              bg="space.800"
+              borderRadius="xl"
+              border="3px solid"
+              borderColor="space.900"
+              boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
+              p={4}
+            >
+              <HStack spacing={3} mb={3}>
+                <Text fontSize="xl" className="emoji-font">
+                  🎖️
+                </Text>
+                <Text fontWeight="bold" fontFamily="heading" color="gray.100">
+                  Quick Stats
+                </Text>
+              </HStack>
+              <VStack spacing={2} align="stretch" fontSize="sm" color="gray.400">
+                <HStack justify="space-between">
+                  <Text>Total Games Played</Text>
+                  <Text fontWeight="bold" color="brand.400">{totalMatches}</Text>
+                </HStack>
+                <HStack justify="space-between">
+                  <Text>Active Players</Text>
+                  <Text fontWeight="bold" color="accent.400">{totalPlayers}</Text>
+                </HStack>
+                 <HStack justify="space-between">
+                   <Text>Highest MMR</Text>
+                   <Text fontWeight="bold" color="shield.400">
+                     {players.length > 0 
+                       ? Math.round(Math.max(...players.map(p => p.recency_weighted_mmr || p.mmr)))
+                       : '—'
+                     }
+                   </Text>
+                 </HStack>
               </VStack>
             </Box>
-          )}
-        </VStack>
+          </VStack>
+        </SimpleGrid>
       </Container>
     </Box>
   );

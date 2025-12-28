@@ -15,7 +15,6 @@ import {
   Badge,
   Flex,
   Select,
-  useColorModeValue,
   Skeleton,
   Alert,
   AlertIcon,
@@ -27,7 +26,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { keyframes } from '@emotion/react';
-import { FiTarget } from 'react-icons/fi';
+import { FiTarget, FiUsers, FiTrendingUp, FiActivity } from 'react-icons/fi';
 import { headToHeadApi } from '../api/headtohead';
 import { playersApi } from '../api/endpoints';
 import {
@@ -36,8 +35,12 @@ import {
   formatDuration,
   getH2HWinRate,
 } from '../types/headtohead';
-import { colors } from '../theme/tokens';
 import VSScreen from '../components/VSScreen';
+
+// Design tokens
+const cardBg = 'space.800';
+const borderColor = 'space.900';
+const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
 // =============================================================================
 // Animations
@@ -66,18 +69,17 @@ interface RivalryMeterProps {
 
 const RivalryMeter: React.FC<RivalryMeterProps> = React.memo(({ score, intensity, gamesPlayed }) => {
   const config = getIntensityConfig(intensity as 'Casual' | 'Competitive' | 'Fierce' | 'Epic');
-  const cardBg = useColorModeValue('gray.800', 'space.800');
 
   return (
     <Box
       bg={cardBg}
       borderRadius="xl"
-      border="2px solid"
-      borderColor={config.color}
+      border="3px solid"
+      borderColor={borderColor}
+      boxShadow={brandShadow}
       p={6}
       position="relative"
       overflow="hidden"
-      boxShadow={config.glowColor ? `0 0 20px ${config.glowColor}` : 'none'}
     >
       <VStack spacing={4}>
         {/* Header */}
@@ -162,27 +164,25 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = React.memo(({
   players,
   excludeId,
 }) => {
-  const cardBg = useColorModeValue('gray.800', 'space.800');
-
   const filteredPlayers = useMemo(() => {
     return players.filter(p => p.id !== excludeId);
   }, [players, excludeId]);
 
   return (
     <VStack align="stretch" spacing={2}>
-      <Text color="gray.500" fontSize="sm" fontWeight="bold">
+      <Text color="gray.500" fontSize="sm" fontWeight="bold" fontFamily="heading" letterSpacing="wide">
         {label}
       </Text>
       <Select
         value={value || ''}
         onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        bg={cardBg}
+        bg="space.900"
         border="2px solid"
-        borderColor="whiteAlpha.200"
+        borderColor="space.700"
         size="lg"
         fontFamily="heading"
         _hover={{ borderColor: 'brand.500' }}
-        _focus={{ borderColor: 'brand.500', boxShadow: '0 0 10px rgba(255, 140, 26, 0.3)' }}
+        _focus={{ borderColor: 'brand.500' }}
       >
         <option value="">Select player...</option>
         {filteredPlayers.map((player) => (
@@ -204,21 +204,20 @@ interface RivalryCardProps {
 
 const RivalryCard: React.FC<RivalryCardProps> = React.memo(({ rivalry, onClick }) => {
   const config = getIntensityConfig(rivalry.intensity as 'Casual' | 'Competitive' | 'Fierce' | 'Epic');
-  const cardBg = useColorModeValue('gray.800', 'space.800');
 
   return (
     <Box
       bg={cardBg}
-      borderRadius="lg"
-      border="1px solid"
-      borderColor="whiteAlpha.100"
+      borderRadius="xl"
+      border="2px solid"
+      borderColor="space.700"
       p={4}
       cursor="pointer"
-      transition="all 0.3s"
+      transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
       _hover={{
         borderColor: config.color,
         transform: 'translateY(-2px)',
-        boxShadow: `0 0 15px ${config.glowColor}`,
+        boxShadow: brandShadow,
       }}
       onClick={onClick}
     >
@@ -354,7 +353,7 @@ const HeadToHead: React.FC = () => {
   }, [h2hData]);
 
   return (
-    <Box bg={bgColor} minH="100vh" py={8}>
+    <Box bg="space.900" minH="100vh" py={8}>
       <Container maxW="container.xl">
         <VStack spacing={8} align="stretch">
           {/* Header */}
@@ -363,10 +362,9 @@ const HeadToHead: React.FC = () => {
               size="2xl"
               fontFamily="heading"
               color="brand.400"
-              textShadow={`0 0 30px ${colors.brand[500]}60`}
               letterSpacing="wider"
             >
-              ⚔️ HEAD TO HEAD
+              🆚 Head to Head
             </Heading>
             <Text color="gray.500" mt={2}>
               Compare players and discover rivalries
@@ -377,8 +375,9 @@ const HeadToHead: React.FC = () => {
           <Box
             bg={cardBg}
             borderRadius="xl"
-            border="2px solid"
-            borderColor="whiteAlpha.100"
+            border="3px solid"
+            borderColor={borderColor}
+            boxShadow={brandShadow}
             p={6}
           >
             <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4} alignItems="end">
@@ -453,23 +452,23 @@ const HeadToHead: React.FC = () => {
 
               {/* Stats Grid */}
               <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4} w="100%">
-                <Stat bg={cardBg} p={4} borderRadius="lg">
-                  <StatLabel color="gray.500">Total Games</StatLabel>
-                  <StatNumber color="brand.400">{h2hData.head_to_head.total_games}</StatNumber>
+                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl" boxShadow={brandShadow}>
+                  <StatLabel color="gray.500" fontFamily="heading" letterSpacing="wide">Total Games</StatLabel>
+                  <StatNumber color="brand.400" fontWeight="bold">{h2hData.head_to_head.total_games}</StatNumber>
                 </Stat>
-                <Stat bg={cardBg} p={4} borderRadius="lg">
-                  <StatLabel color="gray.500">{h2hData.player1.name} Wins</StatLabel>
-                  <StatNumber color="shield.400">{h2hData.head_to_head.player1_wins}</StatNumber>
+                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl" boxShadow={brandShadow}>
+                  <StatLabel color="gray.500" fontFamily="heading" letterSpacing="wide">{h2hData.player1.name} Wins</StatLabel>
+                  <StatNumber color="shield.400" fontWeight="bold">{h2hData.head_to_head.player1_wins}</StatNumber>
                   <StatHelpText>{getH2HWinRate(h2hData.head_to_head.player1_wins, h2hData.head_to_head.total_games)}</StatHelpText>
                 </Stat>
-                <Stat bg={cardBg} p={4} borderRadius="lg">
-                  <StatLabel color="gray.500">{h2hData.player2.name} Wins</StatLabel>
-                  <StatNumber color="accent.400">{h2hData.head_to_head.player2_wins}</StatNumber>
+                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl" boxShadow={brandShadow}>
+                  <StatLabel color="gray.500" fontFamily="heading" letterSpacing="wide">{h2hData.player2.name} Wins</StatLabel>
+                  <StatNumber color="accent.400" fontWeight="bold">{h2hData.head_to_head.player2_wins}</StatNumber>
                   <StatHelpText>{getH2HWinRate(h2hData.head_to_head.player2_wins, h2hData.head_to_head.total_games)}</StatHelpText>
                 </Stat>
-                <Stat bg={cardBg} p={4} borderRadius="lg">
-                  <StatLabel color="gray.500">Avg MMR Swing</StatLabel>
-                  <StatNumber color="gray.200">±{Math.round(h2hData.head_to_head.avg_mmr_swing)}</StatNumber>
+                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl" boxShadow={brandShadow}>
+                  <StatLabel color="gray.500" fontFamily="heading" letterSpacing="wide">Avg MMR Swing</StatLabel>
+                  <StatNumber color="gray.200" fontWeight="bold">±{Math.round(h2hData.head_to_head.avg_mmr_swing)}</StatNumber>
                 </Stat>
               </SimpleGrid>
 
@@ -483,12 +482,15 @@ const HeadToHead: React.FC = () => {
                     {h2hData.recent_matches.map((match) => (
                       <HStack
                         key={match.match_id}
-                        bg={cardBg}
+                        bg="space.800"
                         p={3}
-                        borderRadius="md"
+                        borderRadius="xl"
+                        border="2px solid"
+                        borderColor="space.700"
                         justify="space-between"
                         cursor="pointer"
-                        _hover={{ bg: 'whiteAlpha.100' }}
+                        transition="all 0.2s"
+                        _hover={{ borderColor: 'brand.500', transform: 'translateX(4px)' }}
                         onClick={() => navigate(`/history/${match.match_id}`)}
                       >
                         <HStack>

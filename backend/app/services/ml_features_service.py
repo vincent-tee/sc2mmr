@@ -319,7 +319,7 @@ class MLFeaturesService:
     def _calculate_and_save_predictions(db: Session, match_id: int) -> None:
         """Calculate and save ML win probability and SHAP values."""
         try:
-            from .xgboost_predictor import get_xgboost_predictor
+            from .ml_predictor import get_ml_predictor
 
             match_players = (
                 db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).all()
@@ -331,7 +331,7 @@ class MLFeaturesService:
             if not team1_ids or not team2_ids:
                 return
 
-            predictor = get_xgboost_predictor()
+            predictor = get_ml_predictor()
             prediction = predictor.predict(db, team1_ids, team2_ids)
 
             team1_prob = prediction.get("team_1_win_probability", 50.0) / 100.0

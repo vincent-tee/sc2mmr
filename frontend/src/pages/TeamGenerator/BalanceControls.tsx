@@ -37,15 +37,16 @@ const BalanceControls: React.FC<BalanceControlsProps> = ({
   onImpactWeightChange,
 }) => {
   return (
-    <TacticalCard variant="angled" glowColor="rgba(138, 43, 226, 0.4)">
-      <Box p={6}>
+    <TacticalCard glowColor="rgba(138, 43, 226, 0.4)">
+      <Box p={2}>
         <VStack spacing={6} align="stretch">
           <HStack justify="space-between">
             <HStack>
-              <Icon as={FiActivity} color="purple.400" boxSize={5} />
+              <Icon as={FiActivity} color="purple.400" boxSize={6} filter="drop-shadow(2px 2px 0 var(--chakra-colors-space-900))" />
               <Heading
                 size="md"
                 fontFamily="heading"
+                fontWeight="black"
                 letterSpacing="wider"
                 color="purple.300"
               >
@@ -62,7 +63,7 @@ const BalanceControls: React.FC<BalanceControlsProps> = ({
             />
           </HStack>
 
-          <Text fontSize="sm" color="gray.400" fontFamily="heading">
+          <Text fontSize="md" color="gray.400" fontFamily="body" fontWeight="medium">
             Distribute high-impact players (shot callers, strong players) and
             low-impact players (learning, weaker) evenly across teams.
           </Text>

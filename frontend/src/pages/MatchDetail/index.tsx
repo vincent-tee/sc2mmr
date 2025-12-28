@@ -1,5 +1,5 @@
 /**
- * Match Detail Page - TACTICAL MISSION ANALYSIS
+ * Match Detail Page - Match Analysis
  * Comprehensive match information with win probability analysis
  */
 import {
@@ -22,7 +22,6 @@ import { useQuery } from '@tanstack/react-query';
 import { FiArrowLeft, FiUsers, FiZap, FiTarget } from 'react-icons/fi';
 import { replaysApi, impactApi } from '@/api/endpoints';
 import LoadingState from '@/components/LoadingState';
-import TacticalBackground from '@/components/common/TacticalBackground';
 import MatchHeader from './MatchHeader';
 import OperativesTab from './OperativesTab';
 import CommentaryTab from './CommentaryTab';
@@ -145,20 +144,24 @@ const MatchDetail: React.FC = () => {
 
   if (matchLoading) {
     return (
-      <Container maxW="container.xl" py={8}>
-        <LoadingState message="Loading tactical data..." />
-      </Container>
+      <Box bg="space.900">
+        <Container maxW="container.xl" py={8}>
+          <LoadingState message="Loading match data..." />
+        </Container>
+      </Box>
     );
   }
 
   if (!matchData) {
     return (
-      <Container maxW="container.xl" py={8}>
-        <Alert status="error">
-          <AlertIcon />
-          Mission data not found
-        </Alert>
-      </Container>
+      <Box bg="space.900">
+        <Container maxW="container.xl" py={8}>
+          <Alert status="error">
+            <AlertIcon />
+            Match data not found
+          </Alert>
+        </Container>
+      </Box>
     );
   }
 
@@ -169,10 +172,7 @@ const MatchDetail: React.FC = () => {
   const team1Won = team1Players.length > 0 && team1Players[0].won;
 
   return (
-    <Box position="relative">
-      {/* Animated tactical grid background */}
-      <TacticalBackground opacity={0.02} gridSize={60} />
-
+    <Box position="relative" bg="space.900">
       <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
           {/* Back Button */}
@@ -208,7 +208,6 @@ const MatchDetail: React.FC = () => {
                   bg: 'brand.500',
                   color: 'gray.900',
                   borderColor: 'brand.500',
-                  boxShadow: '0 0 20px rgba(0, 212, 255, 0.4)',
                 },
               },
             }}

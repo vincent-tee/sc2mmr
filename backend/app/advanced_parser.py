@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 import sc2reader  # type: ignore
 from sc2reader.events import TrackerEvent  # type: ignore
+from sc2reader.engine.plugins import APMTracker  # type: ignore
 import logging
 
 from .replay_parser import (
@@ -26,6 +27,9 @@ from .damage_timeline import DamageTimelineExtractor, DamageTimeline
 
 logger = logging.getLogger(__name__)
 
+# Register APMTracker plugin for APM calculation
+sc2reader.engine.register_plugin(APMTracker())  # type: ignore
+
 
 @dataclass
 class PlayerMetrics:
@@ -35,6 +39,8 @@ class PlayerMetrics:
     race: str
     team: int
     won: bool
+    is_ai: bool = False
+    difficulty: Optional[str] = None
 
     # Economic metrics
     minerals_collected: int = 0
@@ -219,16 +225,24 @@ def parse_replay_advanced(
         player_metrics_dict = {}
 
         for player in replay.players:
-            if not player.is_human:
-                continue
+            is_ai = not getattr(player, "is_human", False)
+            difficulty = getattr(player, "difficulty", None) if is_ai else None
+
+            p_name = (
+                player.name.replace(f"[{player.clan_tag}]", "").strip()
+                if hasattr(player, "clan_tag") and player.clan_tag
+                else player.name
+            )
+            if is_ai and difficulty:
+                p_name = f"Computer ({difficulty})"
 
             metrics = PlayerMetrics(
-                player_name=player.name.replace(f"[{player.clan_tag}]", "").strip()
-                if hasattr(player, "clan_tag") and player.clan_tag
-                else player.name,
+                player_name=p_name,
                 race=player.play_race,
                 team=player.team_id,
                 won=player.result == "Win",
+                is_ai=is_ai,
+                difficulty=difficulty,
             )
 
             # Extract statistics if available
@@ -480,15 +494,54 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
                 player_metrics[killer_pid].army_value_killed += unit_cost
                 player_metrics[killer_pid].units_killed += 1
 
-            # Unit owner loses value
-            if hasattr(event, "unit_pid") and event.unit_pid in player_metrics:
-                owner_pid = event.unit_pid
-                player_metrics[owner_pid].army_value_lost += unit_cost
-                player_metrics[owner_pid].units_lost += 1
+            # DAMAGE TAKEN (owner tracking)
+            # Note: UnitDiedEvent doesn't have unit_pid, we need to access event.unit.owner
+            if event.unit and hasattr(event.unit, "owner"):
+                owner = event.unit.owner
+                if hasattr(owner, "pid") and owner.pid in player_metrics:
+                    owner_pid = owner.pid
+                    player_metrics[owner_pid].army_value_lost += unit_cost
+                    player_metrics[owner_pid].units_lost += 1
 
         # Upgrade complete events could be tracked here
         # elif event.name == 'UpgradeCompleteEvent':
         #     pass
+
+        # PlayerStatsEvent - contains resource collection, army values, workers
+        elif event.name == "PlayerStatsEvent":
+            pid = event.pid
+            if pid in player_metrics:
+                # These events are cumulative; keep updating to get the final values
+                # Resource collection
+                player_metrics[pid].minerals_collected = getattr(
+                    event, "minerals_collection_rate", 0
+                )
+                player_metrics[pid].vespene_collected = getattr(
+                    event, "vespene_collection_rate", 0
+                )
+                player_metrics[pid].total_resources_collected = (
+                    player_metrics[pid].minerals_collected
+                    + player_metrics[pid].vespene_collected
+                )
+
+                # Army value lost (from PlayerStatsEvent is more accurate than UnitDiedEvent)
+                minerals_lost = getattr(event, "minerals_lost_army", 0)
+                vespene_lost = getattr(event, "vespene_lost_army", 0)
+                player_metrics[pid].army_value_lost = minerals_lost + vespene_lost
+
+                # Army value killed
+                minerals_killed = getattr(event, "minerals_killed_army", 0)
+                vespene_killed = getattr(event, "vespene_killed_army", 0)
+                player_metrics[pid].army_value_killed = minerals_killed + vespene_killed
+
+                # Units lost count from resources (divide by avg unit cost ~100)
+                if player_metrics[pid].units_lost == 0 and minerals_lost > 0:
+                    player_metrics[pid].units_lost = max(1, minerals_lost // 100)
+
+                # Workers active
+                workers = getattr(event, "workers_active_count", 0)
+                if workers > player_metrics[pid].workers_created:
+                    player_metrics[pid].workers_created = workers
 
     # Set unit compositions (top 5 units)
     for pid, composition in unit_compositions.items():
@@ -510,10 +563,8 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         if metrics.damage_taken > 0:
             metrics.damage_ratio = metrics.damage_dealt / metrics.damage_taken
         elif metrics.damage_dealt > 0:
-            # Dealt damage but took none - use a high ratio to represent dominance
-            metrics.damage_ratio = float(
-                metrics.damage_dealt
-            )  # Use dealt as ratio (e.g., 31225:1)
+            # Dealt damage but took none - cap at 10 to prevent score inflation
+            metrics.damage_ratio = 10.0
         else:
             # No damage dealt or taken - neutral ratio
             metrics.damage_ratio = 1.0
@@ -673,58 +724,69 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
     Calculate impact scores for a player.
 
     Impact is measured across multiple dimensions:
-    - Economic: resource collection, workers, spending
-    - Combat: damage dealt, efficiency, kills
-    - Efficiency: ratios and per-minute metrics
-    - Team contribution: engagement participation, team fight damage
+    - Economic: resource collection, workers, spending efficiency
+    - Combat: army value killed, damage ratio (how efficiently you trade)
+    - Efficiency: unit kill/death ratio (micro/army control)
+    - Team contribution: engagement participation, team fight effectiveness
+
+    Each intermediate score uses DISTINCT raw metrics to avoid double-counting.
+    Overall impact weights these scores for team game context.
 
     Args:
         metrics: PlayerMetrics to calculate scores for
     """
-    # Economic score (0-100)
-    # Based on resources collected, workers, and spending
-    resource_score = min(
-        100, metrics.total_resources_collected / 1000
-    )  # Cap at 100k resources
+    # ==========================================================================
+    # ECONOMIC SCORE (0-100) - Resource management
+    # Metrics: total_resources_collected, workers_created, spending_efficiency
+    # ==========================================================================
+    resource_score = min(100, metrics.total_resources_collected / 1000)  # Cap at 100k
     worker_score = min(100, metrics.workers_created / 0.8)  # Cap at 80 workers
-    spending_score = metrics.spending_efficiency * 100
+    spending_score = metrics.spending_efficiency * 100  # 0-100 from 0-1.0
 
     metrics.economic_score = (resource_score + worker_score + spending_score) / 3
 
-    # Combat score (0-100)
-    # Based on damage dealt, kills, and army value
-    damage_score = min(100, metrics.damage_dealt / 500)  # Cap at 50k damage
-    kill_score = min(100, metrics.army_value_killed / 500)  # Cap at 50k value
-    ratio_score = min(100, metrics.damage_ratio * 50)  # 2:1 ratio = 100 points
+    # ==========================================================================
+    # COMBAT SCORE (0-100) - Combat effectiveness
+    # Metrics: army_value_killed, damage_ratio
+    # Note: damage_dealt == army_value_killed, so we use only army_value_killed
+    # ==========================================================================
+    capped_ratio = min(metrics.damage_ratio, 10.0)  # Cap to prevent outliers
+    kill_value_score = min(100, metrics.army_value_killed / 500)  # Cap at 50k value
+    ratio_score = min(100, capped_ratio * 10)  # 10:1 ratio = 100 points
 
-    metrics.combat_score = (damage_score + kill_score + ratio_score) / 3
+    metrics.combat_score = (kill_value_score + ratio_score) / 2
 
-    # Efficiency score (0-100)
-    # Based on ratios and performance per resource
-    efficiency_components = [
-        metrics.spending_efficiency * 100,
-        metrics.damage_ratio * 50,  # Normalized to 100
-        min(
-            100, (metrics.units_killed / max(1, metrics.units_lost)) * 50
-        ),  # Kill/death ratio
-    ]
+    # ==========================================================================
+    # EFFICIENCY SCORE (0-100) - Resource conversion efficiency
+    # Metrics: spending_efficiency (how much of collected resources were used)
+    # This is DISTINCT from combat which measures killing, and economic which measures collection
+    # ==========================================================================
+    # Spending efficiency: what % of resources collected were converted to army/units
+    spending_score = min(100, metrics.spending_efficiency * 100)
 
-    metrics.efficiency_score = sum(efficiency_components) / len(efficiency_components)
+    # APM efficiency: higher APM generally means more efficient play (capped at 150 APM = 100 pts)
+    apm_score = min(100, (metrics.apm / 150) * 100) if metrics.apm > 0 else 50
 
-    # Team contribution score (0-100)
-    # Based on showing up to team fights and being effective in them
-    participation_score = metrics.team_fight_participation * 100
-    team_fight_effectiveness_score = metrics.team_fight_damage_ratio * 100
+    metrics.efficiency_score = (spending_score + apm_score) / 2
+
+    # ==========================================================================
+    # TEAM CONTRIBUTION SCORE (0-100) - Teamwork in team fights
+    # Metrics: team_fight_participation, team_fight_damage_ratio
+    # ==========================================================================
+    participation_score = min(100, metrics.team_fight_participation * 100)
+    # Cap effectiveness at 100 (ratio > 1 means data mismatch between sources)
+    team_fight_effectiveness_score = min(100, metrics.team_fight_damage_ratio * 100)
     team_contribution_score = (participation_score + team_fight_effectiveness_score) / 2
 
-    # Overall impact (weighted average optimized for team games)
-    # Team contribution is critical for casual team games
-    # Combat/economy matter but less than being there for your team
+    # ==========================================================================
+    # OVERALL IMPACT - Weighted combination optimized for team games
+    # Weights: Combat 35%, Team 35%, Economic 20%, Efficiency 10%
+    # ==========================================================================
     metrics.overall_impact = (
-        metrics.combat_score * 0.40  # Direct combat still important
-        + metrics.economic_score * 0.20  # Economy matters but less
-        + team_contribution_score * 0.30  # NEW: Team fight participation critical
-        + metrics.efficiency_score * 0.10  # Efficiency less critical in casual
+        metrics.combat_score * 0.35  # Combat effectiveness
+        + team_contribution_score * 0.35  # Team fight participation critical
+        + metrics.economic_score * 0.20  # Economy matters but less in team games
+        + metrics.efficiency_score * 0.10  # Unit trading efficiency
     )
 
 

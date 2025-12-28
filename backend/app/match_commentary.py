@@ -102,9 +102,9 @@ class MatchCommentaryGenerator:
                 return perf.ml_shap_values  # type: ignore
 
             # Fallback to recalculation (for older matches without stored SHAP)
-            from .services.xgboost_predictor import get_xgboost_predictor
+            from .services.ml_predictor import get_ml_predictor
 
-            predictor = get_xgboost_predictor()
+            predictor = get_ml_predictor()
 
             team1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
             team2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]

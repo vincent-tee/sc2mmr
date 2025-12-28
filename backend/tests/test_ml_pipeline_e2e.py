@@ -57,7 +57,7 @@ def client(db_session_e2e):
 def test_ml_pipeline_e2e(client, db_session_e2e: Session):
     """
     End-to-End test for the ML pipeline:
-    Replay Upload -> Feature Extraction -> XGBoost Prediction -> SHAP Explanation -> Build Order Category
+    Replay Upload -> Feature Extraction -> ML Prediction -> SHAP Explanation -> Build Order Category
     """
     # 1. Prepare a real replay file for upload
     # Try multiple possible locations for replays
@@ -91,15 +91,13 @@ def test_ml_pipeline_e2e(client, db_session_e2e: Session):
     ]
 
     # We need to mock it throughout the test
-    with patch(
-        "app.services.xgboost_predictor.XGBoostPredictor.predict"
-    ) as mock_predict:
+    with patch("app.services.ml_predictor.MLPredictor.predict") as mock_predict:
         mock_predict.return_value = {
             "predicted_winner": 1,
             "team_1_win_probability": 65.0,
             "team_2_win_probability": 35.0,
             "confidence": "Medium",
-            "model": "XGBoost (Mocked)",
+            "model": "MLPredictor (Mocked)",
             "key_factors": ["Team 1 has better MMR"],
             "shap_impacts": mock_shap_impacts,
         }

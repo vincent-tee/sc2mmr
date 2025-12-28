@@ -1,6 +1,6 @@
 /**
- * Upload Replays Page
- * Drag-and-drop bulk upload interface for SC2 replay files
+ * Upload Replays Page - Friend Squad Edition
+ * Drag-and-drop bulk upload interface with comic-book styling
  */
 import { useState, useCallback, useEffect } from 'react';
 import {
@@ -14,11 +14,8 @@ import {
   Badge,
   Icon,
   Button,
-  Card,
-  CardBody,
   Collapse,
   IconButton,
-  useColorModeValue,
   List,
   ListItem,
 } from '@chakra-ui/react';
@@ -39,6 +36,11 @@ import { useToast } from '../hooks/useToast';
 import { parseErrorMessage } from '../utils/formatting';
 import type { ReplayUploadResponse } from '../types/api';
 import type { IconType } from 'react-icons';
+
+// Design tokens
+const cardBg = 'space.800';
+const borderColor = 'space.900';
+const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
 // Upload status enum
 const UPLOAD_STATUS = {
@@ -82,10 +84,6 @@ const UploadReplays: React.FC = () => {
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  const dropzoneBg = useColorModeValue('white', 'gray.800');
-  const dropzoneBorder = useColorModeValue('gray.300', 'gray.600');
-  const dropzoneHoverBg = useColorModeValue('brand.50', 'gray.700');
-
   // Check if any files are currently uploading
   const hasUploadsInProgress = files.some(
     (file) => file.status === UPLOAD_STATUS.UPLOADING || file.status === UPLOAD_STATUS.PROCESSING
@@ -124,11 +122,9 @@ const UploadReplays: React.FC = () => {
 
   // Process a single file
   const processFile = async (file: UploadFile): Promise<void> => {
-    // Update status to uploading
     updateFileStatus(file.id, UPLOAD_STATUS.UPLOADING, null, 0);
 
     try {
-      // Upload the file with advanced metrics (required for match commentary)
       const response = await replaysApi.uploadAdvanced(file.file, (progressEvent) => {
         const total = progressEvent.total || 1;
         const percentCompleted = Math.round(
@@ -137,14 +133,12 @@ const UploadReplays: React.FC = () => {
         updateFileStatus(file.id, UPLOAD_STATUS.UPLOADING, null, percentCompleted);
       });
 
-      // Mark as complete with processing stats
-      // Note: processing_stats may not be present in all response types
       const responseData = response.data as ReplayUploadResponse & {
         processing_stats?: { total_time_ms: number; parse_time_ms: number; rating_update_time_ms: number }
       };
       const stats = responseData.processing_stats;
       const processingMessage = stats
-        ? `Processed in ${stats.total_time_ms}ms (parse: ${stats.parse_time_ms}ms, ratings: ${stats.rating_update_time_ms}ms)`
+        ? `Processed in ${stats.total_time_ms}ms`
         : response.data.message;
 
       updateFileStatus(
@@ -155,7 +149,6 @@ const UploadReplays: React.FC = () => {
         response.data
       );
 
-      // Invalidate relevant caches when a replay is successfully processed
       queryClient.invalidateQueries({ queryKey: ['matches'] });
       queryClient.invalidateQueries({ queryKey: ['players'] });
       queryClient.invalidateQueries({ queryKey: ['recent-matches-ticker'] });
@@ -184,12 +177,10 @@ const UploadReplays: React.FC = () => {
     const batchSize = 5;
     const batches: UploadFile[][] = [];
 
-    // Create batches
     for (let i = 0; i < filesToProcess.length; i += batchSize) {
       batches.push(filesToProcess.slice(i, i + batchSize));
     }
 
-    // Process batches sequentially, files within batch in parallel
     for (const batch of batches) {
       await Promise.all(batch.map((file) => processFile(file)));
     }
@@ -218,10 +209,8 @@ const UploadReplays: React.FC = () => {
       setFiles((prev) => [...prev, ...newFiles]);
       setIsExpanded(true);
 
-      // Start processing
       await processFiles(newFiles);
 
-      // Show summary toast - query current state to get accurate counts
       setFiles((currentFiles) => {
         const newFileIds = new Set(newFiles.map(f => f.id));
         const processedFiles = currentFiles.filter(f => newFileIds.has(f.id));
@@ -284,11 +273,18 @@ const UploadReplays: React.FC = () => {
     <Container maxW="container.xl" py={8}>
       <VStack spacing={8} align="stretch">
         {/* Header */}
-        <Box>
-          <Heading size="xl" mb={2}>
-            Upload Replays
+        <Box textAlign="center">
+          <Heading
+            size="2xl"
+            fontFamily="heading"
+            fontWeight="bold"
+            letterSpacing="wider"
+            mb={3}
+            color="brand.400"
+          >
+            <Text as="span" className="emoji-font">📤</Text> Upload Replays
           </Heading>
-          <Text color="gray.500">
+          <Text fontSize="lg" color="gray.500">
             Drag and drop your StarCraft 2 replay files or folders
           </Text>
         </Box>
@@ -297,18 +293,19 @@ const UploadReplays: React.FC = () => {
         {(!hasFiles || !isUploading) && (
           <Box
             {...getRootProps()}
-            bg={dropzoneBg}
+            bg={cardBg}
             borderWidth={3}
             borderStyle="dashed"
-            borderColor={isDragActive ? 'brand.500' : dropzoneBorder}
+            borderColor={isDragActive ? 'brand.500' : 'space.600'}
             borderRadius="xl"
             p={16}
             textAlign="center"
             cursor="pointer"
-            transition="all 0.2s"
+            transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
             _hover={{
               borderColor: 'brand.500',
-              bg: dropzoneHoverBg,
+              transform: 'translateY(-2px)',
+              boxShadow: brandShadow,
             }}
           >
             <input {...getInputProps()} />
@@ -316,9 +313,14 @@ const UploadReplays: React.FC = () => {
               <Icon
                 as={FiUploadCloud}
                 boxSize={20}
-                color={isDragActive ? 'brand.500' : 'gray.400'}
+                color={isDragActive ? 'brand.500' : 'gray.500'}
               />
-              <Heading size="lg" color={isDragActive ? 'brand.500' : undefined}>
+              <Heading
+                size="lg"
+                fontFamily="heading"
+                letterSpacing="wide"
+                color={isDragActive ? 'brand.400' : 'gray.300'}
+              >
                 {isDragActive
                   ? 'Drop your replays here!'
                   : 'Drag replay files or folders here'}
@@ -326,101 +328,124 @@ const UploadReplays: React.FC = () => {
               <Text color="gray.500" fontSize="lg">
                 or click to browse
               </Text>
-              <Badge colorScheme="blue" fontSize="md" px={3} py={1}>
+              <Badge
+                bg="space.700"
+                color="brand.400"
+                fontSize="md"
+                px={4}
+                py={2}
+                borderRadius="full"
+              >
                 .SC2Replay files only
               </Badge>
             </VStack>
           </Box>
         )}
 
-        {/* Upload Summary (when uploading) */}
+        {/* Upload Summary */}
         {hasFiles && (
-          <Card>
-            <CardBody>
-              <VStack spacing={4} align="stretch">
-                <HStack justify="space-between">
-                  <Heading size="md">
-                    {isUploading
-                      ? `Uploading ${stats.total} replays...`
-                      : `Upload Complete`}
-                  </Heading>
-                  <IconButton
-                    icon={isExpanded ? <FiChevronUp /> : <FiChevronDown />}
-                    variant="ghost"
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    aria-label="Toggle details"
-                  />
-                </HStack>
+          <Box
+            bg={cardBg}
+            borderRadius="xl"
+            border="3px solid"
+            borderColor={borderColor}
+            boxShadow={brandShadow}
+            p={6}
+          >
+            <VStack spacing={4} align="stretch">
+              <HStack justify="space-between">
+                <Heading size="md" fontFamily="heading" letterSpacing="wide" color="gray.200">
+                  {isUploading
+                    ? `Uploading ${stats.total} replays...`
+                    : 'Upload Complete'}
+                </Heading>
+                <IconButton
+                  icon={isExpanded ? <FiChevronUp /> : <FiChevronDown />}
+                  variant="ghost"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  aria-label="Toggle details"
+                  color="gray.400"
+                  _hover={{ color: 'brand.400' }}
+                />
+              </HStack>
 
-                <HStack spacing={4} wrap="wrap">
-                  <Badge colorScheme="green" fontSize="md">
-                    {stats.complete} complete
+              <HStack spacing={3} wrap="wrap">
+                <Badge bg="green.500" color="white" fontSize="sm" px={3} py={1} borderRadius="full">
+                  {stats.complete} complete
+                </Badge>
+                {stats.duplicate > 0 && (
+                  <Badge bg="yellow.500" color="white" fontSize="sm" px={3} py={1} borderRadius="full">
+                    {stats.duplicate} duplicates
                   </Badge>
-                  {stats.duplicate > 0 && (
-                    <Badge colorScheme="yellow" fontSize="md">
-                      {stats.duplicate} duplicates
-                    </Badge>
-                  )}
-                  {stats.error > 0 && (
-                    <Badge colorScheme="red" fontSize="md">
-                      {stats.error} errors
-                    </Badge>
-                  )}
-                  {(stats.uploading > 0 || stats.processing > 0 || stats.queued > 0) && (
-                    <Badge colorScheme="blue" fontSize="md">
-                      {stats.uploading + stats.processing + stats.queued} remaining
-                    </Badge>
-                  )}
-                </HStack>
-
-                {isUploading && (
-                  <Progress
-                    value={(stats.complete / stats.total) * 100}
-                    colorScheme="brand"
-                    size="sm"
-                    borderRadius="full"
-                  />
                 )}
+                {stats.error > 0 && (
+                  <Badge bg="red.500" color="white" fontSize="sm" px={3} py={1} borderRadius="full">
+                    {stats.error} errors
+                  </Badge>
+                )}
+                {(stats.uploading > 0 || stats.processing > 0 || stats.queued > 0) && (
+                  <Badge bg="blue.500" color="white" fontSize="sm" px={3} py={1} borderRadius="full">
+                    {stats.uploading + stats.processing + stats.queued} remaining
+                  </Badge>
+                )}
+              </HStack>
 
-                {/* File List */}
-                <Collapse in={isExpanded}>
-                  <List spacing={2} maxH="400px" overflowY="auto">
-                    {files.map((file) => (
-                      <FileItem
-                        key={file.id}
-                        file={file}
-                        onRetry={retryFile}
-                        onRemove={removeFile}
-                      />
-                    ))}
-                  </List>
-                </Collapse>
+              {isUploading && (
+                <Progress
+                  value={(stats.complete / stats.total) * 100}
+                  colorScheme="brand"
+                  size="sm"
+                  borderRadius="full"
+                  bg="space.900"
+                />
+              )}
 
-                {/* Actions */}
-                {!isUploading && (
-                  <HStack>
+              {/* File List */}
+              <Collapse in={isExpanded}>
+                <List spacing={2} maxH="400px" overflowY="auto">
+                  {files.map((file) => (
+                    <FileItem
+                      key={file.id}
+                      file={file}
+                      onRetry={retryFile}
+                      onRemove={removeFile}
+                    />
+                  ))}
+                </List>
+              </Collapse>
+
+              {/* Actions */}
+              {!isUploading && (
+                <HStack spacing={3}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setFiles([])}
+                    borderColor="space.600"
+                    color="gray.400"
+                    _hover={{ bg: 'space.700' }}
+                  >
+                    Clear All
+                  </Button>
+                  <Box
+                    flex={1}
+                    {...getRootProps()}
+                    display="inline-block"
+                  >
+                    <input {...getInputProps()} />
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={() => setFiles([])}
+                      bg="brand.500"
+                      color="white"
+                      _hover={{ bg: 'brand.600' }}
                     >
-                      Clear All
+                      Upload More Files
                     </Button>
-                    <Box
-                      flex={1}
-                      {...getRootProps()}
-                      display="inline-block"
-                    >
-                      <input {...getInputProps()} />
-                      <Button size="sm" variant="primary" width="auto">
-                        Upload More Files
-                      </Button>
-                    </Box>
-                  </HStack>
-                )}
-              </VStack>
-            </CardBody>
-          </Card>
+                  </Box>
+                </HStack>
+              )}
+            </VStack>
+          </Box>
         )}
       </VStack>
     </Container>
@@ -429,16 +454,14 @@ const UploadReplays: React.FC = () => {
 
 // File Item Component
 const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
-  const bgColor = useColorModeValue('gray.50', 'gray.700');
-
   const getStatusIcon = (status: UploadStatusType): { icon: IconType; color: string } | null => {
     switch (status) {
       case UPLOAD_STATUS.COMPLETE:
-        return { icon: FiCheckCircle, color: 'green.500' };
+        return { icon: FiCheckCircle, color: 'green.400' };
       case UPLOAD_STATUS.DUPLICATE:
-        return { icon: FiAlertCircle, color: 'yellow.500' };
+        return { icon: FiAlertCircle, color: 'yellow.400' };
       case UPLOAD_STATUS.ERROR:
-        return { icon: FiXCircle, color: 'red.500' };
+        return { icon: FiXCircle, color: 'red.400' };
       default:
         return null;
     }
@@ -451,15 +474,17 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
       <HStack
         spacing={3}
         p={3}
-        bg={bgColor}
-        borderRadius="md"
+        bg="space.700"
+        borderRadius="lg"
+        border="2px solid"
+        borderColor="space.600"
       >
         {/* Status Icon */}
         {statusIcon && <Icon as={statusIcon.icon} color={statusIcon.color} boxSize={5} />}
 
         {/* File Info */}
         <VStack flex={1} align="start" spacing={1}>
-          <Text fontSize="sm" fontWeight="medium" noOfLines={1}>
+          <Text fontSize="sm" fontWeight="medium" color="gray.200" noOfLines={1}>
             {file.name}
           </Text>
 
@@ -472,6 +497,7 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
               colorScheme="brand"
               width="100%"
               borderRadius="full"
+              bg="space.900"
             />
           )}
 
@@ -484,7 +510,7 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
 
           {/* Match Details (for duplicates) */}
           {file.status === UPLOAD_STATUS.DUPLICATE && file.data && (
-            <Text fontSize="xs" color="yellow.600">
+            <Text fontSize="xs" color="yellow.400">
               Already uploaded
             </Text>
           )}
@@ -499,6 +525,8 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
               variant="ghost"
               onClick={() => onRetry(file.id)}
               aria-label="Retry"
+              color="gray.400"
+              _hover={{ color: 'brand.400' }}
             />
           )}
           {(file.status === UPLOAD_STATUS.COMPLETE ||
@@ -510,6 +538,8 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
               variant="ghost"
               onClick={() => onRemove(file.id)}
               aria-label="Remove"
+              color="gray.400"
+              _hover={{ color: 'red.400' }}
             />
           )}
         </HStack>

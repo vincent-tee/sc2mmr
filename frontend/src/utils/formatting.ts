@@ -264,7 +264,32 @@ export const getFairnessColor = (rating: string): string => {
 };
 
 /**
- * Get player initials for avatar
+ * Get dynamic mascot URL for a player using DiceBear API
+ * Returns a unique SVG mascot based on name and race
+ */
+export const getPlayerAvatarUrl = (name: string, race?: string, isAi?: boolean): string => {
+  const seed = encodeURIComponent(name.trim());
+  const raceLower = race?.toLowerCase();
+  
+  // Pick a "mascot style" based on race/status
+  let style = 'bottts'; // Default: Mechanical/Tech (fits Terran/SC2)
+  
+  if (isAi) {
+    style = 'bottts-neutral'; // Simplified robots for AI
+  } else if (raceLower === 'zerg') {
+    style = 'big-ears'; // Organic, slightly "monster" like
+  } else if (raceLower === 'protoss') {
+    style = 'adventurer'; // Noble, humanoid explorers
+  } else if (raceLower === 'random' || !raceLower) {
+    style = 'pixel-art'; // Classic gaming mascots
+  }
+
+  // Use a high-quality version of the API
+  return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}&backgroundColor=transparent`;
+};
+
+/**
+ * Get player initials for avatar (Fallback)
  */
 export const getInitials = (name: string | null | undefined): string => {
   if (!name) return '?';

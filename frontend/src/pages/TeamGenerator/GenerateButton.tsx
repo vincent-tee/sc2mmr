@@ -2,8 +2,8 @@
  * GenerateButton Component - Team Generation Action Button
  * Displays button to generate teams and validation messages
  */
-import { Box, Button, Text, VStack } from '@chakra-ui/react';
-import { FiZap } from 'react-icons/fi';
+import { Box, Button, Text, VStack, HStack, Badge, Icon } from '@chakra-ui/react';
+import { FiZap, FiCpu, FiPlus } from 'react-icons/fi';
 
 interface GenerateButtonProps {
   canGenerate: boolean;
@@ -12,6 +12,8 @@ interface GenerateButtonProps {
   hasOddPlayers: boolean;
   minPlayers: number;
   onGenerate: () => void;
+  aiSuggestion?: { difficulty: string; mmr: number } | null;
+  onAddAI?: (difficulty: string, mmr: number) => void;
 }
 
 const GenerateButton: React.FC<GenerateButtonProps> = ({
@@ -21,46 +23,66 @@ const GenerateButton: React.FC<GenerateButtonProps> = ({
   hasOddPlayers,
   minPlayers,
   onGenerate,
+  aiSuggestion,
+  onAddAI,
 }) => {
   return (
-    <Box textAlign="center" py={6}>
-      <Button
-        size="lg"
-        variant="accent"
-        isDisabled={!canGenerate}
-        isLoading={isLoading}
-        loadingText="Analyzing combinations..."
-        onClick={onGenerate}
-        leftIcon={<FiZap />}
-        px={16}
-        py={8}
-        fontSize="2xl"
-        fontFamily="heading"
-        letterSpacing="wider"
-        position="relative"
-        overflow="visible"
-        _before={{
-          content: '""',
-          position: 'absolute',
-          top: -2,
-          left: -2,
-          right: -2,
-          bottom: -2,
-          background:
-            'linear-gradient(45deg, transparent, rgba(255, 179, 0, 0.3), transparent)',
-          animation: canGenerate ? 'shimmer 2s ease-in-out infinite' : 'none',
-          borderRadius: 'md',
-          zIndex: -1,
-        }}
-        sx={{
-          '@keyframes shimmer': {
-            '0%, 100%': { opacity: 0.5 },
-            '50%': { opacity: 1 },
-          },
-        }}
-      >
-        Generate Teams
-      </Button>
+    <Box textAlign="center" py={8}>
+      <VStack spacing={6}>
+        {hasOddPlayers && aiSuggestion && (
+          <Box
+            bg="space.800"
+            p={4}
+            borderRadius="xl"
+            border="2px dashed"
+            borderColor="purple.500"
+            maxW="lg"
+            animation="fadeIn 0.5s ease-out"
+          >
+            <VStack spacing={3}>
+              <HStack>
+                <Icon as={FiCpu} color="purple.400" />
+                <Text fontWeight="bold" color="purple.300" fontSize="sm" fontFamily="heading">
+                  SMART AI SUGGESTION
+                </Text>
+              </HStack>
+              <Text color="gray.400" fontSize="xs" textAlign="center">
+                We detected uneven teams. Adding a <Text as="span" fontWeight="bold" color="white" textTransform="capitalize">
+                {aiSuggestion.difficulty.replace('_', ' ')} AI</Text> would create the most balanced match based on current player MMRs.
+              </Text>
+              <Button
+                size="sm"
+                colorScheme="purple"
+                variant="solid"
+                leftIcon={<FiPlus />}
+                onClick={() => onAddAI && onAddAI(aiSuggestion.difficulty, aiSuggestion.mmr)}
+              >
+                Add {aiSuggestion.difficulty.replace('_', ' ')} AI
+              </Button>
+            </VStack>
+          </Box>
+        )}
+
+        <Button
+          size="lg"
+          variant="accent"
+          isDisabled={!canGenerate}
+          isLoading={isLoading}
+          loadingText="Analyzing..."
+          onClick={onGenerate}
+          leftIcon={<FiZap />}
+          px={16}
+          py={8}
+          fontSize="2xl"
+          fontFamily="heading"
+          fontWeight="black"
+          letterSpacing="wider"
+          position="relative"
+          overflow="visible"
+        >
+          Generate Teams
+        </Button>
+      </VStack>
 
       {!canGenerate && selectedPlayersCount > 0 && (
         <Text

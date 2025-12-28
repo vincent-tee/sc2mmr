@@ -35,7 +35,7 @@ import PlayerCard from '@/components/PlayerCard';
 import TacticalCard from '@/components/TacticalCard';
 import VSScreen from '@/components/VSScreen';
 import { formatMMR, getFairnessColor } from '@/utils/formatting';
-import type { TeamSuggestion } from '@/types/api';
+import type { TeamSuggestion, TeamSuggestionWithImpact } from '@/types/api';
 
 // Celebration animation keyframes
 const celebrationPulse = keyframes`
@@ -85,30 +85,32 @@ const CelebrationBanner: React.FC<{ fairnessRating: string }> = ({ fairnessRatin
       pointerEvents="none"
     >
       <Box
-        bg={isPerfect ? 'green.500' : 'blue.500'}
-        color="white"
-        px={8}
-        py={4}
-        borderRadius="xl"
-        boxShadow={`0 0 60px ${isPerfect ? 'rgba(72, 187, 120, 0.8)' : 'rgba(66, 153, 225, 0.8)'}`}
+        bg={isPerfect ? 'shield.500' : 'brand.500'}
+        color={isPerfect ? 'space.900' : 'white'}
+        px={10}
+        py={6}
+        borderRadius="2xl"
+        border="4px solid"
+        borderColor="space.900"
+        boxShadow="8px 8px 0 var(--chakra-colors-space-900)"
         textAlign="center"
       >
-        <HStack justify="center" spacing={3} mb={2}>
+        <HStack justify="center" spacing={4} mb={2}>
           <Icon 
             as={isPerfect ? FiStar : FiCheck} 
-            boxSize={8} 
+            boxSize={10} 
             animation={`${starBurst} 0.6s ease-out`}
           />
-          <Heading size="lg" fontFamily="heading">
+          <Heading size="xl" fontFamily="heading" fontWeight="black">
             {isPerfect ? 'Perfect Balance!' : 'Teams Balanced!'}
           </Heading>
           <Icon 
             as={isPerfect ? FiStar : FiCheck} 
-            boxSize={8} 
+            boxSize={10} 
             animation={`${starBurst} 0.6s ease-out 0.1s`}
           />
         </HStack>
-        <Text fontSize="md" opacity={0.9}>
+        <Text fontSize="lg" fontWeight="bold" opacity={0.9}>
           {isPerfect 
             ? 'These teams are perfectly matched!' 
             : 'Great team configuration found!'}
@@ -137,12 +139,6 @@ const CelebrationBanner: React.FC<{ fairnessRating: string }> = ({ fairnessRatin
     </Box>
   );
 };
-
-// Extended TeamSuggestion with additional impact fields
-interface TeamSuggestionWithImpact extends TeamSuggestion {
-  team_1_avg_impact?: number;
-  team_2_avg_impact?: number;
-}
 
 interface BalanceResultsProps {
   suggestions: TeamSuggestionWithImpact[];
@@ -233,8 +229,8 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
   const labels = ['Optimal Balance', 'Tactical Synergy', 'Alternative Config'];
   const label = labels[index] || `Config ${index + 1}`;
 
-  const team1WinProb = (suggestion.win_probability_team_1 * 100).toFixed(1);
-  const team2WinProb = (suggestion.win_probability_team_2 * 100).toFixed(1);
+  const team1WinProb = suggestion.win_probability_team_1.toFixed(1);
+  const team2WinProb = suggestion.win_probability_team_2.toFixed(1);
 
   // Prepare VSScreen data
   const vsScreenData = {
@@ -245,7 +241,7 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
         race: p.favorite_race || 'Random',
       })),
       totalMMR: suggestion.team_1.avg_mmr * suggestion.team_1.players.length,
-      winProbability: suggestion.win_probability_team_1 * 100,
+      winProbability: suggestion.win_probability_team_1,
     },
     team2: {
       players: suggestion.team_2.players.map(p => ({
@@ -254,7 +250,7 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
         race: p.favorite_race || 'Random',
       })),
       totalMMR: suggestion.team_2.avg_mmr * suggestion.team_2.players.length,
-      winProbability: suggestion.win_probability_team_2 * 100,
+      winProbability: suggestion.win_probability_team_2,
     },
     matchInfo: {
       mapName: `${suggestion.team_1.players.length}v${suggestion.team_2.players.length} Match`,
@@ -275,15 +271,20 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
         {isRecommended && (
           <Badge
             position="absolute"
-            top={4}
+            top={-3}
             right={4}
             bg="shield.500"
-            color="gray.900"
+            color="space.900"
             fontSize="md"
+            fontWeight="black"
             px={4}
             py={2}
+            borderRadius="lg"
+            border="2px solid"
+            borderColor="space.900"
             fontFamily="heading"
-            boxShadow="0 0 20px rgba(0, 255, 136, 0.5)"
+            boxShadow="4px 4px 0 var(--chakra-colors-space-900)"
+            zIndex={10}
           >
             Recommended
           </Badge>
@@ -317,17 +318,18 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   fontWeight="black"
                   fontFamily="heading"
                   color="brand.400"
-                  textShadow="0 0 20px rgba(0, 212, 255, 0.5)"
+                  textShadow="2px 2px 0 var(--chakra-colors-space-900)"
                 >
                   {team1WinProb}%
                 </Text>
               </VStack>
 
               <Box textAlign="center">
-                <Icon as={FiTarget} boxSize={12} color="accent.500" />
+                <Icon as={FiTarget} boxSize={12} color="accent.500" filter="drop-shadow(2px 2px 0 var(--chakra-colors-space-900))" />
                 <Text
                   fontSize="xs"
                   color="gray.500"
+                  fontWeight="bold"
                   fontFamily="heading"
                 >
                   VS
@@ -347,7 +349,7 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                   fontWeight="black"
                   fontFamily="heading"
                   color="accent.400"
-                  textShadow="0 0 20px rgba(255, 179, 0, 0.5)"
+                  textShadow="2px 2px 0 var(--chakra-colors-space-900)"
                 >
                   {team2WinProb}%
                 </Text>
@@ -357,12 +359,12 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
             {/* Balance Indicator */}
             <Box>
               <Progress
-                value={suggestion.win_probability_team_1 * 100}
+                value={suggestion.win_probability_team_1}
                 size="lg"
                 colorScheme={
-                  Math.abs(suggestion.win_probability_team_1 - 0.5) < 0.05
+                  Math.abs(suggestion.win_probability_team_1 - 50) < 5
                     ? 'green'
-                    : Math.abs(suggestion.win_probability_team_1 - 0.5) < 0.1
+                    : Math.abs(suggestion.win_probability_team_1 - 50) < 10
                     ? 'blue'
                     : 'yellow'
                 }
@@ -414,12 +416,16 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                 bg="brand.500"
                 px={4}
                 py={2}
-                clipPath="polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%)"
+                borderRadius="lg"
+                border="2px solid"
+                borderColor="space.900"
+                boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
               >
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  color="gray.900"
+                  color="white"
+                  fontWeight="black"
                   letterSpacing="wider"
                 >
                   Team 1
@@ -432,16 +438,18 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
               </VStack>
               <VStack spacing={2} align="stretch">
                 <Box
-                  bg="whiteAlpha.50"
+                  bg="space.700"
                   p={3}
-                  borderRadius="md"
-                  border="1px solid"
+                  borderRadius="lg"
+                  border="2px solid"
                   borderColor="brand.400"
+                  boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
                   textAlign="center"
                 >
                   <Text
                     fontSize="xs"
-                    color="gray.500"
+                    color="gray.400"
+                    fontWeight="bold"
                     fontFamily="heading"
                     mb={1}
                   >
@@ -459,16 +467,18 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                 {suggestion.team_1_avg_impact &&
                   suggestion.team_1_avg_impact > 0 && (
                     <Box
-                      bg="whiteAlpha.50"
+                      bg="space.700"
                       p={2}
-                      borderRadius="md"
-                      border="1px solid"
+                      borderRadius="lg"
+                      border="2px solid"
                       borderColor="purple.400"
+                      boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
                       textAlign="center"
                     >
                       <Text
                         fontSize="xs"
-                        color="gray.500"
+                        color="gray.400"
+                        fontWeight="bold"
                         fontFamily="heading"
                         mb={1}
                       >
@@ -500,12 +510,16 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                 bg="accent.500"
                 px={4}
                 py={2}
-                clipPath="polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px)"
+                borderRadius="lg"
+                border="2px solid"
+                borderColor="space.900"
+                boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
               >
                 <Heading
                   size="md"
                   fontFamily="heading"
-                  color="gray.900"
+                  color="space.900"
+                  fontWeight="black"
                   letterSpacing="wider"
                 >
                   Team 2
@@ -518,16 +532,18 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
               </VStack>
               <VStack spacing={2} align="stretch">
                 <Box
-                  bg="whiteAlpha.50"
+                  bg="space.700"
                   p={3}
-                  borderRadius="md"
-                  border="1px solid"
+                  borderRadius="lg"
+                  border="2px solid"
                   borderColor="accent.400"
+                  boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
                   textAlign="center"
                 >
                   <Text
                     fontSize="xs"
-                    color="gray.500"
+                    color="gray.400"
+                    fontWeight="bold"
                     fontFamily="heading"
                     mb={1}
                   >
@@ -545,16 +561,18 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
                 {suggestion.team_2_avg_impact &&
                   suggestion.team_2_avg_impact > 0 && (
                     <Box
-                      bg="whiteAlpha.50"
+                      bg="space.700"
                       p={2}
-                      borderRadius="md"
-                      border="1px solid"
+                      borderRadius="lg"
+                      border="2px solid"
                       borderColor="purple.400"
+                      boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
                       textAlign="center"
                     >
                       <Text
                         fontSize="xs"
-                        color="gray.500"
+                        color="gray.400"
+                        fontWeight="bold"
                         fontFamily="heading"
                         mb={1}
                       >

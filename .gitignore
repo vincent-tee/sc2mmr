@@ -61,9 +61,12 @@ frontend/dist/
 frontend/build/
 frontend/.cache/
 
-# Replay files (optional - you might want to track these)
+# Replay files
 *.SC2Replay
 replays/
+temp_replays/
+**/Replays/
+**/replays/
 
 # OS
 .DS_Store

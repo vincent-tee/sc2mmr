@@ -25,6 +25,18 @@ export interface LeaderboardApi {
     minGames?: number
   ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
 
+  /** Get TrueSkill leaderboard */
+  getTrueSkill: (
+    limit?: number,
+    minGames?: number
+  ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
+
+  /** Get Hybrid MMR leaderboard */
+  getHybrid: (
+    limit?: number,
+    minGames?: number
+  ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
+
   /** Get win rate leaderboard */
   getWinRate: (
     limit?: number,
@@ -96,6 +108,20 @@ export const leaderboardApi: LeaderboardApi = {
     });
   },
 
+  // Get TrueSkill leaderboard
+  getTrueSkill: (limit = 20, minGames = 5) => {
+    return apiClient.get<LeaderboardEntry[]>('/leaderboard/trueskill', {
+      params: { limit, min_games: minGames },
+    });
+  },
+
+  // Get Hybrid leaderboard
+  getHybrid: (limit = 20, minGames = 5) => {
+    return apiClient.get<LeaderboardEntry[]>('/leaderboard/hybrid', {
+      params: { limit, min_games: minGames },
+    });
+  },
+
   // Get win rate leaderboard
   getWinRate: (limit = 20, minGames = 20) => {
     return apiClient.get<LeaderboardEntry[]>('/leaderboard/winrate', {
@@ -159,6 +185,10 @@ export const leaderboardApi: LeaderboardApi = {
     switch (category) {
       case 'mmr':
         return leaderboardApi.getMMR(limit, minGames);
+      case 'trueskill':
+        return leaderboardApi.getTrueSkill(limit, minGames);
+      case 'hybrid':
+        return leaderboardApi.getHybrid(limit, minGames);
       case 'winrate':
         return leaderboardApi.getWinRate(limit, minGames || 20);
       case 'games':

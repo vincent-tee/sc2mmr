@@ -212,7 +212,7 @@ export const CATEGORY_INFO: Record<AchievementCategory, CategoryInfo> = {
   },
   combat: {
     name: 'Combat',
-    icon: '⚔️',
+    icon: '⚡',
     description: 'Battle performance achievements',
   },
   economic: {

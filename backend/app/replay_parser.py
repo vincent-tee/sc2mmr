@@ -28,6 +28,8 @@ class PlayerData:
     race: Race
     team: int
     won: bool
+    is_ai: bool = False
+    difficulty: Optional[str] = None
 
 
 @dataclass
@@ -97,9 +99,10 @@ def normalize_race_name(race_name: str) -> Race:
 def determine_game_mode(num_players: int) -> Optional[GameMode]:
     """
     Determine game mode based on number of players.
+    Only supports team games (2v2 and above).
     """
     mode_map = {
-        2: GameMode.TWO_V_TWO,
+        # 2 players = 1v1, not supported
         4: GameMode.TWO_V_TWO,
         6: GameMode.THREE_V_THREE,
         8: GameMode.FOUR_V_FOUR,
@@ -117,32 +120,51 @@ def parse_replay(
     try:
         replay = sc2reader.load_replay(file_path, load_level=4)  # type: ignore
 
-        # Extract basic info
-        played_at = getattr(replay, "utc_date", datetime.utcnow())
+        # Extract basic info - use replay date, not upload date
+        # Try multiple date attributes in order of preference
+        played_at = getattr(replay, "utc_date", None)
+        if played_at is None:
+            played_at = getattr(replay, "date", None)
+        if played_at is None:
+            played_at = getattr(replay, "start_time", None)
+        if played_at is None:
+            # Fallback to file modification time
+            import os
+
+            file_mtime = os.path.getmtime(file_path)
+            played_at = datetime.fromtimestamp(file_mtime)
+
         map_name = getattr(replay, "map_name", "Unknown Map")
         duration_seconds = getattr(getattr(replay, "game_length", None), "seconds", 0)
 
-        # Extract players
-        human_players = [
-            p for p in getattr(replay, "players", []) if getattr(p, "is_human", False)
-        ]
+        # Extract players (both human and AI)
+        all_players = getattr(replay, "players", [])
 
         players_data = []
         team_stats: Dict[int, Dict[str, float]] = {}
 
-        for p in human_players:
+        for p in all_players:
             team_id = int(getattr(p, "team_id", 0))
             if team_id not in team_stats:
-                team_stats[team_id] = {"supply": 0.0, "resources": 0.0}
+                team_stats[team_id] = {
+                    "supply": 0.0,
+                    "resources_collected": 0.0,
+                    "resources_current": 0.0,  # Resources at end of game (for quit detection)
+                }
 
-            # Simple winner determination proxy if result is missing
+            # Gather stats for winner determination fallback
             if hasattr(p, "stats") and p.stats:
+                stats = p.stats
                 team_stats[team_id]["supply"] += float(
-                    getattr(p.stats, "supply_produced", 0)
+                    getattr(stats, "supply_produced", 0) or 0
                 )
-                team_stats[team_id]["resources"] += float(
-                    getattr(p.stats, "minerals_collected", 0)
-                )
+                team_stats[team_id]["resources_collected"] += float(
+                    getattr(stats, "minerals_collected", 0) or 0
+                ) + float(getattr(stats, "vespene_collected", 0) or 0)
+                # Current resources at time of game end (for quit scenarios)
+                team_stats[team_id]["resources_current"] += float(
+                    getattr(stats, "minerals_current", 0) or 0
+                ) + float(getattr(stats, "vespene_current", 0) or 0)
 
         # Determine winners
         winners_determined = False
@@ -150,18 +172,22 @@ def parse_replay(
             winners_determined = True
         else:
             # Check if sc2reader already found a winner
-            for p in human_players:
+            for p in all_players:
                 result = getattr(p, "result", "") or ""
                 if result.lower() == "win":
                     winners_determined = True
                     break
 
         if not winners_determined and len(team_stats) == 2:
-            # Try our heuristic
+            # Try our heuristic - use combined resources as fallback
             t1, t2 = list(team_stats.keys())
             s1, s2 = team_stats[t1]["supply"], team_stats[t2]["supply"]
-            r1, r2 = team_stats[t1]["resources"], team_stats[t2]["resources"]
+            r1, r2 = (
+                team_stats[t1]["resources_collected"],
+                team_stats[t2]["resources_collected"],
+            )
 
+            # First try: significant advantage in supply or resources collected
             if (
                 s1 > s2 * SUPPLY_ADVANTAGE_THRESHOLD
                 or r1 > r2 * RESOURCES_ADVANTAGE_THRESHOLD
@@ -173,12 +199,32 @@ def parse_replay(
             ):
                 manual_winner_team = t2
             else:
-                raise WinnerDeterminationError(
-                    "Could not determine winner from stats",
-                    team_stats={str(k): v for k, v in team_stats.items()},
-                )
+                # Fallback: Use total resources (collected) - whoever has more wins
+                # This handles quit scenarios where one team just has more stuff
+                total_r1 = team_stats[t1]["resources_collected"]
+                total_r2 = team_stats[t2]["resources_collected"]
 
-        for p in human_players:
+                if total_r1 > total_r2:
+                    manual_winner_team = t1
+                    logger.info(
+                        f"Winner determined by total resources: Team {t1} ({total_r1:.0f}) > Team {t2} ({total_r2:.0f})"
+                    )
+                elif total_r2 > total_r1:
+                    manual_winner_team = t2
+                    logger.info(
+                        f"Winner determined by total resources: Team {t2} ({total_r2:.0f}) > Team {t1} ({total_r1:.0f})"
+                    )
+                else:
+                    # Truly tied - extremely rare, use supply as final tiebreaker
+                    if s1 >= s2:
+                        manual_winner_team = t1
+                    else:
+                        manual_winner_team = t2
+                    logger.info(
+                        f"Winner determined by supply tiebreaker: Team {manual_winner_team}"
+                    )
+
+        for p in all_players:
             team_id = int(getattr(p, "team_id", 0))
             won = False
             if manual_winner_team is not None:
@@ -187,18 +233,29 @@ def parse_replay(
                 result = getattr(p, "result", "") or ""
                 won = result.lower() == "win"
 
+            is_ai = not getattr(p, "is_human", False)
+            difficulty = getattr(p, "difficulty", None) if is_ai else None
+
+            # For AI, use a more descriptive name if possible
+            p_name = str(p.name)
+            if is_ai and difficulty:
+                p_name = f"Computer ({difficulty})"
+
             players_data.append(
                 PlayerData(
-                    name=str(p.name),
+                    name=p_name,
                     race=normalize_race_name(str(p.play_race)),
                     team=team_id,
                     won=won,
+                    is_ai=is_ai,
+                    difficulty=difficulty,
                 )
             )
 
         return ReplayData(
             played_at=played_at,
-            game_mode=determine_game_mode(len(human_players)) or GameMode.TWO_V_TWO,
+            game_mode=determine_game_mode(len(getattr(replay, "players", [])))
+            or GameMode.TWO_V_TWO,
             map_name=str(map_name),
             duration_seconds=int(duration_seconds),
             players=players_data,
@@ -220,5 +277,20 @@ def validate_replay_data(replay_data: ReplayData) -> Tuple[bool, Optional[str]]:
 
     if replay_data.duration_seconds < CRASH_THRESHOLD_MINUTES * 60:
         return False, f"Game too short ({replay_data.duration_seconds}s)"
+
+    # Reject 1v1 games - only team games are supported
+    num_players = len(replay_data.players)
+    if num_players < 4:
+        return (
+            False,
+            f"Only team games (2v2+) are supported. This appears to be a {num_players}-player game.",
+        )
+
+    # Check for valid team game mode
+    if replay_data.game_mode == GameMode.ONE_V_ONE:
+        return (
+            False,
+            "1v1 games are not supported. Only team games (2v2, 3v3, 4v4, 5v5) are tracked.",
+        )
 
     return True, None

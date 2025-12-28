@@ -225,7 +225,7 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
       border="2px solid"
       borderColor={borderColor}
       position="relative"
-      overflow="hidden"
+      overflow={isWinner ? 'visible' : 'hidden'}
       transition="all 0.3s"
       _hover={{
         borderColor: isWinner ? 'shield.400' : 'brand.500',
@@ -251,13 +251,22 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
       {isWinner && (
         <Box
           position="absolute"
-          top={-2}
+          top="-12px"
           left="50%"
           transform="translateX(-50%)"
-          fontSize="2xl"
+          fontSize="xs"
+          fontWeight="bold"
+          fontFamily="heading"
+          px={3}
+          py={1}
+          bg="shield.500"
+          color="space.900"
+          borderRadius="md"
+          boxShadow="0 3px 12px rgba(245, 158, 11, 0.6)"
           zIndex={2}
+          whiteSpace="nowrap"
         >
-          Winner
+          🏆 WINNER
         </Box>
       )}
 

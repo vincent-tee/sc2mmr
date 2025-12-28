@@ -244,10 +244,12 @@ const ImpactScoreRadar: React.FC<ImpactScoreRadarProps> = ({
             <Box p={3} bg="rgba(30, 41, 59, 0.5)" borderRadius="md">
               <HStack justify="space-between">
                 <Text fontSize="sm" color="gray.400">
-                  Damage Efficiency Ratio
+                  {metrics.damage_taken && metrics.damage_taken > 0 ? 'Damage Efficiency' : 'Damage Ratio'}
                 </Text>
-                <Text fontSize="lg" fontWeight="bold" color={metrics.damage_ratio >= 1 ? 'green.400' : 'red.400'}>
-                  {metrics.damage_ratio.toFixed(2)}
+                <Text fontSize="lg" fontWeight="bold" color={metrics.damage_ratio >= 1 ? 'green.400' : 'orange.400'}>
+                  {metrics.damage_taken && metrics.damage_taken > 0
+                    ? `${metrics.damage_ratio.toFixed(2)}x`
+                    : 'Perfect Game'}
                 </Text>
               </HStack>
               <Text fontSize="xs" color="gray.500" mt={1}>

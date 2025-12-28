@@ -11,6 +11,7 @@ Usage:
     db_url = settings.database_url
     cors_origins = settings.cors_origins
 """
+
 from functools import lru_cache
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,53 +41,67 @@ class Settings(BaseSettings):
     # ==========================================================================
     # List of allowed origins for CORS
     # In production, set CORS_ORIGINS="https://your-domain.com,https://app.your-domain.com"
-    cors_origins: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: List[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:3001",
+    ]
 
     # ==========================================================================
     # TrueSkill Rating Configuration
     # ==========================================================================
-    trueskill_mu: float = 25.0           # Initial skill estimate
-    trueskill_sigma: float = 8.333       # Initial uncertainty
-    trueskill_beta: float = 4.166        # Skill class width (half of sigma)
-    trueskill_tau: float = 0.0833        # Dynamics factor (skill change per day)
+    trueskill_mu: float = 25.0  # Initial skill estimate
+    trueskill_sigma: float = 8.333  # Initial uncertainty
+    trueskill_beta: float = 5.0  # Performance variance (increased from 4.166)
+    trueskill_tau: float = 0.25  # Dynamics factor (increased from 0.0833)
     trueskill_draw_probability: float = 0.0  # No draws in SC2
 
     # ==========================================================================
     # MMR Display Configuration
     # ==========================================================================
-    mmr_base: int = 1000                 # Base MMR for display
-    mmr_mu_multiplier: int = 40          # Multiplier for mu in display MMR
-    mmr_sigma_multiplier: int = 120      # Multiplier for sigma in conservative MMR
+    mmr_base: int = 1000  # Base MMR for display
+    mmr_mu_multiplier: int = (
+        100  # Multiplier for mu (increased from 40 for dramatic changes)
+    )
+    mmr_sigma_multiplier: int = 300  # Multiplier for sigma (scaled with mu multiplier)
 
     # ==========================================================================
     # Recency Weighting Configuration
     # ==========================================================================
-    recency_half_life_days: int = 90     # Half-life for recency weighting (increased from 60)
-    recency_enabled: bool = True         # Enable/disable recency weighting
+    recency_half_life_days: int = (
+        90  # Half-life for recency weighting (increased from 60)
+    )
+    recency_enabled: bool = True  # Enable/disable recency weighting
 
     # ==========================================================================
     # Adaptive Decay Configuration
     # ==========================================================================
     adaptive_decay_enabled: bool = True  # Enable per-player adaptive decay
     adaptive_decay_multiplier: float = 2.0  # Start decay after 2x normal gap
-    min_games_for_adaptive_decay: int = 5  # Minimum games to calculate player's typical gap
+    min_games_for_adaptive_decay: int = (
+        5  # Minimum games to calculate player's typical gap
+    )
 
     # ==========================================================================
     # Online Learning Configuration
     # ==========================================================================
     # Retraining thresholds (optimized for infrequent play sessions)
-    retrain_threshold: int = 8           # Matches before retraining (was 30)
-    min_matches_for_training: int = 30   # Minimum matches to start learning (was 100)
-    training_window: int = 200           # Recent matches for training (was 500)
+    retrain_threshold: int = 8  # Matches before retraining (was 30)
+    min_matches_for_training: int = 30  # Minimum matches to start learning (was 100)
+    training_window: int = 200  # Recent matches for training (was 500)
 
     # Session-aware learning
-    session_gap_hours: float = 4.0       # Hours between matches to define new session
-    session_weight_multiplier: float = 2.0  # Weight multiplier for current session matches
+    session_gap_hours: float = 4.0  # Hours between matches to define new session
+    session_weight_multiplier: float = (
+        2.0  # Weight multiplier for current session matches
+    )
 
     # Bayesian online updating
     bayesian_online_enabled: bool = True  # Enable incremental updates after each match
-    upset_learning_boost: float = 1.5     # Learning boost for upset matches
-    feature_importance_ema_alpha: float = 0.15  # EMA alpha for feature importance updates
+    upset_learning_boost: float = 1.5  # Learning boost for upset matches
+    feature_importance_ema_alpha: float = (
+        0.15  # EMA alpha for feature importance updates
+    )
 
     # ==========================================================================
     # API Configuration
@@ -98,12 +113,21 @@ class Settings(BaseSettings):
     # ==========================================================================
     # Replay Processing Configuration
     # ==========================================================================
-    max_replay_size_mb: int = 50         # Maximum replay file size in MB
+    max_replay_size_mb: int = 50  # Maximum replay file size in MB
     failed_replays_dir: str = "failed_replays"  # Directory for failed replay storage
 
     # Replay Storage Configuration
     replay_storage_enabled: bool = True  # Enable saving replay files
     replay_storage_dir: str = "replays"  # Directory for successful replay storage
+
+    # Replay Observer Configuration
+    observer_enabled: bool = True
+    watch_directory: str = "/mnt/c/Users/tru_n/Documents/StarCraft II/Accounts/396750040/1-S2-1-11883598/Replays/Multiplayer"
+    observer_debounce_seconds: float = 2.0  # Wait for file write to complete
+    observer_initial_scan: bool = True  # Scan directory on startup
+    # CommandCenter parser requires matching SC2 Linux version (only 4.10 available)
+    # Disabled by default - enable when Docker SC2 setup is complete
+    observer_use_cc_parser: bool = False  # Use high-fidelity CommandCenter parser
 
     # ==========================================================================
     # Logging Configuration
@@ -118,7 +142,7 @@ class Settings(BaseSettings):
 
     # PIM (Performance Impact Modifier) bounds
     pim_min: float = -0.5  # Minimum PIM value (50% less MMR change)
-    pim_max: float = 0.5   # Maximum PIM value (50% more MMR change)
+    pim_max: float = 0.5  # Maximum PIM value (50% more MMR change)
 
     # PIM calculation version
     pim_version: str = "rule_v1"  # "rule_v1" (weighted formula) or future "ml_v1"
