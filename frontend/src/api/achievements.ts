@@ -54,13 +54,6 @@ export interface AchievementsApi {
     matchId?: number
   ) => Promise<AxiosResponse<AchievementCheckResponse>>;
 
-  /** Check and award achievements for all players */
-  checkAll: () => Promise<AxiosResponse<{
-    players_checked: number;
-    players_with_new_achievements: number;
-    results: AchievementCheckResponse[];
-  }>>;
-
   /** Set a player's featured achievement */
   setFeatured: (
     playerId: number,
@@ -125,11 +118,6 @@ export const achievementsApi: AchievementsApi = {
       null,
       { params: matchId ? { match_id: matchId } : undefined }
     );
-  },
-
-  // Check all players
-  checkAll: () => {
-    return apiClient.post('/achievements/check-all');
   },
 
   // Set featured achievement

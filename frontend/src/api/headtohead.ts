@@ -30,9 +30,6 @@ export interface HeadToHeadApi {
   getBiggestRivalries: (
     limit?: number
   ) => Promise<AxiosResponse<RivalryResponse[]>>;
-
-  /** Trigger recalculation of all rivalries */
-  calculateAll: () => Promise<AxiosResponse<{ message: string }>>;
 }
 
 // =============================================================================
@@ -61,11 +58,6 @@ export const headToHeadApi: HeadToHeadApi = {
       '/h2h/biggest-rivalries',
       { params: { limit } }
     );
-  },
-
-  // Calculate all rivalries
-  calculateAll: () => {
-    return apiClient.post('/h2h/calculate-all');
   },
 };
 

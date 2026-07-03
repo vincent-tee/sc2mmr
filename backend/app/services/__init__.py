@@ -8,7 +8,6 @@ Services:
 - PICalculator: Performance Impact Modifier calculation (SPEC-ML-001)
 - ReplayService: Replay upload and processing (SPEC-REFACTOR-001)
 - RatingService: Rating calculation and recalculation (SPEC-REFACTOR-001)
-- MatchService: Match CRUD and winner determination (SPEC-REFACTOR-001)
 - AchievementService: Achievement tracking and awarding (Phase 2)
 """
 
@@ -29,13 +28,6 @@ from .rating_service import (  # type: ignore
     RecalculationStats,
     MatchProcessingContext,
 )
-from .match_service import (  # type: ignore
-    MatchService,
-    MatchDetails,
-    MatchPlayerData,
-    MatchStatistics,
-    ManualWinnerResult,
-)
 from .achievement_service import AchievementService  # type: ignore
 from .adaptive_balancer import (  # type: ignore
     MLMetricsBalancer,
@@ -44,7 +36,6 @@ from .adaptive_balancer import (  # type: ignore
     SynergyCalculator,
     ComponentAccuracyTracker,
 )
-from .session_weighted_ratings import SessionWeightedRatings  # type: ignore
 
 __all__ = [
     # PI Calculator
@@ -64,12 +55,6 @@ __all__ = [
     "RatingService",
     "RecalculationStats",
     "MatchProcessingContext",
-    # Match Service
-    "MatchService",
-    "MatchDetails",
-    "MatchPlayerData",
-    "MatchStatistics",
-    "ManualWinnerResult",
     # Achievement Service
     "AchievementService",
     # Adaptive Balancer (ML Metrics)
@@ -78,6 +63,4 @@ __all__ = [
     "MLTeamSuggestion",
     "SynergyCalculator",
     "ComponentAccuracyTracker",
-    # Session Weighted Ratings
-    "SessionWeightedRatings",
 ]

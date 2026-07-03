@@ -7,18 +7,13 @@ import apiClient from './client';
 import type {
   Player,
   PlayerDetail,
-  PlayerRanking,
-  TeamSuggestion,
-  Match,
   MatchDetail,
   MatchListResponse,
   MatchListWithPlayersResponse,
   ReplayUploadResponse,
-  PlayerImpact,
   MatchPlayerMetrics,
-  PlayerSynergy,
-  HealthCheckResponse,
   MatchPredictionResponse,
+  TeamSuggestion,
 } from '@/types/api';
 
 // =============================================================================
@@ -27,22 +22,14 @@ import type {
 
 export interface PlayersApi {
   getAll: (coreOnly?: boolean) => Promise<AxiosResponse<Player[]>>;
-  getRankings: (minGames?: number, coreOnly?: boolean) => Promise<AxiosResponse<PlayerRanking[]>>;
-  getCoaching: (playerId: number) => Promise<AxiosResponse<any>>;
-  create: (name: string, isCorePlayer?: boolean) => Promise<AxiosResponse<Player>>;
-  calibrate: (name: string, similarToPlayerId: number) => Promise<AxiosResponse<Player>>;
+  getById: (playerId: number, recentMatchesLimit?: number, recentMatchesOffset?: number) => Promise<AxiosResponse<PlayerDetail>>;
+  getHistory: (playerId: number, limit?: number) => Promise<AxiosResponse<unknown>>;
 }
 
 export const playersApi: PlayersApi = {
   getAll: (coreOnly = false) => {
     return apiClient.get<Player[]>('/players/', {
       params: { core_only: coreOnly }
-    });
-  },
-
-  getRankings: (minGames = 5, coreOnly = false) => {
-    return apiClient.get<PlayerRanking[]>('/players/rankings', {
-      params: { min_games: minGames, core_only: coreOnly }
     });
   },
 
@@ -59,24 +46,6 @@ export const playersApi: PlayersApi = {
     return apiClient.get(`/players/${playerId}/history`, {
       params: { limit }
     });
-  },
-
-  getCoaching: (playerId: number) => {
-    return apiClient.get(`/players/${playerId}/coaching`);
-  },
-
-  create: (name: string, isCorePlayer = true) => {
-    return apiClient.post<Player>('/players/', {
-      name,
-      is_core_player: isCorePlayer
-    });
-  },
-
-  calibrate: (name: string, similarToPlayerId: number) => {
-    return apiClient.post<Player>('/players/calibrate', {
-      name,
-      similar_to_player_id: similarToPlayerId
-    });
   }
 };
 
@@ -86,10 +55,6 @@ export const playersApi: PlayersApi = {
 
 export interface TeamsApi {
   balance: (playerIds: number[], topN?: number, mapName?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
-  quickBalance: (playerIds: number[]) => Promise<AxiosResponse<TeamSuggestion[]>>;
-  balanceWithModel: (playerIds: number[], model?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
-  compareModels: (playerIds: number[]) => Promise<AxiosResponse<Record<string, TeamSuggestion[]>>>;
-  getModels: () => Promise<AxiosResponse<string[]>>;
   getAIDifficulties: () => Promise<AxiosResponse<{ difficulties: Record<string, number>, config_path: string }>>;
   predict: (team1Ids: number[], team2Ids: number[]) => Promise<AxiosResponse<MatchPredictionResponse>>;
 }
@@ -104,39 +69,12 @@ export const teamsApi: TeamsApi = {
     });
   },
 
-  // Quick balance (single best result)
-  quickBalance: (playerIds: number[]) => {
-    return apiClient.post<TeamSuggestion[]>('/teams/quick-balance', {
-      player_ids: playerIds,
-      top_n: 1
-    });
-  },
-
-  // Balance with specific model
-  balanceWithModel: (playerIds: number[], model = 'trueskill') => {
-    return apiClient.post<TeamSuggestion[]>('/teams/balance-with-model', {
-      player_ids: playerIds,
-      model
-    });
-  },
-
-  // Compare all models
-  compareModels: (playerIds: number[]) => {
-    return apiClient.post<Record<string, TeamSuggestion[]>>('/teams/compare-models', {
-      player_ids: playerIds
-    });
-  },
-
-  // Get available models
-  getModels: () => {
-    return apiClient.get<string[]>('/teams/models');
-  },
   // Get AI difficulties
   getAIDifficulties: () => {
     return apiClient.get<{ difficulties: Record<string, number>, config_path: string }>('/teams/ai-difficulties');
   },
-  // Predict match outcome with detailed analysis
 
+  // Predict match outcome with detailed analysis
   predict: (team1Ids: number[], team2Ids: number[]) => {
     return apiClient.post<MatchPredictionResponse>('/teams/predict', {
       team_1_ids: team1Ids,
@@ -163,7 +101,6 @@ export interface FailedUpload {
 }
 
 export interface ReplaysApi {
-  upload: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => Promise<AxiosResponse<ReplayUploadResponse>>;
   uploadAdvanced: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => Promise<AxiosResponse<ReplayUploadResponse>>;
   getMatches: (limit?: number, offset?: number) => Promise<AxiosResponse<MatchListResponse>>;
   getMatchesWithPlayers: (limit?: number, offset?: number) => Promise<AxiosResponse<MatchListWithPlayersResponse>>;
@@ -178,20 +115,6 @@ export interface ReplaysApi {
 const UPLOAD_TIMEOUT = 120000;
 
 export const replaysApi: ReplaysApi = {
-  // Upload single replay
-  upload: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    return apiClient.post<ReplayUploadResponse>('/replays/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      timeout: UPLOAD_TIMEOUT,
-      onUploadProgress
-    });
-  },
-
   // Upload with advanced metrics
   uploadAdvanced: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => {
     const formData = new FormData();
@@ -261,32 +184,12 @@ export const replaysApi: ReplaysApi = {
 // Impact & Metrics API
 // =============================================================================
 
-export interface LeaderboardEntry {
-  id: number;
-  name: string;
-  total_games: number;
-  value: number;
-}
-
 export interface ImpactApi {
-  getPlayersByImpact: (sortBy?: string, minGames?: number) => Promise<AxiosResponse<PlayerImpact[]>>;
   getPlayerMatchMetrics: (playerId: number, limit?: number) => Promise<AxiosResponse<MatchPlayerMetrics[]>>;
   getMatchDamageTimeline: (playerId: number, matchId: number | string) => Promise<AxiosResponse<Record<string, number>>>;
-  getMatchCoordination: (matchId: number) => Promise<AxiosResponse<unknown>>;
-  getPlayerSynergies: (playerId: number, minGames?: number) => Promise<AxiosResponse<PlayerSynergy[]>>;
-  getTopSynergies: (minGames?: number, limit?: number) => Promise<AxiosResponse<PlayerSynergy[]>>;
-  getLeaderboard: (category: string, minGames?: number, limit?: number) => Promise<AxiosResponse<LeaderboardEntry[]>>;
-  getPlayerAttackPatterns: (playerId: number, limit?: number) => Promise<AxiosResponse<unknown>>;
 }
 
 export const impactApi: ImpactApi = {
-  // Get players by impact scores
-  getPlayersByImpact: (sortBy = 'overall', minGames = 5) => {
-    return apiClient.get<PlayerImpact[]>('/impact/players', {
-      params: { sort_by: sortBy, min_games: minGames }
-    });
-  },
-
   // Get detailed match metrics for a player
   getPlayerMatchMetrics: (playerId: number, limit = 20) => {
     return apiClient.get<MatchPlayerMetrics[]>(`/impact/players/${playerId}/matches`, {
@@ -297,39 +200,6 @@ export const impactApi: ImpactApi = {
   // Get damage timeline for a specific match
   getMatchDamageTimeline: (playerId: number, matchId: number | string) => {
     return apiClient.get<Record<string, number>>(`/impact/players/${playerId}/matches/${matchId}/timeline`);
-  },
-
-  // Get team coordination analysis for a match
-  getMatchCoordination: (matchId: number) => {
-    return apiClient.get(`/impact/matches/${matchId}/coordination`);
-  },
-
-  // Get player synergies
-  getPlayerSynergies: (playerId: number, minGames = 3) => {
-    return apiClient.get<PlayerSynergy[]>(`/impact/players/${playerId}/synergies`, {
-      params: { min_games: minGames }
-    });
-  },
-
-  // Get top synergies
-  getTopSynergies: (minGames = 5, limit = 10) => {
-    return apiClient.get<PlayerSynergy[]>('/impact/synergies/top', {
-      params: { min_games: minGames, limit }
-    });
-  },
-
-  // Get impact leaderboard
-  getLeaderboard: (category: string, minGames = 5, limit = 10) => {
-    return apiClient.get<LeaderboardEntry[]>(`/impact/leaderboard/${category}`, {
-      params: { min_games: minGames, limit }
-    });
-  },
-
-  // Get player attack patterns
-  getPlayerAttackPatterns: (playerId: number, limit = 20) => {
-    return apiClient.get(`/impact/players/${playerId}/attack-patterns`, {
-      params: { limit }
-    });
   }
 };
 
@@ -350,18 +220,12 @@ export interface ShapImportance {
   importance: number;
 }
 
-export interface BalanceMethodSuccessRate {
-  success_rate: number;
-  total_matches: number;
-}
-
 export interface AdaptiveApi {
   getAccuracyComparison: (days?: number) => Promise<AxiosResponse<{
     total_matches: number;
     results: Record<string, { correct: number; total: number }>;
     trends: AccuracyTrend[];
   }>>;
-  getBalanceMethodSuccessRate: () => Promise<AxiosResponse<Record<string, BalanceMethodSuccessRate>>>;
   getShapImportance: () => Promise<AxiosResponse<{ features: ShapImportance[] }>>;
   trainXGBoost: () => Promise<AxiosResponse<{
     status: string;
@@ -376,19 +240,11 @@ export interface AdaptiveApi {
     xgboost: { is_trained: boolean; accuracy: number | null };
     build_classifier: { use_clustering: boolean };
   }>>;
-  backfillPredictions: () => Promise<AxiosResponse<{ status: string, message: string }>>;
-  getTheories: () => Promise<AxiosResponse<{ theories: any[] }>>;
-  submitTheory: (theory: string) => Promise<AxiosResponse<any>>;
-  getFeatureSuggestions: () => Promise<AxiosResponse<{ suggestions: any[] }>>;
-  submitFeatureSuggestion: (name: string, desc: string) => Promise<AxiosResponse<any>>;
 }
 
 export const adaptiveApi: AdaptiveApi = {
   getAccuracyComparison: (days = 90) => {
     return apiClient.get('/adaptive/accuracy-comparison', { params: { days } });
-  },
-  getBalanceMethodSuccessRate: () => {
-    return apiClient.get('/adaptive/balance-method-success-rate');
   },
   getShapImportance: () => {
     return apiClient.get('/adaptive/shap-importance');
@@ -398,34 +254,5 @@ export const adaptiveApi: AdaptiveApi = {
   },
   getMLModelsStatus: () => {
     return apiClient.get('/adaptive/ml-models-status');
-  },
-  backfillPredictions: () => {
-    return apiClient.post('/adaptive/backfill-predictions');
-  },
-  getTheories: () => {
-    return apiClient.get('/adaptive/meta-feedback');
-  },
-  submitTheory: (theory: string) => {
-    return apiClient.post('/adaptive/meta-feedback', { theory });
-  },
-  getFeatureSuggestions: () => {
-    return apiClient.get('/adaptive/feature-suggestions');
-  },
-  submitFeatureSuggestion: (feature_name: string, description: string) => {
-    return apiClient.post('/adaptive/feature-suggestions', { feature_name, description });
-  }
-};
-
-// =============================================================================
-// Health check
-// =============================================================================
-
-export interface HealthApi {
-  check: () => Promise<AxiosResponse<HealthCheckResponse>>;
-}
-
-export const healthApi: HealthApi = {
-  check: () => {
-    return apiClient.get<HealthCheckResponse>('/health');
   }
 };

@@ -229,7 +229,9 @@ def get_player_rankings(
     if core_only:
         query = query.filter(Player.is_core_player == 1)
 
-    players = query.order_by(desc(Player.unified_mmr)).all()
+    # Rating of record is display MMR (rating consolidation Phase 5);
+    # unified_mmr is demoted to a display-only stat.
+    players = query.order_by(desc(Player.mmr)).all()
 
     return [
         PlayerRankingResponse(rank=i + 1, player=_player_to_response(p))

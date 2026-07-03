@@ -42,11 +42,6 @@ class MetaFeedbackRequest(BaseModel):
     theory: str
 
 
-@router.get("/test")
-def test_adaptive():
-    return {"status": "ok"}
-
-
 @router.get("/feature-suggestions")
 def get_feature_suggestions(db: Session = Depends(get_db)):
     """
