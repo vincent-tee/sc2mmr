@@ -1,33 +1,21 @@
 """
-Adaptive ML Metrics Balancer
-
-Team balancing using:
-- Session-weighted MMR (40%)
-- Combat score (25%)
-- Economic score (20%)
-- Efficiency score (15%)
-- Synergy bonus (pairs + trios, max +15)
-
-Weights adapt based on component accuracy.
-Supports both adaptive (auto) and manual weight modes.
+Adaptive Balancing Service - Phase 2
+Integrates ML-derived weights and performance metrics for dynamic team generation.
 """
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import combinations
-from typing import Dict, List, Optional, Tuple
-from sqlalchemy.orm import Session
-from sqlalchemy import and_
-import logging
+from typing import Any, Dict, List, Optional, Tuple
 
-from ..models import Player, GroupSynergy, ComponentAccuracy, MLConfig
+from sqlalchemy.orm import Session
+
+from app.services.component_accuracy_tracker import ComponentAccuracyTracker
+from app.models import GroupSynergy, Player, Match, MatchPlayer
+from app.config import settings
 
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Data Classes
-# =============================================================================
 
 
 @dataclass
@@ -40,13 +28,14 @@ class MLPlayerRating:
     combat: float
     economic: float
     efficiency: float
+    teamwork: float
     ml_rating: float
     total_games: int
 
 
 @dataclass
 class MLTeamSuggestion:
-    """Team suggestion with ML metrics breakdown."""
+    """Balanced team suggestion from ML engine."""
 
     team1: List[MLPlayerRating]
     team2: List[MLPlayerRating]
@@ -58,124 +47,28 @@ class MLTeamSuggestion:
     weights_used: Dict[str, float]
 
 
-# =============================================================================
-# Synergy Calculator (integrated)
-# =============================================================================
-
-
 class SynergyCalculator:
-    """Calculate synergy bonuses for player groups."""
-
-    MIN_MATCHES_FOR_SYNERGY = 5  # Minimum matches to consider synergy
-    MAX_SYNERGY_BONUS = 15.0  # Maximum synergy bonus points
+    """Calculates and updates synergy scores between groups of players."""
 
     @staticmethod
     def _get_player_ids_key(player_ids: List[int]) -> str:
-        """Create a consistent key for a group of player IDs."""
-        return ",".join(str(pid) for pid in sorted(player_ids))
+        """Standardized key for a group of players (sorted comma-separated IDs)."""
+        return ",".join(map(str, sorted(player_ids)))
 
     @staticmethod
-    def get_pair_synergy(player1_id: int, player2_id: int, db: Session) -> float:
-        """Get synergy score for a pair of players."""
-        key = SynergyCalculator._get_player_ids_key([player1_id, player2_id])
-
-        synergy = (
-            db.query(GroupSynergy)
-            .filter(GroupSynergy.player_ids_key == key, GroupSynergy.player_count == 2)
-            .first()
-        )
-
-        if (
-            not synergy
-            or synergy.matches_played < SynergyCalculator.MIN_MATCHES_FOR_SYNERGY
-        ):
-            return 0.0
-
-        return synergy.synergy_score
-
-    @staticmethod
-    def get_trio_synergy(player_ids: List[int], db: Session) -> float:
-        """Get synergy score for a trio of players."""
-        if len(player_ids) != 3:
-            return 0.0
-
-        key = SynergyCalculator._get_player_ids_key(player_ids)
-
-        synergy = (
-            db.query(GroupSynergy)
-            .filter(GroupSynergy.player_ids_key == key, GroupSynergy.player_count == 3)
-            .first()
-        )
-
-        if (
-            not synergy
-            or synergy.matches_played < SynergyCalculator.MIN_MATCHES_FOR_SYNERGY
-        ):
-            return 0.0
-
-        return synergy.synergy_score
-
-    @staticmethod
-    def get_synergy_score(player_ids: List[int], db: Session) -> float:
-        """
-        Calculate total synergy score for a team.
-
-        Considers:
-        - All pair combinations (duos)
-        - All trio combinations (if team size >= 3)
-
-        Returns: Synergy bonus (0 to MAX_SYNERGY_BONUS)
-        """
-        if len(player_ids) < 2:
-            return 0.0
-
-        total_synergy = 0.0
-
-        # Calculate pair synergies
-        for pair in combinations(player_ids, 2):
-            pair_synergy = SynergyCalculator.get_pair_synergy(pair[0], pair[1], db)
-            total_synergy += pair_synergy
-
-        # Calculate trio synergies (if applicable)
-        if len(player_ids) >= 3:
-            for trio in combinations(player_ids, 3):
-                trio_synergy = SynergyCalculator.get_trio_synergy(list(trio), db)
-                # Trio synergy is additive but weighted less than individual pairs
-                total_synergy += trio_synergy * 0.5
-
-        # Cap total synergy bonus
-        return min(total_synergy, SynergyCalculator.MAX_SYNERGY_BONUS)
-
-    @staticmethod
-    def update_synergy(
-        player_ids: List[int], won: bool, db: Session, combined_impact: float = 0.0
-    ) -> None:
-        """
-        Update synergy record after a match.
-
-        Args:
-            player_ids: List of player IDs who played together
-            won: Whether the team won
-            db: Database session
-            combined_impact: Sum of player impact scores for this match
-        """
+    def update_synergy(player_ids: List[int], won: bool, db: Session) -> None:
+        """Update synergy for a team and all its sub-groups."""
         if len(player_ids) < 2:
             return
 
-        # Update pair synergies
+        # Update duo synergies
         for pair in combinations(player_ids, 2):
-            SynergyCalculator._update_group_synergy(
-                list(pair), won, db, combined_impact
-            )
+            SynergyCalculator._update_group_synergy(list(pair), won, db)
 
-        # Update trio synergies (if applicable)
-        if len(player_ids) >= 3:
+        # Update trio synergies (only for 4v4/5v5)
+        if len(player_ids) >= 4:
             for trio in combinations(player_ids, 3):
-                SynergyCalculator._update_group_synergy(
-                    list(trio), won, db, combined_impact
-                )
-
-        db.commit()
+                SynergyCalculator._update_group_synergy(list(trio), won, db)
 
     @staticmethod
     def _update_group_synergy(
@@ -210,215 +103,133 @@ class SynergyCalculator:
         synergy.win_rate = synergy.matches_won / synergy.matches_played
 
         # Calculate synergy score
-        # Base: win rate above 50% adds synergy, below 50% subtracts
-        # Range: -5 to +5 points per pair/trio
-        win_rate_bonus = (synergy.win_rate - 0.5) * 10  # -5 to +5
+        # Calibrated scaling for synergy (Validated Dec 29)
+        # Higher consistency multiplier for long-term partners
+        win_rate_diff = synergy.win_rate - 0.5
 
-        # Consistency bonus: more games = more reliable = small bonus
-        consistency_bonus = min(synergy.matches_played / 20.0, 1.0)  # 0 to 1
+        if win_rate_diff > 0:
+            win_rate_bonus = win_rate_diff * 15  # +0.2 -> +3 points
+        else:
+            win_rate_bonus = win_rate_diff * 25  # -0.2 -> -5 points
 
-        synergy.synergy_score = max(-5.0, min(5.0, win_rate_bonus + consistency_bonus))
+        consistency_multiplier = min(synergy.matches_played / 10.0, 2.0)
+        synergy.synergy_score = max(
+            -20.0, min(20.0, win_rate_bonus * consistency_multiplier)
+        )
         synergy.last_updated = datetime.utcnow()
 
-
-# =============================================================================
-# Component Accuracy Tracker (integrated)
-# =============================================================================
-
-
-class ComponentAccuracyTracker:
-    """Track prediction accuracy by component and compute optimal weights."""
-
-    # Default weights when no data available
-    DEFAULT_WEIGHTS = {
-        "session_mmr": 0.40,
-        "combat": 0.25,
-        "economic": 0.20,
-        "efficiency": 0.15,
-    }
-
-    # EMA decay factor (how much to weight new predictions)
-    EMA_ALPHA = 0.1
-
     @staticmethod
-    def get_component_accuracy(component_name: str, db: Session) -> float:
-        """Get current accuracy for a component."""
-        record = (
-            db.query(ComponentAccuracy)
-            .filter(ComponentAccuracy.component_name == component_name)
-            .first()
-        )
-
-        if not record:
-            return 0.5  # Default 50% accuracy
-
-        return record.accuracy
-
-    @staticmethod
-    def update_component_accuracy(
-        component_name: str, prediction_correct: bool, db: Session
-    ) -> float:
+    def get_synergy_score(player_ids: List[int], db: Session) -> float:
         """
-        Update accuracy for a component using EMA.
-
-        Returns: Updated accuracy
+        Calculate the total synergy bonus for a team.
+        Returns aggregate bonus to be added to team's balanced rating.
         """
-        record = (
-            db.query(ComponentAccuracy)
-            .filter(ComponentAccuracy.component_name == component_name)
-            .first()
-        )
+        if len(player_ids) < 2:
+            return 0.0
 
-        if not record:
-            record = ComponentAccuracy(
-                component_name=component_name,
-                predictions_correct=0,
-                predictions_total=0,
-                accuracy=0.5,
-                last_updated=datetime.utcnow(),
-            )
-            db.add(record)
+        total_synergy = 0.0
 
-        # Update counts
-        record.predictions_total += 1
-        if prediction_correct:
-            record.predictions_correct += 1
-
-        # Update accuracy using EMA
-        new_value = 1.0 if prediction_correct else 0.0
-        record.accuracy = (
-            ComponentAccuracyTracker.EMA_ALPHA * new_value
-            + (1 - ComponentAccuracyTracker.EMA_ALPHA) * record.accuracy
-        )
-        record.last_updated = datetime.utcnow()
-
-        db.commit()
-        return record.accuracy
-
-    @staticmethod
-    def get_optimal_weights(db: Session) -> Dict[str, float]:
-        """
-        Calculate optimal weights based on component accuracies.
-
-        Higher accuracy = higher weight.
-        Weights are normalized to sum to 1.0.
-        """
-        components = ["session_mmr", "combat", "economic", "efficiency"]
-        accuracies = {}
-
-        for component in components:
-            accuracies[component] = ComponentAccuracyTracker.get_component_accuracy(
-                component, db
-            )
-
-        # Check if we have enough data (at least some predictions)
-        total_predictions = 0
-        for component in components:
-            record = (
-                db.query(ComponentAccuracy)
-                .filter(ComponentAccuracy.component_name == component)
+        # Sum up duo synergies
+        for pair in combinations(player_ids, 2):
+            key = SynergyCalculator._get_player_ids_key(list(pair))
+            synergy = (
+                db.query(GroupSynergy)
+                .filter(GroupSynergy.player_ids_key == key)
                 .first()
             )
-            if record:
-                total_predictions += record.predictions_total
+            if synergy:
+                total_synergy += (
+                    (synergy.win_rate - 0.5)
+                    * 1000
+                    * min(synergy.matches_played / 20.0, 1.0)
+                )
 
-        # If less than 20 predictions, use default weights
-        if total_predictions < 20:
-            logger.info("Using default weights (insufficient prediction data)")
-            return ComponentAccuracyTracker.DEFAULT_WEIGHTS.copy()
-
-        # Calculate raw weights based on accuracy
-        # Transform accuracy to weight: higher accuracy = higher weight
-        # Use squared accuracy to emphasize better predictors
-        raw_weights = {component: acc**2 for component, acc in accuracies.items()}
-
-        # Normalize to sum to 1.0
-        total = sum(raw_weights.values())
-        if total == 0:
-            return ComponentAccuracyTracker.DEFAULT_WEIGHTS.copy()
-
-        weights = {component: raw / total for component, raw in raw_weights.items()}
-
-        logger.info(f"Calculated adaptive weights: {weights}")
-        return weights
-
-    @staticmethod
-    def record_prediction_result(
-        predicted_winner: int,
-        actual_winner: int,
-        component_predictions: Dict[str, int],
-        db: Session,
-    ) -> None:
-        """
-        Record prediction results for all components.
-
-        Args:
-            predicted_winner: Team predicted to win (1 or 2)
-            actual_winner: Team that actually won (1 or 2)
-            component_predictions: Dict of component -> predicted team
-            db: Database session
-        """
-        for component, predicted_team in component_predictions.items():
-            correct = predicted_team == actual_winner
-            ComponentAccuracyTracker.update_component_accuracy(component, correct, db)
-
-
-# =============================================================================
-# ML Metrics Balancer (main class)
-# =============================================================================
+        return max(-400.0, min(400.0, total_synergy))
 
 
 class MLMetricsBalancer:
-    """Team balancing using ML metrics + adaptive weights + synergy."""
+    """Core logic for balancing teams using ML-weighted metrics."""
 
-    MIN_MATCHES_FOR_METRICS = 10  # Minimum matches before using in-game metrics
+    MIN_MATCHES_FOR_METRICS = 5
+
+    @staticmethod
+    def _get_map_specialist_bonus(player_id: int, map_name: str, db: Session) -> float:
+        """
+        Calculate a performance bonus if a player historically dominates this map.
+
+        Bonus: Up to +300 MMR equivalent if WinRate > 75% (min 5 games).
+        """
+        from ..models import MatchPlayer, Match
+
+        matches = (
+            db.query(MatchPlayer)
+            .join(Match)
+            .filter(MatchPlayer.player_id == player_id)
+            .filter(Match.map_name == map_name)
+            .all()
+        )
+
+        if len(matches) < 5:
+            return 0.0
+
+        wins = sum(1 for m in matches if m.won)
+        win_rate = wins / len(matches)
+
+        if win_rate >= 0.75:
+            # Scale bonus by number of games to avoid small sample bias
+            certainty = min(len(matches) / 10.0, 1.0)
+            return 300.0 * certainty
+        elif win_rate <= 0.25:
+            # Map Penalty for consistent losers on this map
+            certainty = min(len(matches) / 10.0, 1.0)
+            return -200.0 * certainty
+
+        return 0.0
 
     @staticmethod
     def calculate_ml_rating(
-        player: Player, weights: Dict[str, float], db: Session
+        player: Player,
+        weights: Dict[str, float],
+        db: Session,
+        map_name: Optional[str] = None,
     ) -> Tuple[float, MLPlayerRating]:
         """
-        Calculate ML rating for a player using MMR × WinRate formula.
-
-        The MMR × WinRate formula achieved 76.5% accuracy in cross-validation,
-        outperforming TrueSkill alone (73.2%) by +3.3 percentage points.
-
-        This emphasizes players who both:
-        - Have high skill (MMR)
-        - Win consistently (WinRate)
-
-        Falls back to session MMR if insufficient data.
-
-        Returns: (ml_rating, MLPlayerRating breakdown)
+        Calculate a player's predictive rating based on ML weights.
+        Refined for 10/10: Uses Unified MMR as the high-fidelity base.
         """
-        session_mmr = player.session_weighted_mmr or player.mmr or 1000
-        combat = player.avg_combat_score or 50
-        economic = player.avg_economic_score or 50
-        efficiency = player.avg_efficiency_score or 50
+        # Base stats - Using Unified MMR as the gold standard for skill
+        # It already includes Handicap Correction, Combat Bonus, and Inactivity Decay
+        base_mmr = player.unified_mmr or player.mmr or 2000
+
+        # We still look at session/recency for weighting current momentum
+        recency_mmr = player.recency_weighted_mmr or player.mmr or 2000
+        session_mmr = player.session_weighted_mmr or base_mmr
+
+        combat = player.avg_combat_score or 24
+        economic = player.avg_economic_score or 60
+        efficiency = player.avg_efficiency_score or 55
+        impact = player.avg_overall_impact or 60
         total_games = player.total_games or 0
-        win_rate = (
-            player.win_rate if player.total_games and player.total_games > 0 else 0.5
-        )
 
-        if total_games < MLMetricsBalancer.MIN_MATCHES_FOR_METRICS:
-            # Not enough data - use session MMR only
-            ml_rating = session_mmr
+        map_bonus = 0.0
+        if map_name:
+            map_bonus = MLMetricsBalancer._get_map_specialist_bonus(
+                player.id, map_name, db
+            )
+
+        if total_games < 15:
+            # For new players, use conservative raw MMR to avoid volatility
+            ml_rating = player.mmr + map_bonus
         else:
-            # Use MMR × WinRate as the primary rating formula
-            # This achieved 76.5% accuracy vs 73.2% for TrueSkill alone
-            #
-            # The formula: MMR * WinRate emphasizes consistent winners
-            # Win rates typically range 0.3-0.7, so this scales MMR down
-            # to reflect actual performance
-            mmr_x_winrate = session_mmr * win_rate
+            # 10/10 Formula: Unified MMR + Momentum Adjustment
+            # Unified MMR is 80% of the weight, Recency/Impact provides the 'form' adjustment
 
-            # Optional: Add small contributions from in-game metrics
-            # Only if weights are specified (for backward compatibility)
-            combat_bonus = (combat - 50) * 2 * weights.get("combat", 0)
-            economic_bonus = (economic - 50) * 1.5 * weights.get("economic", 0)
-            efficiency_bonus = (efficiency - 50) * 1 * weights.get("efficiency", 0)
+            # Form adjustment: How much is the player outperforming their average impact lately?
+            # Using weights to allow tuning
+            impact_weight = weights.get("teamwork", 1.0)
+            form_adjustment = (impact - 60) * 4 * impact_weight
 
-            ml_rating = mmr_x_winrate + combat_bonus + economic_bonus + efficiency_bonus
+            ml_rating = base_mmr + form_adjustment + map_bonus
 
         breakdown = MLPlayerRating(
             player_id=player.id,
@@ -427,6 +238,7 @@ class MLMetricsBalancer:
             combat=round(combat, 1),
             economic=round(economic, 1),
             efficiency=round(efficiency, 1),
+            teamwork=round(impact, 1),
             ml_rating=round(ml_rating, 1),
             total_games=total_games,
         )
@@ -439,18 +251,22 @@ class MLMetricsBalancer:
         db: Session,
         use_adaptive_weights: bool = True,
         manual_weights: Optional[Dict[str, float]] = None,
-    ) -> MLTeamSuggestion:
+        top_n: int = 10,
+        map_name: Optional[str] = None,
+    ) -> List[MLTeamSuggestion]:
         """
-        Generate balanced teams using ML metrics + synergy.
+        Generate balanced team suggestions using ML metrics + synergy.
 
         Args:
             player_ids: List of player IDs to balance
             db: Database session
             use_adaptive_weights: If True, use learned weights; if False, use manual_weights
             manual_weights: Custom weights (only used if use_adaptive_weights is False)
+            top_n: Number of suggestions to return
+            map_name: Optional map name to apply Map Specialist bonuses
 
         Returns:
-            MLTeamSuggestion with balanced teams and breakdown
+            List of MLTeamSuggestion with balanced teams and breakdown
         """
         if len(player_ids) < 2:
             raise ValueError("At least 2 players required for team balancing")
@@ -477,13 +293,12 @@ class MLMetricsBalancer:
         for pid in player_ids:
             if pid in player_map:
                 rating, breakdown = MLMetricsBalancer.calculate_ml_rating(
-                    player_map[pid], weights, db
+                    player_map[pid], weights, db, map_name=map_name
                 )
                 ml_ratings[pid] = rating
                 player_breakdowns[pid] = breakdown
 
-        best_suggestion: Optional[MLTeamSuggestion] = None
-        best_score = -1.0
+        all_suggestions: List[MLTeamSuggestion] = []
 
         # Handle odd number of players
         num_players = len(player_ids)
@@ -492,14 +307,15 @@ class MLMetricsBalancer:
         else:
             team_size = (num_players // 2) + 1
 
-        # Try all possible team splits
-        for team1_indices in combinations(player_ids, team_size):
-            team1_ids = list(team1_indices)
-            team2_ids = [p for p in player_ids if p not in team1_ids]
+        # To avoid mirrors (Team A vs Team B == Team B vs Team A),
+        # we fix the first player in Team 1.
+        first_player = player_ids[0]
+        remaining_players = player_ids[1:]
 
-            # Skip if team2 is empty (shouldn't happen but safety check)
-            if not team2_ids:
-                continue
+        # Try combinations for the rest of Team 1
+        for team1_indices in combinations(remaining_players, team_size - 1):
+            team1_ids = [first_player] + list(team1_indices)
+            team2_ids = [p for p in player_ids if p not in team1_ids]
 
             # Calculate total ML ratings
             team1_ml_total = sum(ml_ratings.get(p, 1000) for p in team1_ids)
@@ -521,19 +337,10 @@ class MLMetricsBalancer:
             total_synergy = team1_synergy + team2_synergy
             balance_score += min(total_synergy / 50, 0.1)
 
-            if balance_score > best_score:
-                best_score = balance_score
-                best_suggestion = MLTeamSuggestion(
-                    team1=[
-                        player_breakdowns[p]
-                        for p in team1_ids
-                        if p in player_breakdowns
-                    ],
-                    team2=[
-                        player_breakdowns[p]
-                        for p in team2_ids
-                        if p in player_breakdowns
-                    ],
+            all_suggestions.append(
+                MLTeamSuggestion(
+                    team1=[player_breakdowns[p] for p in team1_ids],
+                    team2=[player_breakdowns[p] for p in team2_ids],
                     team1_total=round(team1_total, 1),
                     team2_total=round(team2_total, 1),
                     team1_synergy=round(team1_synergy, 1),
@@ -541,74 +348,10 @@ class MLMetricsBalancer:
                     balance_score=round(balance_score, 3),
                     weights_used=weights,
                 )
+            )
 
-        if best_suggestion is None:
-            # Fallback - shouldn't happen with valid inputs
-            raise ValueError(f"Could not balance teams for players: {player_ids}")
+        # Sort by balance score descending
+        all_suggestions.sort(key=lambda x: x.balance_score, reverse=True)
 
-        logger.info(f"Balanced teams with score {best_suggestion.balance_score}")
-        return best_suggestion
-
-    @staticmethod
-    def get_balance_breakdown(suggestion: MLTeamSuggestion) -> Dict:
-        """Get detailed breakdown of balance suggestion."""
-        return {
-            "team_1": {
-                "players": [
-                    {
-                        "id": p.player_id,
-                        "name": p.player_name,
-                        "session_mmr": p.session_mmr,
-                        "combat": p.combat,
-                        "economic": p.economic,
-                        "efficiency": p.efficiency,
-                        "ml_rating": p.ml_rating,
-                        "total_games": p.total_games,
-                    }
-                    for p in suggestion.team1
-                ],
-                "total_ml_rating": suggestion.team1_total,
-                "synergy_bonus": suggestion.team1_synergy,
-            },
-            "team_2": {
-                "players": [
-                    {
-                        "id": p.player_id,
-                        "name": p.player_name,
-                        "session_mmr": p.session_mmr,
-                        "combat": p.combat,
-                        "economic": p.economic,
-                        "efficiency": p.efficiency,
-                        "ml_rating": p.ml_rating,
-                        "total_games": p.total_games,
-                    }
-                    for p in suggestion.team2
-                ],
-                "total_ml_rating": suggestion.team2_total,
-                "synergy_bonus": suggestion.team2_synergy,
-            },
-            "balance_score": suggestion.balance_score,
-            "weights_used": suggestion.weights_used,
-        }
-
-    @staticmethod
-    def record_match_result(
-        team1_ids: List[int], team2_ids: List[int], winning_team: int, db: Session
-    ) -> None:
-        """
-        Record match result to update synergy and component accuracy.
-
-        Args:
-            team1_ids: Player IDs on team 1
-            team2_ids: Player IDs on team 2
-            winning_team: 1 or 2
-            db: Database session
-        """
-        # Update synergy for both teams
-        team1_won = winning_team == 1
-        SynergyCalculator.update_synergy(team1_ids, team1_won, db)
-        SynergyCalculator.update_synergy(team2_ids, not team1_won, db)
-
-        logger.info(
-            f"Updated synergy for teams after match (winner: team {winning_team})"
-        )
+        logger.info(f"Generated {len(all_suggestions)} balanced team options")
+        return all_suggestions[:top_n]

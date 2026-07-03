@@ -6,7 +6,6 @@ import { useState, type ChangeEvent, type ReactNode } from 'react';
 import {
   Box,
   Container,
-  Heading,
   Text,
   VStack,
   HStack,
@@ -50,6 +49,7 @@ import {
   FiChevronRight,
 } from 'react-icons/fi';
 import { replaysApi, type FailedUpload } from '../api/endpoints';
+import PageHeader from '../components/PageHeader';
 import LoadingState from '../components/LoadingState';
 import EmptyState from '../components/EmptyState';
 import { formatDateOnly, formatTimeOnly } from '../utils/formatting';
@@ -267,25 +267,14 @@ const FailedUploads: React.FC = () => {
   }
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Box minH="100vh" pb={16}>
+      <PageHeader
+        kicker="Needs Attention"
+        title="Failed [Uploads]"
+        description="Replay files that failed to process — review, retry, or dismiss them."
+      />
+      <Container maxW="container.xl" pt={8}>
       <VStack spacing={8} align="stretch">
-        {/* Header */}
-        <Box textAlign="center" mb={4}>
-          <Heading
-            size="2xl"
-            fontFamily="heading"
-            fontWeight="bold"
-            letterSpacing="wider"
-            color="brand.400"
-            mb={2}
-          >
-            <Text as="span" className="emoji-font">⚠️</Text> Failed Uploads
-          </Heading>
-          <Text color="gray.400" fontSize="lg">
-            Review replay files that failed to process
-          </Text>
-        </Box>
-
         {/* Info Alert */}
         <Alert
           status="info"
@@ -694,7 +683,8 @@ const FailedUploads: React.FC = () => {
           </ModalFooter>
         </ModalContent>
       </Modal>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 

@@ -36,25 +36,30 @@ class TestPlayerModel:
         """
         Test MMR calculation uses the scaled display formula.
 
-        Current formula: MMR = MMR_BASE + MMR_MU_MULTIPLIER * mu
-        - New players (mu=25): 2000 MMR
-        - Sigma is NOT included in display MMR to prevent penalizing inactive players
+        Doctrine (owner decision 2026-07-02, rating consolidation campaign
+        Phase 3): MMR = MMR_BASE + MMR_MU_MULTIPLIER * mu - 200 * sigma.
+        The sigma penalty is deliberate — measured +2.3pp prediction accuracy
+        over the no-sigma formula (McNemar p=0.031, n=860; see
+        docs/superpowers/campaign/rating-consolidation-log.md Session 2).
+        New players (mu=25, sigma=8.333) start at ~1833.
         """
         player = player_factory(name="TestPlayer", mu=25.0, sigma=8.333)
 
-        # Use RatingSystem constants for maintainability
-        expected_mmr = RatingSystem.calculate_display_mmr(25.0)  # = 2000
-        assert player.mmr == expected_mmr
-        assert player.mmr == RatingSystem.MMR_BASE + (RatingSystem.MMR_MU_MULTIPLIER * 25.0)
+        expected_mmr = RatingSystem.calculate_display_mmr(25.0, 8.333)  # = 1833.4
+        assert expected_mmr == RatingSystem.MMR_BASE + (
+            RatingSystem.MMR_MU_MULTIPLIER * 25.0
+        ) - (200.0 * 8.333)
+        # The Player.mmr column default is the rounded new-player formula value
+        assert player.mmr == pytest.approx(expected_mmr, abs=0.5)
 
     def test_player_mmr_varies_with_mu(self, player_factory):
-        """Test that MMR scales correctly with mu value."""
-        player_low = player_factory(name="LowSkill", mu=15.0, sigma=8.333)
-        player_high = player_factory(name="HighSkill", mu=35.0, sigma=8.333)
-
-        assert player_low.mmr == RatingSystem.calculate_display_mmr(15.0)  # = 1600
-        assert player_high.mmr == RatingSystem.calculate_display_mmr(35.0)  # = 2400
-        assert player_high.mmr > player_low.mmr
+        """Test that MMR scales with mu and is penalized by sigma."""
+        low = RatingSystem.calculate_display_mmr(15.0, 8.333)   # = 833.4
+        high = RatingSystem.calculate_display_mmr(35.0, 8.333)  # = 2833.4
+        assert high > low
+        assert high - low == pytest.approx(RatingSystem.MMR_MU_MULTIPLIER * 20.0)
+        # sigma penalty: lower uncertainty -> higher displayed MMR at equal mu
+        assert RatingSystem.calculate_display_mmr(25.0, 4.0) > RatingSystem.calculate_display_mmr(25.0, 8.333)
 
     def test_player_win_rate_as_decimal(self, player_factory):
         """

@@ -219,7 +219,7 @@ class ReplayUploadResponse(BaseModel):
 
 
 class MatchPlayerSummary(BaseModel):
-    """Summary of a player's performance in a match."""
+    """Simplified player info for match lists."""
 
     player_id: int
     player_name: str
@@ -227,6 +227,7 @@ class MatchPlayerSummary(BaseModel):
     race: str
     won: bool
     mmr_change: float
+    mmr_before: Optional[float] = None
     damage_dealt: Optional[int] = None
     impact_score: Optional[float] = None
 
@@ -354,6 +355,44 @@ async def upload_replay(file: UploadFile = File(...), db: Session = Depends(get_
 
         # Only update ratings for new matches to avoid double-counting MMR changes
         if created:
+            # Validate team experience requirement (each team needs ≥1 player with >10 games)
+            team1_has_experienced = False
+            team2_has_experienced = False
+
+            for player_data in replay_data.players:
+                player = db.query(Player).filter(Player.name == player_data.name).first()
+                if player:
+                    if player_data.team == 1 and player.total_games > 10:
+                        team1_has_experienced = True
+                    elif player_data.team == 2 and player.total_games > 10:
+                        team2_has_experienced = True
+
+            if not team1_has_experienced or not team2_has_experienced:
+                # Delete the match we just created
+                db.delete(match)
+                db.commit()
+
+                # Log as failed upload
+                _log_failed_upload(
+                    db=db,
+                    filename=fn,
+                    file_size=len(content),
+                    error_type=UploadErrorType.VALIDATION_ERROR,
+                    error_message="Team experience requirement not met: Each team must have at least one player with >10 games",
+                    error_detail=f"Team 1 has experienced player: {team1_has_experienced}, Team 2 has experienced player: {team2_has_experienced}",
+                    replay_hash=replay_data.replay_hash,
+                    map_name=replay_data.map_name,
+                    game_mode=replay_data.game_mode.value,
+                    duration_seconds=replay_data.duration_seconds,
+                    num_players=len(replay_data.players),
+                    replay_file_path=replay_file_path,
+                )
+
+                raise HTTPException(
+                    status_code=400,
+                    detail="Match rejected: Each team must have at least one player with more than 10 games played"
+                )
+
             RatingSystem.update_ratings_from_match(db, replay_data, match)
 
         if replay_file_path:
@@ -567,13 +606,7 @@ def get_matches_with_players(
                 .first()
             )
 
-            mmr_diff = round(
-                float(
-                    RatingSystem.calculate_display_mmr(mp.mu_after)
-                    - RatingSystem.calculate_display_mmr(mp.mu_before)
-                ),
-                1,
-            )
+            mmr_diff = round(float((mp.mmr_after or 0) - (mp.mmr_before or 0)), 1)
             if mp.won:
                 winner_team = int(mp.team_number)
 
@@ -584,6 +617,7 @@ def get_matches_with_players(
                 race=str(mp.race.value),
                 won=bool(mp.won == 1),
                 mmr_change=mmr_diff,
+                mmr_before=float(mp.mmr_before or 0),
                 damage_dealt=int(metrics.damage_dealt) if metrics else None,
                 impact_score=float(metrics.overall_impact) if metrics else None,
             )
@@ -634,8 +668,8 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
     for mp_obj, p_obj in match_players:
         mp: Any = mp_obj
         p: Any = p_obj
-        mmr_b = float(RatingSystem.calculate_display_mmr(mp.mu_before))
-        mmr_a = float(RatingSystem.calculate_display_mmr(mp.mu_after))
+        mmr_b = float(mp.mmr_before or 0)
+        mmr_a = float(mp.mmr_after or 0)
         players_data.append(
             MatchPlayerResponse(
                 player_name=str(p.name),
@@ -1074,6 +1108,7 @@ async def upload_replay_advanced(
     Upload and process a SC2 replay file with advanced metrics.
     """
     fn: str = str(file.filename) if file.filename else "unknown.SC2Replay"
+    logger.info(f"[UPLOAD-ADV] Starting upload: {fn}")
 
     if not fn.endswith(".SC2Replay"):
         raise HTTPException(
@@ -1085,17 +1120,25 @@ async def upload_replay_advanced(
         content = await file.read()
         tmp_file.write(content)
         tmp_file_path = tmp_file.name
+        logger.info(f"[UPLOAD-ADV] {fn}: File saved to temp ({len(content)} bytes)")
 
     replay_data = None
     try:
         start_time = time.time()
+        step_times: dict = {}
 
         # Parse with advanced metrics
+        step_start = time.time()
         advanced_data = parse_replay_advanced(tmp_file_path)
         replay_data = advanced_data.basic_data
+        step_times["parse"] = (time.time() - step_start) * 1000
+        logger.info(f"[UPLOAD-ADV] {fn}: Parse complete ({step_times['parse']:.0f}ms)")
 
         # Validate
+        step_start = time.time()
         is_valid, error_msg = validate_replay_data(replay_data)
+        step_times["validate"] = (time.time() - step_start) * 1000
+        logger.info(f"[UPLOAD-ADV] {fn}: Validation complete ({step_times['validate']:.0f}ms)")
         if not is_valid:
             # Check for winner determination failure to log it specifically
             if error_msg and "Unable to determine" in error_msg:
@@ -1121,21 +1164,70 @@ async def upload_replay_advanced(
             )
 
         # Save file first
+        step_start = time.time()
         replay_file_path = _save_replay_file(content, fn, replay_data.replay_hash)
+        step_times["save_file"] = (time.time() - step_start) * 1000
+        logger.info(f"[UPLOAD-ADV] {fn}: File saved ({step_times['save_file']:.0f}ms)")
 
         # Use upsert logic - allows re-uploading to update data
+        step_start = time.time()
         match, created = upsert_match(db, replay_data, replay_file_path)
+        step_times["upsert"] = (time.time() - step_start) * 1000
+        logger.info(f"[UPLOAD-ADV] {fn}: Upsert complete, created={created} ({step_times['upsert']:.0f}ms)")
 
         if not created:
-            logger.info(f"Updated existing match ID: {match.id} with advanced parsing")
+            logger.info(f"[UPLOAD-ADV] Updated existing match ID: {match.id}")
 
         db.flush()
 
         # Update ratings only for new matches to avoid double-counting MMR changes
         if created:
+            # Validate team experience requirement (each team needs ≥1 player with >10 games)
+            team1_has_experienced = False
+            team2_has_experienced = False
+
+            for player_data in replay_data.players:
+                player = db.query(Player).filter(Player.name == player_data.name).first()
+                if player:
+                    if player_data.team == 1 and player.total_games > 10:
+                        team1_has_experienced = True
+                    elif player_data.team == 2 and player.total_games > 10:
+                        team2_has_experienced = True
+
+            if not team1_has_experienced or not team2_has_experienced:
+                # Delete the match we just created
+                db.delete(match)
+                db.commit()
+
+                # Log as failed upload
+                _log_failed_upload(
+                    db=db,
+                    filename=fn,
+                    file_size=len(content),
+                    error_type=UploadErrorType.VALIDATION_ERROR,
+                    error_message="Team experience requirement not met: Each team must have at least one player with >10 games",
+                    error_detail=f"Team 1 has experienced player: {team1_has_experienced}, Team 2 has experienced player: {team2_has_experienced}",
+                    replay_hash=replay_data.replay_hash,
+                    map_name=replay_data.map_name,
+                    game_mode=replay_data.game_mode.value,
+                    duration_seconds=replay_data.duration_seconds,
+                    num_players=len(replay_data.players),
+                    replay_file_path=replay_file_path,
+                )
+
+                raise HTTPException(
+                    status_code=400,
+                    detail="Match rejected: Each team must have at least one player with more than 10 games played"
+                )
+
+            step_start = time.time()
             RatingSystem.update_ratings_from_match(db, replay_data, match)
+            step_times["rating_update"] = (time.time() - step_start) * 1000
+            logger.info(f"[UPLOAD-ADV] {fn}: Rating update ({step_times['rating_update']:.0f}ms)")
 
         # Save/update metrics (always update to get latest parsing improvements)
+        step_start = time.time()
+        metrics_count = 0
         for player_metrics in advanced_data.player_metrics:
             player = (
                 db.query(Player)
@@ -1157,32 +1249,51 @@ async def upload_replay_advanced(
                         db, match_player.id, player_metrics
                     )
                     ImpactService.update_player_averages(db, player.id)
+                    metrics_count += 1
+        step_times["metrics"] = (time.time() - step_start) * 1000
+        logger.info(f"[UPLOAD-ADV] {fn}: Metrics saved for {metrics_count} players ({step_times['metrics']:.0f}ms)")
 
         # Update synergies (always update for re-uploads to refresh data)
+        step_start = time.time()
         ImpactService.update_synergies(db, int(match.id))
+        step_times["synergies"] = (time.time() - step_start) * 1000
+        logger.info(f"[UPLOAD-ADV] {fn}: Synergies updated ({step_times['synergies']:.0f}ms)")
 
         # Only adjust ratings for new matches to avoid double-counting
         if created:
+            step_start = time.time()
             PerformanceRatingAdjuster.adjust_ratings_for_match(db, int(match.id))
+            step_times["perf_adjust"] = (time.time() - step_start) * 1000
+            logger.info(f"[UPLOAD-ADV] {fn}: Performance adjustment ({step_times['perf_adjust']:.0f}ms)")
 
         # Extract and save ML features
         if replay_file_path:
             try:
+                step_start = time.time()
                 from ..services.ml_features_service import MLFeaturesService
 
                 MLFeaturesService.extract_and_save_ml_features(
                     db, replay_file_path, int(match.id)
                 )
+                step_times["ml_features"] = (time.time() - step_start) * 1000
+                logger.info(f"[UPLOAD-ADV] {fn}: ML features extracted ({step_times['ml_features']:.0f}ms)")
             except Exception as e:
-                logger.warning(f"ML feature extraction failed: {e}")
+                logger.warning(f"[UPLOAD-ADV] {fn}: ML feature extraction failed: {e}")
 
         # Trigger auto optimization
         try:
+            step_start = time.time()
             trigger_auto_optimization(db)
+            step_times["auto_opt"] = (time.time() - step_start) * 1000
+            logger.info(f"[UPLOAD-ADV] {fn}: Auto-optimization ({step_times['auto_opt']:.0f}ms)")
         except Exception as e:
-            logger.warning(f"Auto-optimization failed: {e}")
+            logger.warning(f"[UPLOAD-ADV] {fn}: Auto-optimization failed: {e}")
 
         total_time_ms = (time.time() - start_time) * 1000
+
+        # Log summary with all step timings
+        timing_summary = ", ".join([f"{k}={v:.0f}ms" for k, v in step_times.items()])
+        logger.info(f"[UPLOAD-ADV] {fn}: COMPLETE in {total_time_ms:.0f}ms | {timing_summary}")
 
         return ReplayUploadResponse(
             match_id=int(match.id),
@@ -1193,15 +1304,16 @@ async def upload_replay_advanced(
             num_players=len(replay_data.players),
             message="Replay processed successfully with advanced metrics",
             processing_stats=ProcessingStats(
-                parse_time_ms=0,
-                validation_time_ms=0,
-                duplicate_check_time_ms=0,
-                rating_update_time_ms=0,
+                parse_time_ms=round(step_times.get("parse", 0), 2),
+                validation_time_ms=round(step_times.get("validate", 0), 2),
+                duplicate_check_time_ms=round(step_times.get("upsert", 0), 2),
+                rating_update_time_ms=round(step_times.get("rating_update", 0), 2),
                 total_time_ms=round(total_time_ms, 2),
             ),
         )
 
     except ReplayParseError as e:
+        logger.error(f"[UPLOAD-ADV] {fn}: PARSE ERROR - {str(e)}")
         _log_failed_upload(
             db=db,
             filename=fn,
@@ -1211,9 +1323,11 @@ async def upload_replay_advanced(
             error_detail=traceback.format_exc(),
         )
         raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
-    except HTTPException:
+    except HTTPException as http_ex:
+        logger.warning(f"[UPLOAD-ADV] {fn}: HTTP EXCEPTION - {http_ex.detail}")
         raise
     except Exception as e:
+        logger.error(f"[UPLOAD-ADV] {fn}: UNEXPECTED ERROR - {str(e)}", exc_info=True)
         _log_failed_upload(
             db=db,
             filename=fn,

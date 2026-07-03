@@ -138,7 +138,9 @@ class Settings(BaseSettings):
     # Hybrid MMR Configuration (SPEC-ML-001)
     # ==========================================================================
     # Enable/disable hybrid MMR system
-    hybrid_mmr_enabled: bool = True
+    # Soft-retired 2026-07-02 (rating consolidation campaign Phase 6):
+    # superseded by the display-MMR rating of record; column drop pending.
+    hybrid_mmr_enabled: bool = False
 
     # PIM (Performance Impact Modifier) bounds
     pim_min: float = -0.5  # Minimum PIM value (50% less MMR change)

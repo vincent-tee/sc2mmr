@@ -28,25 +28,24 @@ import type {
 export interface PlayersApi {
   getAll: (coreOnly?: boolean) => Promise<AxiosResponse<Player[]>>;
   getRankings: (minGames?: number, coreOnly?: boolean) => Promise<AxiosResponse<PlayerRanking[]>>;
-  getById: (playerId: number, recentMatchesLimit?: number, recentMatchesOffset?: number) => Promise<AxiosResponse<PlayerDetail>>;
+  getCoaching: (playerId: number) => Promise<AxiosResponse<any>>;
+  create: (name: string, isCorePlayer?: boolean) => Promise<AxiosResponse<Player>>;
+  calibrate: (name: string, similarToPlayerId: number) => Promise<AxiosResponse<Player>>;
 }
 
 export const playersApi: PlayersApi = {
-  // Get all players
   getAll: (coreOnly = false) => {
     return apiClient.get<Player[]>('/players/', {
       params: { core_only: coreOnly }
     });
   },
 
-  // Get player rankings
   getRankings: (minGames = 5, coreOnly = false) => {
     return apiClient.get<PlayerRanking[]>('/players/rankings', {
       params: { min_games: minGames, core_only: coreOnly }
     });
   },
 
-  // Get player details
   getById: (playerId: number, recentMatchesLimit = 10, recentMatchesOffset = 0) => {
     return apiClient.get<PlayerDetail>(`/players/${playerId}`, {
       params: {
@@ -56,7 +55,16 @@ export const playersApi: PlayersApi = {
     });
   },
 
-  // Create new player
+  getHistory: (playerId: number, limit = 50) => {
+    return apiClient.get(`/players/${playerId}/history`, {
+      params: { limit }
+    });
+  },
+
+  getCoaching: (playerId: number) => {
+    return apiClient.get(`/players/${playerId}/coaching`);
+  },
+
   create: (name: string, isCorePlayer = true) => {
     return apiClient.post<Player>('/players/', {
       name,
@@ -64,7 +72,6 @@ export const playersApi: PlayersApi = {
     });
   },
 
-  // Calibrate new player
   calibrate: (name: string, similarToPlayerId: number) => {
     return apiClient.post<Player>('/players/calibrate', {
       name,
@@ -78,9 +85,8 @@ export const playersApi: PlayersApi = {
 // =============================================================================
 
 export interface TeamsApi {
-  balance: (playerIds: number[], topN?: number) => Promise<AxiosResponse<TeamSuggestion[]>>;
+  balance: (playerIds: number[], topN?: number, mapName?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
   quickBalance: (playerIds: number[]) => Promise<AxiosResponse<TeamSuggestion[]>>;
-  balanceWithImpact: (playerIds: number[], topN?: number, impactWeight?: number) => Promise<AxiosResponse<TeamSuggestion[]>>;
   balanceWithModel: (playerIds: number[], model?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
   compareModels: (playerIds: number[]) => Promise<AxiosResponse<Record<string, TeamSuggestion[]>>>;
   getModels: () => Promise<AxiosResponse<string[]>>;
@@ -90,10 +96,11 @@ export interface TeamsApi {
 
 export const teamsApi: TeamsApi = {
   // Balance teams (primary feature!)
-  balance: (playerIds: number[], topN = 10) => {
+  balance: (playerIds: number[], topN = 10, mapName?: string) => {
     return apiClient.post<TeamSuggestion[]>('/teams/balance', {
       player_ids: playerIds,
-      top_n: topN
+      top_n: topN,
+      map_name: mapName
     });
   },
 
@@ -102,15 +109,6 @@ export const teamsApi: TeamsApi = {
     return apiClient.post<TeamSuggestion[]>('/teams/quick-balance', {
       player_ids: playerIds,
       top_n: 1
-    });
-  },
-
-  // Balance with impact consideration
-  balanceWithImpact: (playerIds: number[], topN = 10, impactWeight = 0.5) => {
-    return apiClient.post<TeamSuggestion[]>('/teams/balance-with-impact', {
-      player_ids: playerIds,
-      top_n: topN,
-      impact_weight: impactWeight
     });
   },
 
@@ -176,6 +174,9 @@ export interface ReplaysApi {
   setManualWinner: (uploadId: number, winnerTeam: number) => Promise<AxiosResponse<ReplayUploadResponse>>;
 }
 
+// Extended timeout for upload operations (120 seconds)
+const UPLOAD_TIMEOUT = 120000;
+
 export const replaysApi: ReplaysApi = {
   // Upload single replay
   upload: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => {
@@ -186,6 +187,7 @@ export const replaysApi: ReplaysApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: UPLOAD_TIMEOUT,
       onUploadProgress
     });
   },
@@ -199,6 +201,7 @@ export const replaysApi: ReplaysApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: UPLOAD_TIMEOUT,
       onUploadProgress
     });
   },

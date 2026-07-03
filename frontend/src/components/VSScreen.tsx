@@ -12,6 +12,7 @@ import {
   Badge,
   Button,
   useColorModeValue,
+  Tooltip,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { formatMMR, getRaceColor } from '../utils/formatting';
@@ -24,12 +25,14 @@ interface TeamPlayerInfo {
   name: string;
   mmr: number;
   race: string;
+  impact_score?: number;
 }
 
 interface TeamData {
   players: TeamPlayerInfo[];
   totalMMR: number;
   winProbability?: number;
+  synergyBonus?: number;
 }
 
 interface MatchInfo {
@@ -43,6 +46,7 @@ export interface VSScreenProps {
   matchInfo?: MatchInfo;
   winner?: 1 | 2 | null;
   onViewDetails?: () => void;
+  isPrediction?: boolean;
 }
 
 // =============================================================================
@@ -76,23 +80,21 @@ const getRaceIcon = (race: string): string => {
 
 const pulseGlow = keyframes`
   0%, 100% {
-    box-shadow: 0 0 20px rgba(255, 140, 26, 0.4), 0 0 40px rgba(255, 140, 26, 0.2);
+    box-shadow: 0 0 10px rgba(255, 140, 26, 0.1);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 30px rgba(255, 140, 26, 0.6), 0 0 60px rgba(255, 140, 26, 0.3);
-    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(255, 140, 26, 0.2);
+    transform: scale(1.01);
   }
 `;
 
 const swordGlow = keyframes`
   0%, 100% {
-    text-shadow: 0 0 20px rgba(255, 140, 26, 0.8), 0 0 40px rgba(255, 140, 26, 0.4);
-    filter: brightness(1);
+    text-shadow: 0 0 5px rgba(255, 140, 26, 0.2);
   }
   50% {
-    text-shadow: 0 0 30px rgba(255, 140, 26, 1), 0 0 60px rgba(255, 140, 26, 0.6);
-    filter: brightness(1.2);
+    text-shadow: 0 0 10px rgba(255, 140, 26, 0.4);
   }
 `;
 
@@ -139,8 +141,6 @@ interface PlayerRowProps {
 }
 
 const PlayerRow: React.FC<PlayerRowProps> = ({ player, isWinner, side, index }) => {
-  const raceBgColor = getRaceColor(player.race);
-
   const rowContent = (
     <HStack
       spacing={3}
@@ -148,22 +148,6 @@ const PlayerRow: React.FC<PlayerRowProps> = ({ player, isWinner, side, index }) 
       w="100%"
       animation={`${side === 'left' ? slideInLeft : slideInRight} 0.4s ease-out ${index * 0.1}s both`}
     >
-      {side === 'right' && (
-        <Badge
-          bg={`${raceBgColor}.500`}
-          color={player.race === 'Protoss' ? 'gray.900' : 'white'}
-          fontSize="sm"
-          fontWeight="bold"
-          px={2}
-          py={1}
-          borderRadius="md"
-          minW="28px"
-          textAlign="center"
-        >
-          {getRaceIcon(player.race)}
-        </Badge>
-      )}
-
       <Text
         fontSize="md"
         fontWeight="semibold"
@@ -183,22 +167,6 @@ const PlayerRow: React.FC<PlayerRowProps> = ({ player, isWinner, side, index }) 
       >
         {formatMMR(player.mmr)}
       </Text>
-
-      {side === 'left' && (
-        <Badge
-          bg={`${raceBgColor}.500`}
-          color={player.race === 'Protoss' ? 'gray.900' : 'white'}
-          fontSize="sm"
-          fontWeight="bold"
-          px={2}
-          py={1}
-          borderRadius="md"
-          minW="28px"
-          textAlign="center"
-        >
-          {getRaceIcon(player.race)}
-        </Badge>
-      )}
     </HStack>
   );
 
@@ -212,7 +180,13 @@ interface TeamPanelProps {
   side: 'left' | 'right';
 }
 
-const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side }) => {
+const TeamPanel: React.FC<TeamPanelProps & { isPrediction?: boolean }> = ({ 
+  team, 
+  teamNumber, 
+  isWinner, 
+  side,
+  isPrediction 
+}) => {
   const bgColor = useColorModeValue('gray.800', 'space.800');
   const borderColor = isWinner ? 'shield.500' : 'whiteAlpha.200';
 
@@ -247,26 +221,31 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
         },
       } : {}}
     >
-      {/* Winner Crown */}
+      {/* Winner/Favored Crown */}
       {isWinner && (
         <Box
           position="absolute"
-          top="-12px"
+          top="-8px"
           left="50%"
           transform="translateX(-50%)"
-          fontSize="xs"
-          fontWeight="bold"
+          fontSize="8px"
+          fontWeight="black"
           fontFamily="heading"
-          px={3}
-          py={1}
-          bg="shield.500"
-          color="space.900"
-          borderRadius="md"
-          boxShadow="0 3px 12px rgba(245, 158, 11, 0.6)"
+          px={1.5}
+          py={0.5}
+          bg={isPrediction ? 'rgba(45, 55, 72, 0.8)' : 'shield.500'}
+          color={isPrediction ? 'gray.400' : 'space.900'}
+          borderRadius="sm"
+          boxShadow={isPrediction ? 'none' : '0 3px 12px rgba(245, 158, 11, 0.4)'}
+          border={isPrediction ? '1px solid' : 'none'}
+          borderColor="whiteAlpha.200"
           zIndex={2}
           whiteSpace="nowrap"
+          textTransform="uppercase"
+          letterSpacing="widest"
+          opacity={isPrediction ? 0.8 : 1}
         >
-          🏆 WINNER
+          {isPrediction ? 'Advantage' : 'Winner'}
         </Box>
       )}
 
@@ -301,38 +280,47 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
         {/* Team Stats */}
         <Box
           w="100%"
-          pt={3}
+          pt={2}
           borderTop="1px solid"
           borderColor="whiteAlpha.200"
         >
           <HStack justify={side === 'left' ? 'flex-end' : 'flex-start'} spacing={4}>
             <VStack spacing={0} align={side === 'left' ? 'flex-end' : 'flex-start'}>
-              <Text fontSize="xs" color="gray.500" letterSpacing="wider">
-                Total MMR
+              <Text fontSize="10px" color="gray.500" fontWeight="black" textTransform="uppercase">
+                Avg MMR
               </Text>
               <Text
-                fontSize="lg"
+                fontSize="md"
                 fontWeight="bold"
                 fontFamily="mono"
                 color={isWinner ? 'shield.400' : 'gray.200'}
               >
-                {formatMMR(team.totalMMR)}
+                {formatMMR(team.totalMMR / team.players.length)}
               </Text>
             </VStack>
 
             {team.winProbability !== undefined && (
               <VStack spacing={0} align={side === 'left' ? 'flex-end' : 'flex-start'}>
-                <Text fontSize="xs" color="gray.500" letterSpacing="wider">
+                <Text fontSize="10px" color="gray.500" fontWeight="black" textTransform="uppercase">
                   Win Prob
                 </Text>
-                <Text
-                  fontSize="lg"
-                  fontWeight="bold"
-                  fontFamily="mono"
-                  color={team.winProbability >= 50 ? 'shield.400' : 'gray.400'}
-                >
-                  {team.winProbability.toFixed(1)}%
-                </Text>
+                <HStack spacing={1}>
+                  <Text
+                    fontSize="md"
+                    fontWeight="bold"
+                    fontFamily="mono"
+                    color={team.winProbability >= 50 ? 'shield.400' : 'gray.400'}
+                  >
+                    {team.winProbability.toFixed(1)}%
+                  </Text>
+                  {team.synergyBonus && team.synergyBonus > 0 && (
+                    <Tooltip label={`Chemistry Bonus: +${team.synergyBonus.toFixed(0)} Synergy points from historical pairings.`}>
+                      <Badge colorScheme="purple" variant="solid" fontSize="10px" px={1} borderRadius="full">
+                        +{team.synergyBonus.toFixed(0)}
+                      </Badge>
+                    </Tooltip>
+                  )}
+                </HStack>
               </VStack>
             )}
           </HStack>
@@ -413,6 +401,7 @@ const VSScreen: React.FC<VSScreenProps> = ({
   matchInfo,
   winner = null,
   onViewDetails,
+  isPrediction = false,
 }) => {
   const bgColor = useColorModeValue('gray.900', 'space.900');
 
@@ -456,12 +445,12 @@ const VSScreen: React.FC<VSScreenProps> = ({
         align="stretch"
         position="relative"
       >
-        {/* Team 1 Panel */}
         <TeamPanel
           team={team1}
           teamNumber={1}
           isWinner={winner === 1}
           side="left"
+          isPrediction={isPrediction}
         />
 
         {/* VS Divider */}
@@ -510,6 +499,7 @@ const VSScreen: React.FC<VSScreenProps> = ({
           teamNumber={2}
           isWinner={winner === 2}
           side="right"
+          isPrediction={isPrediction}
         />
       </Flex>
 

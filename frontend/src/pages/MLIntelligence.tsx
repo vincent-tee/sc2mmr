@@ -31,6 +31,7 @@ import {
   Circle,
   Flex,
   Spacer,
+  Divider,
 } from '@chakra-ui/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -157,7 +158,7 @@ const MLIntelligence: React.FC = () => {
   const getFeatureLabel = (key: string) => factorGlossary[key]?.label || key.replace(/_/g, ' ').replace('diff', '').trim().toUpperCase();
 
   if (accuracyLoading || statusLoading) {
-    return <LoadingState message="Analyzing neural pathways..." />;
+    return <LoadingState message="Crunching the match data..." />;
   }
 
   const shapFeatures = shapData?.features || [];
@@ -175,7 +176,7 @@ const MLIntelligence: React.FC = () => {
   })() : [];
 
   return (
-    <Box position="relative" minH="100vh" pb={10} bg="space.900">
+    <Box position="relative" minH="100vh" pb={10}>
       <Container maxW="container.xl" pt={8}>
         <VStack spacing={8} align="stretch">
           {/* Header */}
@@ -195,7 +196,7 @@ const MLIntelligence: React.FC = () => {
                 textTransform="uppercase"
                 letterSpacing="widest"
               >
-                {modelStatus?.xgboost?.is_trained ? 'NEURAL ACTIVE' : 'IDLE'}
+                {modelStatus?.xgboost?.is_trained ? 'MODEL ACTIVE' : 'IDLE'}
               </Badge>
               <Spacer />
               <Button 
@@ -223,7 +224,7 @@ const MLIntelligence: React.FC = () => {
               </Button>
             </HStack>
             <Text color="gray.300" fontSize="lg" maxW="container.md">
-              The neural core analyzes gameplay patterns to predict winners and adjust your rank based on performance.
+              The prediction model studies gameplay patterns to call winners and explain what actually decides your games.
             </Text>
           </Box>
 

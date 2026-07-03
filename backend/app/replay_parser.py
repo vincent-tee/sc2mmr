@@ -42,6 +42,7 @@ class ReplayData:
     duration_seconds: int
     players: List[PlayerData]
     replay_hash: str
+    game_fingerprint: str  # Identifies same game from different observers
 
 
 class ReplayParseError(Exception):
@@ -67,6 +68,38 @@ def calculate_replay_hash(file_path: str) -> str:
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
+
+def calculate_game_fingerprint(
+    map_name: str,
+    played_at: datetime,
+    player_names: List[str],
+) -> str:
+    """
+    Calculate a game fingerprint to identify the same game from different observers.
+
+    This fingerprint is based on game-identifying fields that are the same
+    regardless of when each player left the game:
+    - Map name (normalized to lowercase)
+    - Game start time (rounded to the minute)
+    - Sorted player names (normalized to lowercase)
+
+    Returns a SHA256 hash of these combined fields.
+    """
+    # Normalize map name
+    normalized_map = map_name.lower().strip()
+
+    # Round timestamp to the minute (ignore seconds for slight variations)
+    rounded_time = played_at.replace(second=0, microsecond=0).isoformat()
+
+    # Sort and normalize player names
+    sorted_players = sorted([name.lower().strip() for name in player_names])
+
+    # Combine into fingerprint string
+    fingerprint_data = f"{normalized_map}|{rounded_time}|{','.join(sorted_players)}"
+
+    # Hash the fingerprint
+    return hashlib.sha256(fingerprint_data.encode()).hexdigest()
 
 
 def normalize_race_name(race_name: str) -> Race:
@@ -96,19 +129,27 @@ def normalize_race_name(race_name: str) -> Race:
     return Race.RANDOM
 
 
-def determine_game_mode(num_players: int) -> Optional[GameMode]:
-    """
-    Determine game mode based on number of players.
-    Only supports team games (2v2 and above).
-    """
-    mode_map = {
-        # 2 players = 1v1, not supported
-        4: GameMode.TWO_V_TWO,
-        6: GameMode.THREE_V_THREE,
-        8: GameMode.FOUR_V_FOUR,
-        10: GameMode.FIVE_V_FIVE,
-    }
-    return mode_map.get(num_players)
+def determine_game_mode(players: List[Any]) -> GameMode:
+    team_counts = {}
+    for p in players:
+        team_id = int(getattr(p, "team_id", 0))
+        team_counts[team_id] = team_counts.get(team_id, 0) + 1
+
+    if len(team_counts) != 2:
+        num_players = len(players)
+        if num_players == 2:
+            return GameMode.ONE_V_ONE
+        return GameMode.TWO_V_TWO
+
+    sizes = sorted(list(team_counts.values()), reverse=True)
+    mode_str = f"{sizes[0]}v{sizes[1]}"
+
+    try:
+        return GameMode(mode_str)
+    except ValueError:
+        if sum(sizes) <= 2:
+            return GameMode.ONE_V_ONE
+        return GameMode.TWO_V_TWO
 
 
 def parse_replay(
@@ -140,6 +181,20 @@ def parse_replay(
         # Extract players (both human and AI)
         all_players = getattr(replay, "players", [])
 
+        # Manually extract stats from events if sc2reader didn't populate p.stats
+        event_stats = {}
+        from sc2reader.events import PlayerStatsEvent
+
+        for event in getattr(replay, "events", []):
+            if isinstance(event, PlayerStatsEvent):
+                p_attr = getattr(event, "player", None)
+                if p_attr:
+                    event_stats[p_attr.pid] = {
+                        "supply": float(event.food_used),
+                        "minerals_collected": float(event.minerals_current),
+                        "vespene_collected": float(event.vespene_current),
+                    }
+
         players_data = []
         team_stats: Dict[int, Dict[str, float]] = {}
 
@@ -165,6 +220,16 @@ def parse_replay(
                 team_stats[team_id]["resources_current"] += float(
                     getattr(stats, "minerals_current", 0) or 0
                 ) + float(getattr(stats, "vespene_current", 0) or 0)
+            elif p.pid in event_stats:
+                # Fallback to manual event stats
+                stats = event_stats[p.pid]
+                team_stats[team_id]["supply"] += stats["supply"]
+                team_stats[team_id]["resources_collected"] += (
+                    stats["minerals_collected"] + stats["vespene_collected"]
+                )
+                team_stats[team_id]["resources_current"] += (
+                    stats["minerals_collected"] + stats["vespene_collected"]
+                )
 
         # Determine winners
         winners_determined = False
@@ -252,14 +317,18 @@ def parse_replay(
                 )
             )
 
+        # Calculate game fingerprint for same-game detection
+        player_names = [p.name for p in players_data]
+        game_fp = calculate_game_fingerprint(map_name, played_at, player_names)
+
         return ReplayData(
             played_at=played_at,
-            game_mode=determine_game_mode(len(getattr(replay, "players", [])))
-            or GameMode.TWO_V_TWO,
+            game_mode=determine_game_mode(all_players) or GameMode.TWO_V_TWO,
             map_name=str(map_name),
             duration_seconds=int(duration_seconds),
             players=players_data,
             replay_hash=calculate_replay_hash(file_path),
+            game_fingerprint=game_fp,
         )
     except Exception as e:
         if isinstance(e, WinnerDeterminationError):

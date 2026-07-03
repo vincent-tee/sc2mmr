@@ -27,7 +27,7 @@ import {
   MenuItem,
   Divider,
 } from '@chakra-ui/react';
-import { FiUsers, FiCheck, FiX, FiPlus, FiCpu, FiChevronDown, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiUsers, FiCheck, FiX, FiPlus, FiCpu, FiChevronDown, FiEdit2, FiTrash2, FiClock } from 'react-icons/fi';
 import PlayerCard from '@/components/PlayerCard';
 import TacticalCard from '@/components/TacticalCard';
 import type { Player } from '@/types/api';
@@ -44,6 +44,7 @@ interface TeamSelectorProps {
   onEditGuest?: (playerId: number, name: string, mmr: number) => void;
   onDeleteGuest?: (playerId: number) => void;
   onAddAI?: (difficulty: string, mmr: number) => void;
+  onSelectLastMatch?: () => void;
 }
 
 const TeamSelector: React.FC<TeamSelectorProps> = ({
@@ -56,14 +57,15 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
   onEditGuest,
   onDeleteGuest,
   onAddAI,
+  onSelectLastMatch,
 }) => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const [guestName, setGuestName] = useState('');
-  const [guestMMR, setGuestMMR] = useState(3500);
+  const [guestMMR, setGuestMMR] = useState(2500);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [editName, setEditName] = useState('');
-  const [editMMR, setEditMMR] = useState(3500);
+  const [editMMR, setEditMMR] = useState(2500);
   const [aiDifficulties, setAIDifficulties] = useState<Record<string, number>>({});
 
   // Identify guest players (negative IDs, not AI)
@@ -85,7 +87,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
     if (guestName.trim()) {
       onAddGuest(guestName, guestMMR);
       setGuestName('');
-      setGuestMMR(3500);
+      setGuestMMR(2500);
       onClose();
     }
   };
@@ -212,6 +214,16 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 size="sm"
                 variant="ghost"
                 colorScheme="brand"
+                onClick={onSelectLastMatch}
+                leftIcon={<FiClock />}
+                fontFamily="heading"
+              >
+                Last Match
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                colorScheme="brand"
                 onClick={onOpen}
                 leftIcon={<FiPlus />}
                 fontFamily="heading"
@@ -228,31 +240,28 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
               >
                 Clear
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onSelectAll}
-                fontFamily="heading"
-                leftIcon={<FiCheck />}
-                color="brand.400"
-                borderColor="brand.500"
-                _hover={{ bg: 'brand.500', color: 'gray.900' }}
-              >
-                Select All
-              </Button>
             </HStack>
           </HStack>
 
           <SimpleGrid columns={{ base: 2, md: 3, lg: 4, xl: 5 }} spacing={4}>
-            {players.map((player) => (
-              <PlayerCard
-                key={player.id}
-                player={player}
-                isSelected={selectedPlayers.some((p) => p.id === player.id)}
-                onClick={() => onTogglePlayer(player)}
-                size="lg"
-              />
-            ))}
+            {[...players]
+              .sort((a, b) => {
+                // Sort by last_played date descending
+                const dateA = a.last_played ? new Date(a.last_played).getTime() : 0;
+                const dateB = b.last_played ? new Date(b.last_played).getTime() : 0;
+                if (dateB !== dateA) return dateB - dateA;
+                // If same date or both null, sort by name
+                return a.name.localeCompare(b.name);
+              })
+              .map((player) => (
+                <PlayerCard
+                  key={player.id}
+                  player={player}
+                  isSelected={selectedPlayers.some((p) => p.id === player.id)}
+                  onClick={() => onTogglePlayer(player)}
+                  size="md"
+                />
+              ))}
           </SimpleGrid>
         </Box>
       </TacticalCard>
@@ -280,15 +289,15 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 <Text fontSize="xs" color="gray.500" mb={1} fontWeight="bold" fontFamily="heading" letterSpacing="wide">Starting MMR</Text>
                 <Input
                   type="number"
-                  placeholder="3500"
+                  placeholder="2500"
                   value={guestMMR}
-                  onChange={(e) => setGuestMMR(parseInt(e.target.value) || 3500)}
+                  onChange={(e) => setGuestMMR(parseInt(e.target.value) || 2500)}
                   bg="space.900"
                   border="none"
                   fontFamily="mono"
                 />
                 <Text fontSize="10px" color="gray.600" mt={2} textTransform="uppercase" letterSpacing="widest">
-                  Baseline is 3500 (Platinum). Adjust for player skill.
+                  Baseline is 2500 (Platinum). Adjust for player skill.
                 </Text>
               </Box>
             </VStack>
@@ -322,9 +331,9 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 <Text fontSize="xs" color="gray.500" mb={1} fontWeight="bold" fontFamily="heading" letterSpacing="wide">MMR</Text>
                 <Input
                   type="number"
-                  placeholder="3500"
+                  placeholder="2500"
                   value={editMMR}
-                  onChange={(e) => setEditMMR(parseInt(e.target.value) || 3500)}
+                  onChange={(e) => setEditMMR(parseInt(e.target.value) || 2500)}
                   bg="space.900"
                   border="none"
                   fontFamily="mono"

@@ -4,6 +4,7 @@ API endpoints for player statistics and management.
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from typing import List, Optional
 from datetime import datetime
 
@@ -20,14 +21,68 @@ import time
 router = APIRouter(prefix="/players", tags=["players"])
 
 
-def _player_to_response(p: "Player") -> "PlayerResponse":
-    """Convert a Player model to PlayerResponse."""
+def _calculate_recent_form(db: Session, player_id: int, num_games: int = 5) -> Optional[float]:
+    """Calculate recent form (win rate) from last N games for a single player."""
+    matches = (
+        db.query(MatchPlayer)
+        .join(Match)
+        .filter(MatchPlayer.player_id == player_id)
+        .order_by(desc(Match.played_at))
+        .limit(num_games)
+        .all()
+    )
+    if not matches:
+        return None
+    wins = sum(1 for mp in matches if mp.won)
+    return wins / len(matches)
+
+
+def _batch_recent_form(db: Session, player_ids: List[int], num_games: int = 5) -> dict:
+    """Batch-calculate recent form for multiple players — 2 queries total instead of N+1."""
+    if not player_ids:
+        return {}
+    from sqlalchemy import func, case
+    # For each player grab the last `num_games` MatchPlayer rows ordered by match date.
+    # We use a subquery with ROW_NUMBER to rank each player's matches by recency.
+    inner = (
+        db.query(
+            MatchPlayer.player_id,
+            MatchPlayer.won,
+            func.row_number()
+            .over(
+                partition_by=MatchPlayer.player_id,
+                order_by=desc(Match.played_at),
+            )
+            .label("rn"),
+        )
+        .join(Match, MatchPlayer.match_id == Match.id)
+        .filter(MatchPlayer.player_id.in_(player_ids))
+        .subquery()
+    )
+    rows = (
+        db.query(
+            inner.c.player_id,
+            func.count().label("total"),
+            func.sum(case((inner.c.won == True, 1), else_=0)).label("wins"),
+        )
+        .filter(inner.c.rn <= num_games)
+        .group_by(inner.c.player_id)
+        .all()
+    )
+    return {
+        row.player_id: row.wins / row.total if row.total else None
+        for row in rows
+    }
+
+
+def _player_to_response(p: "Player", recent_form: Optional[float] = None) -> "PlayerResponse":
     return PlayerResponse(
         id=p.id,
         name=p.name,
         mu=p.mu,
         sigma=p.sigma,
         mmr=p.mmr,
+        unified_mmr=p.unified_mmr,
         recency_weighted_mmr=p.recency_weighted_mmr,
         hybrid_mmr=p.hybrid_mmr,
         avg_pim=p.avg_pim,
@@ -39,6 +94,11 @@ def _player_to_response(p: "Player") -> "PlayerResponse":
         is_core_player=bool(p.is_core_player),
         is_ai=bool(p.is_ai),
         last_played=p.last_played,
+        recent_form=recent_form,
+        terran_games=p.terran_games,
+        protoss_games=p.protoss_games,
+        zerg_games=p.zerg_games,
+        random_games=p.random_games,
     )
 
 
@@ -51,10 +111,10 @@ class PlayerResponse(BaseModel):
     mu: float
     sigma: float
     mmr: float
-    recency_weighted_mmr: Optional[float]
-    # Hybrid MMR System (SPEC-ML-001)
-    hybrid_mmr: Optional[float] = None  # Performance-adjusted MMR
-    avg_pim: Optional[float] = None  # Average Performance Impact Modifier
+    unified_mmr: Optional[float] = None
+    recency_weighted_mmr: Optional[float] = None
+    hybrid_mmr: Optional[float] = None
+    avg_pim: Optional[float] = None
     total_games: int
     wins: int
     losses: int
@@ -63,6 +123,11 @@ class PlayerResponse(BaseModel):
     is_core_player: bool
     is_ai: bool = False
     last_played: Optional[datetime]
+    recent_form: Optional[float] = None  # Win rate from last 5 games (0.0-1.0)
+    terran_games: int = 0
+    protoss_games: int = 0
+    zerg_games: int = 0
+    random_games: int = 0
 
     class Config:
         from_attributes = True
@@ -76,6 +141,7 @@ class PlayerDetailResponse(BaseModel):
     mu: float
     sigma: float
     mmr: float
+    unified_mmr: Optional[float] = None
     recency_weighted_mmr: Optional[float]
     # Hybrid MMR System (SPEC-ML-001)
     hybrid_mmr: Optional[float] = None
@@ -104,6 +170,25 @@ class PlayerRankingResponse(BaseModel):
         from_attributes = True
 
 
+class MMRHistoryEntry(BaseModel):
+    """Entry for MMR history chart."""
+
+    match_id: int
+    played_at: datetime
+    mmr: float
+    mmr_change: float
+    won: bool
+    map_name: str
+
+
+class PlayerHistoryResponse(BaseModel):
+    """Response model for player MMR history."""
+
+    player_id: int
+    player_name: str
+    history: List[MMRHistoryEntry]
+
+
 class CreatePlayerRequest(BaseModel):
     """Request to create a new player."""
 
@@ -119,56 +204,36 @@ class CalibratePlayerRequest(BaseModel):
 
 
 @router.get("/", response_model=List[PlayerResponse])
-def get_players(core_only: bool = False, db: Session = Depends(get_db)):
-    """
-    Get all players.
-
-    Args:
-        core_only: If True, only return core players
-        db: Database session
-
-    Returns:
-        List of PlayerResponse objects
-    """
-    query = db.query(Player)
-
+def get_all_players(core_only: bool = False, min_games: int = 0, db: Session = Depends(get_db)):
+    query = db.query(Player).filter(Player.is_ai == 0)
     if core_only:
         query = query.filter(Player.is_core_player == 1)
+    if min_games > 0:
+        query = query.filter(Player.total_games >= min_games)
 
-    players = query.order_by(Player.name).all()
+    players = query.all()
 
-    return [_player_to_response(p) for p in players]
+    # Batch recent_form: single SQL query for all players instead of N+1
+    player_ids = [p.id for p in players]
+    recent_form_map = _batch_recent_form(db, player_ids)
+
+    return [_player_to_response(p, recent_form=recent_form_map.get(p.id)) for p in players]
 
 
 @router.get("/rankings", response_model=List[PlayerRankingResponse])
 def get_player_rankings(
     min_games: int = 5, core_only: bool = False, db: Session = Depends(get_db)
 ):
-    """
-    Get player rankings by MMR.
-
-    Args:
-        min_games: Minimum games played to be ranked
-        core_only: If True, only rank core players
-        db: Database session
-
-    Returns:
-        List of PlayerRankingResponse objects sorted by MMR
-    """
-    query = db.query(Player).filter(Player.total_games >= min_games)
+    query = db.query(Player).filter(Player.total_games >= min_games, Player.is_ai == 0)
 
     if core_only:
         query = query.filter(Player.is_core_player == 1)
 
-    # Sort by Recency-Weighted MMR (Default) or Base MMR
-    players = query.order_by(desc(Player.recency_weighted_mmr)).all()
+    players = query.order_by(desc(Player.unified_mmr)).all()
 
     return [
-        PlayerRankingResponse(
-            rank=idx + 1,
-            player=_player_to_response(p),
-        )
-        for idx, p in enumerate(players)
+        PlayerRankingResponse(rank=i + 1, player=_player_to_response(p))
+        for i, p in enumerate(players)
     ]
 
 
@@ -223,12 +288,6 @@ def get_player_details(
     recent_matches = []
     for mp in match_players:
         if mp.match:
-            # Use centralized display MMR formula for consistency with Player.mmr
-            from ..rating_system import RatingSystem
-
-            mmr_before = RatingSystem.calculate_display_mmr(mp.mu_before)
-            mmr_after = RatingSystem.calculate_display_mmr(mp.mu_after)
-
             recent_matches.append(
                 {
                     "match_id": mp.match.id,
@@ -238,9 +297,9 @@ def get_player_details(
                     "race": mp.race.value,
                     "won": bool(mp.won),
                     "team_number": mp.team_number,
-                    "mmr_before": round(mmr_before, 1),
-                    "mmr_after": round(mmr_after, 1),
-                    "mmr_change": round(mmr_after - mmr_before, 1),
+                    "mmr_before": round(mp.mmr_before or 0, 1),
+                    "mmr_after": round(mp.mmr_after or 0, 1),
+                    "mmr_change": round((mp.mmr_after or 0) - (mp.mmr_before or 0), 1),
                 }
             )
 
@@ -250,6 +309,7 @@ def get_player_details(
         mu=player.mu,
         sigma=player.sigma,
         mmr=player.mmr,
+        unified_mmr=player.unified_mmr,
         recency_weighted_mmr=player.recency_weighted_mmr,
         hybrid_mmr=player.hybrid_mmr,
         avg_pim=player.avg_pim,
@@ -261,6 +321,51 @@ def get_player_details(
         last_played=player.last_played,
         race_stats=race_stats,
         recent_matches=recent_matches,
+    )
+
+
+@router.get("/{player_id}/history", response_model=PlayerHistoryResponse)
+def get_player_mmr_history(
+    player_id: int, limit: int = 50, db: Session = Depends(get_db)
+):
+    """
+    Get historical MMR data for a player to display on a chart.
+    """
+    player = db.query(Player).filter(Player.id == player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    from sqlalchemy.orm import joinedload
+
+    match_players = (
+        db.query(MatchPlayer)
+        .options(joinedload(MatchPlayer.match))
+        .filter(MatchPlayer.player_id == player_id)
+        .join(Match)
+        .order_by(Match.played_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    # Reverse so the chart plots left-to-right chronologically
+    match_players.reverse()
+
+    history = []
+    for mp in match_players:
+        if mp.match:
+            history.append(
+                MMRHistoryEntry(
+                    match_id=mp.match.id,
+                    played_at=mp.match.played_at,
+                    mmr=round(mp.mmr_after or 0, 1),
+                    mmr_change=round((mp.mmr_after or 0) - (mp.mmr_before or 0), 1),
+                    won=bool(mp.won),
+                    map_name=mp.match.map_name,
+                )
+            )
+
+    return PlayerHistoryResponse(
+        player_id=player.id, player_name=player.name, history=history
     )
 
 
@@ -726,10 +831,26 @@ def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
         .values(player_id=target_player.id)
     )
 
-    # Update synergies - need to handle both player1 and player2
-    from ..models import PlayerSynergy
+    from ..models import PlayerSynergy, PlayerAchievement, PlayerRivalry
 
-    # Count and update synergies as player1
+    db.execute(
+        update(PlayerAchievement)
+        .where(PlayerAchievement.player_id == source_player.id)
+        .values(player_id=target_player.id)
+    )
+
+    db.execute(
+        update(PlayerRivalry)
+        .where(PlayerRivalry.player1_id == source_player.id)
+        .values(player1_id=target_player.id)
+    )
+
+    db.execute(
+        update(PlayerRivalry)
+        .where(PlayerRivalry.player2_id == source_player.id)
+        .values(player2_id=target_player.id)
+    )
+
     synergies_p1_count = (
         db.query(PlayerSynergy)
         .filter(PlayerSynergy.player1_id == source_player.id)
@@ -838,3 +959,22 @@ def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
         matches_transferred=matches_transferred,
         synergies_updated=synergies_updated,
     )
+
+
+class CoachingResponse(BaseModel):
+    player_id: int
+    player_name: str
+    tips: List[str]
+
+
+@router.get("/{player_id}/coaching", response_model=CoachingResponse)
+def get_player_coaching(player_id: int, db: Session = Depends(get_db)):
+    player = db.query(Player).filter(Player.id == player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    from ..services.coaching_service import CoachingService
+
+    tips = CoachingService.get_tips(player_id, db)
+
+    return CoachingResponse(player_id=player.id, player_name=player.name, tips=tips)

@@ -24,11 +24,13 @@ import {
   TabPanels,
   Tab,
   TabPanel,
+  useColorModeValue,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
 import { FiSearch, FiClock, FiAward, FiStar, FiActivity } from 'react-icons/fi';
 import { achievementsApi } from '../api/achievements';
+import PageHeader from '../components/PageHeader';
 import {
   Achievement,
   AchievementRarity,
@@ -274,23 +276,15 @@ const Achievements: React.FC = () => {
   const rarities: AchievementRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 
   return (
-    <Box bg="space.900" minH="100vh" py={8}>
-      <Container maxW="container.xl">
+    <Box minH="100vh" pb={16}>
+      <PageHeader
+        kicker="Trophy Case"
+        title="[Achievements]"
+        description="Badges of honor, shame, and everything in between."
+        stats={[{ label: 'achievements to earn', value: achievements?.length || 0 }]}
+      />
+      <Container maxW="container.xl" pt={8}>
         <VStack spacing={8} align="stretch">
-          {/* Header */}
-          <Box textAlign="center">
-            <Heading
-              size="2xl"
-              fontFamily="heading"
-              color="brand.400"
-              letterSpacing="wider"
-            >
-              🎖️ Achievements
-            </Heading>
-            <Text color="gray.500" mt={2}>
-              {achievements?.length || 0} achievements to earn
-            </Text>
-          </Box>
 
           <Tabs variant="soft-rounded" colorScheme="brand">
             <TabList justifyContent="center">

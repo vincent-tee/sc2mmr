@@ -53,6 +53,7 @@ import {
 } from 'react-icons/fi';
 import { playersApi, teamsApi } from '../api/endpoints';
 import LoadingState from '../components/LoadingState';
+import PageHeader from '../components/PageHeader';
 import type { Player, MatchPredictionResponse, SynergyInfo, TeamChemistry } from '@/types/api';
 
 // Design tokens
@@ -214,24 +215,14 @@ const LineupPredictor: React.FC = () => {
   }
 
   return (
-    <Box position="relative" minH="100vh" bg="space.900">
-      <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
+    <Box position="relative" minH="100vh" pb={16}>
+      <PageHeader
+        kicker="Crystal Ball"
+        title="Match [Predictor]"
+        description="Assemble two lineups and see who the model thinks takes it."
+      />
+      <Container maxW="container.xl" pt={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
-          <Box animation={`${slideInUp} 0.5s ease-out`} textAlign="center">
-            <Heading
-              size="2xl"
-              fontFamily="heading"
-              fontWeight="black"
-              letterSpacing="wider"
-              color="brand.400"
-              mb={2}
-            >
-              <Text as="span" className="emoji-font">🎯</Text> Match Predictor
-            </Heading>
-            <Text color="gray.400" fontSize="lg">
-              Assemble lineups to calculate win probability and synergy
-            </Text>
-          </Box>
 
           {/* Prediction Results */}
           {(prediction || predictionMutation.isPending) && (
@@ -632,7 +623,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
 
   const totalMMR = teamPlayers.reduce((sum, id) => {
     const player = getPlayerById(id);
-    return sum + (player?.recency_weighted_mmr || player?.mmr || 0);
+    return sum + (player?.mmr || 0);
   }, 0);
 
   const avgMMR = teamPlayers.length > 0 ? totalMMR / teamPlayers.length : 0;
@@ -727,7 +718,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                     </Text>
                     <HStack spacing={2}>
                       <Text fontSize="xs" color="gray.500" fontFamily="mono">
-                        {Math.round(player.recency_weighted_mmr || player.mmr)} MMR
+                        {Math.round(player.mmr)} MMR
                       </Text>
                       <Badge
                         colorScheme={player.win_rate >= 0.5 ? 'green' : 'red'}
@@ -775,7 +766,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
             >
               {availablePlayers.map((player) => (
                 <option key={player.id} value={player.id} style={{ background: '#1A202C' }}>
-                  {player.name} ({Math.round(player.recency_weighted_mmr || player.mmr)})
+                  {player.name} ({Math.round(player.mmr)})
                 </option>
               ))}
             </Select>
@@ -796,8 +787,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
         </VStack>
       </VStack>
     </Box>
-  );
-};
   );
 };
 

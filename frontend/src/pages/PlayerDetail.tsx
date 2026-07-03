@@ -50,13 +50,24 @@ import {
   FiTarget, 
   FiStar,
   FiZap,
-  FiClock
+  FiClock,
+  FiTrendingDown
 } from 'react-icons/fi';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip as RechartsTooltip, 
+  ResponsiveContainer,
+  AreaChart,
+  Area
+} from 'recharts';
 import { playersApi } from '../api/endpoints';
 import { achievementsApi } from '../api/achievements';
 import LoadingState from '../components/LoadingState';
 import RankBadge from '../components/RankBadge';
-import RaceBackground from '../components/RaceBackground';
 import { formatWinRate, formatDateOnly } from '../utils/formatting';
 import type { RecentMatch, PlayerDetail as PlayerDetailType } from '@/types/api';
 import { RARITY_COLORS, getRarityLabel } from '../types/achievements';
@@ -93,6 +104,16 @@ const PlayerDetail: React.FC = () => {
     queryKey: ['player-achievements', playerId],
     queryFn: async () => {
       const response = await achievementsApi.getPlayerAchievements(parseInt(playerId!, 10), true);
+      return response.data;
+    },
+    enabled: !!playerId,
+  });
+
+  // Fetch player MMR history
+  const { data: historyData } = useQuery({
+    queryKey: ['player-history', playerId],
+    queryFn: async () => {
+      const response = await playersApi.getHistory(parseInt(playerId!, 10));
       return response.data;
     },
     enabled: !!playerId,
@@ -152,18 +173,7 @@ const PlayerDetail: React.FC = () => {
   const favoriteRace = getFavoriteRace();
 
   return (
-    <RaceBackground
-      race={favoriteRace.toLowerCase()}
-      intensity="subtle"
-      showRaceIcon={true}
-      iconPosition="center"
-      iconSize={200}
-      iconOpacity={0.05}
-      hoverGlow={false}
-      borderStyle="none"
-      showPattern={true}
-      minH="100vh"
-    >
+    <Box minH="100vh">
       <Container maxW="container.xl" py={8}>
         <VStack spacing={6} align="stretch">
           {/* Back Button */}
@@ -224,24 +234,91 @@ const PlayerDetail: React.FC = () => {
 
               <VStack align="end" spacing={3}>
                 <RankBadge
-                  mmr={playerData.recency_weighted_mmr || playerData.mmr}
+                  mmr={playerData.mmr}
                   size="lg"
                   showMMR={true}
                   showIcon={true}
                 />
-                {playerData.recency_weighted_mmr && playerData.mmr !== playerData.recency_weighted_mmr && (
-                  <Text fontSize="sm" color="gray.500">
-                    Base MMR: {Math.round(playerData.mmr)}
-                  </Text>
-                )}
               </VStack>
             </HStack>
           </Box>
 
+          {/* MMR History Chart */}
+          <Box bg={cardBg} p={6} borderRadius="2xl" border="3px solid" borderColor={borderColor} boxShadow={brandShadow} w="100%">
+            <HStack justify="space-between" mb={6}>
+              <VStack align="start" spacing={0}>
+                <Heading size="md" fontFamily="heading" color="gray.100" textTransform="uppercase" letterSpacing="widest">
+                  Performance Trajectory
+                </Heading>
+                <Text fontSize="xs" color="gray.500">MMR over last 50 matches — same rating as the rank badge</Text>
+              </VStack>
+              {historyData?.history && historyData.history.length >= 2 && (
+                <Badge colorScheme={(historyData.history[historyData.history.length-1].mmr >= historyData.history[0].mmr) ? 'green' : 'red'} fontSize="xs" px={3} py={1}>
+                  {(historyData.history[historyData.history.length-1].mmr - historyData.history[0].mmr) >= 0 ? '+' : ''}
+                  {Math.round(historyData.history[historyData.history.length-1].mmr - historyData.history[0].mmr)} Total Swing
+                </Badge>
+              )}
+            </HStack>
+            
+            <Box h="300px" w="100%">
+              {historyData?.history && historyData.history.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={historyData.history}>
+                    <defs>
+                      <linearGradient id="colorMmr" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#00FF88" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#00FF88" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" vertical={false} />
+                    <XAxis 
+                      dataKey="match_id" 
+                      hide 
+                    />
+                    <YAxis
+                      domain={['dataMin - 20', 'dataMax + 20']}
+                      stroke="#718096"
+                      fontSize={12}
+                      tickFormatter={(value) => `${value}`}
+                    />
+                    <RechartsTooltip 
+                      contentStyle={{ backgroundColor: '#1A202C', borderColor: '#2D3748', borderRadius: '8px' }}
+                      itemStyle={{ color: '#00FF88' }}
+                      labelStyle={{ color: '#A0AEC0' }}
+                      formatter={(value: any) => [Math.round(value), 'MMR']}
+                      labelFormatter={(label, payload) => {
+                        if (payload && payload[0]) {
+                          return `Match #${payload[0].payload.match_id} on ${payload[0].payload.map_name}`;
+                        }
+                        return label;
+                      }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="mmr" 
+                      stroke="#00FF88" 
+                      strokeWidth={3}
+                      fillOpacity={1} 
+                      fill="url(#colorMmr)" 
+                      animationDuration={1500}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <Flex h="100%" align="center" justify="center" direction="column">
+                  <Icon as={FiActivity} boxSize={8} color="gray.700" mb={2} />
+                  <Text color="gray.600">Insufficient data for trajectory mapping</Text>
+                </Flex>
+              )}
+            </Box>
+          </Box>
+
+
           {/* Statistics Grid */}
+
           <Box>
             <Heading size="md" fontFamily="heading" color="gray.300" mb={4}>
-              <Text as="span" className="emoji-font">📊</Text> Player Stats
+              Player Stats
             </Heading>
             <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }} gap={4}>
               <GridItem>
@@ -352,7 +429,7 @@ const PlayerDetail: React.FC = () => {
             p={6}
           >
             <Heading size="md" fontFamily="heading" color="gray.300" mb={6}>
-              <Text as="span" className="emoji-font">📊</Text> Performance & Career
+              Performance &amp; Career
             </Heading>
             
             <Tabs variant="unstyled">
@@ -417,7 +494,7 @@ const PlayerDetail: React.FC = () => {
                 </TabPanel>
                 
                 <TabPanel p={0} pt={2}>
-                  {!achievementData || achievementData.awarded.length === 0 ? (
+                  {!achievementData?.awarded?.length ? (
                     <Box py={8} textAlign="center" bg="space.900" borderRadius="xl" border="2px dashed" borderColor="space.700">
                       <Icon as={FiAward} boxSize={10} color="gray.700" mb={2} />
                       <Text color="gray.600">No trophies earned yet. Start playing to unlock achievements!</Text>
@@ -431,7 +508,7 @@ const PlayerDetail: React.FC = () => {
                          </Stat>
                          <Stat bg="space.900" p={3} borderRadius="lg" border="1px solid" borderColor="whiteAlpha.100">
                            <StatLabel fontSize="xs" color="gray.500">Unlocked</StatLabel>
-                           <StatNumber fontSize="xl" color="accent.400">{achievementData.awarded.length}</StatNumber>
+                           <StatNumber fontSize="xl" color="accent.400">{achievementData?.awarded?.length || 0}</StatNumber>
                          </Stat>
                       </HStack>
                       
@@ -489,7 +566,7 @@ const PlayerDetail: React.FC = () => {
             <VStack align="stretch" spacing={4}>
               <HStack justify="space-between" align="center">
                 <Heading size="md" fontFamily="heading" color="gray.300">
-                  <Text as="span" className="emoji-font">🕐</Text> Recent Matches
+                  Recent Matches
                   {playerData.recent_matches && playerData.recent_matches.length > 0 && (
                     <Badge ml={3} bg="space.700" color="brand.400" fontSize="sm" px={2} py={1} borderRadius="md">
                       {matchesOffset + 1}-{matchesOffset + playerData.recent_matches.length} of {totalGames}
@@ -629,7 +706,6 @@ const PlayerDetail: React.FC = () => {
                   p={6}
                   textAlign="center"
                 >
-                  <Text fontSize="2xl" mb={2} className="emoji-font">🎮</Text>
                   <Text color="gray.500">No matches found for this page</Text>
                 </Box>
               )}
@@ -637,7 +713,7 @@ const PlayerDetail: React.FC = () => {
           </Box>
         </VStack>
       </Container>
-    </RaceBackground>
+    </Box>
   );
 };
 

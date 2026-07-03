@@ -14,7 +14,8 @@ export interface Player {
   name: string;
   mu: number;
   sigma: number;
-  mmr: number;
+  mmr: number;  // Display MMR — the rating of record (1000 + 100*mu - 200*sigma)
+  unified_mmr: number | null;  // Legacy rating, queued for retirement (Phase 6); do not use for display/sort
   hybrid_mmr: number | null;
   avg_pim: number | null;
   recency_weighted_mmr: number | null;
@@ -38,6 +39,7 @@ export interface Player {
   avg_aggression_score: number;
   created_at: string;
   last_played: string | null;
+  recent_form: number | null;  // Win rate from last 5 games (0.0-1.0)
 }
 
 export interface PlayerCreate {
@@ -213,6 +215,7 @@ export interface TeamPlayer {
   id: number;
   name: string;
   mmr: number;
+  unified_mmr: number | null;
   recency_weighted_mmr: number | null;
   win_rate: number;
   total_games: number;
@@ -229,8 +232,11 @@ export interface TeamSuggestion {
   win_probability_team_2: number;
   fairness_rating: string;
   mmr_difference: number;
+  match_quality: number;
   impact_balance_score?: number;
   impact_difference?: number;
+  total_synergy?: number;
+  tactical_forecast?: any;
 }
 
 export interface TeamBalanceRequest {

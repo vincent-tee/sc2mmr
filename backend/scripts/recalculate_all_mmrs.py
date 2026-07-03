@@ -28,6 +28,8 @@ from app.models import (
 from app.config import settings
 from app.rating_system import RatingSystem
 from app.services.pi_calculator import PICalculator
+from app.services.handicap_mmr_service import HandicapCorrectedMMRService
+from app.services.ml_features_service import MLFeaturesService
 import logging
 
 logging.basicConfig(
@@ -155,8 +157,12 @@ def recalculate():
                     mu_after, sigma_after = new_rating.mu, new_rating.sigma
 
                     # 2. Calculate MMR change (display scale)
-                    mmr_before = RatingSystem.calculate_display_mmr(mu_before)
-                    mmr_after = RatingSystem.calculate_display_mmr(mu_after)
+                    mmr_before = RatingSystem.calculate_display_mmr(
+                        mu_before, sigma_before
+                    )
+                    mmr_after = RatingSystem.calculate_display_mmr(
+                        mu_after, sigma_after
+                    )
                     raw_change = mmr_after - mmr_before
 
                     # 3. Create MatchPlayer
@@ -170,6 +176,8 @@ def recalculate():
                         sigma_before=sigma_before,
                         mu_after=mu_after,
                         sigma_after=sigma_after,
+                        mmr_before=mmr_before,
+                        mmr_after=mmr_after,
                     )
                     session.add(mp)
                     session.flush()  # Get mp.id
@@ -194,6 +202,7 @@ def recalculate():
                     # Update Player stats
                     player.mu = mu_after
                     player.sigma = sigma_after
+                    player.mmr = mmr_after
                     player.hybrid_mmr = player_ratings[pid]["hybrid"]
                     player.total_games += 1
                     if p_data["won"]:
@@ -213,6 +222,11 @@ def recalculate():
                     if not player.last_played or match.played_at > player.last_played:
                         player.last_played = match.played_at
 
+            try:
+                MLFeaturesService.calculate_and_save_predictions(session, match.id)
+            except Exception as e:
+                logger.warning(f"ML prediction failed for match {match.id}: {e}")
+
             if idx % 50 == 0:
                 logger.info(f"Processed {idx}/{len(matches)} matches")
                 session.commit()
@@ -230,6 +244,9 @@ def recalculate():
                 .scalar()
             )
             p.avg_pim = avg_pim or 0.0
+
+        logger.info("Step 6: Updating Handicap-Corrected and Unified MMR...")
+        HandicapCorrectedMMRService.update_all_players(session)
 
         session.commit()
         logger.info("Done! All ratings recalculated.")

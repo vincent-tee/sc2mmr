@@ -74,24 +74,23 @@ class RatingSystem:
         return trueskill.Rating(mu=mu, sigma=sigma)
 
     @staticmethod
-    def calculate_display_mmr(mu: float) -> float:
+    def calculate_display_mmr(mu: float, sigma: float) -> float:
         """
-        Calculate MMR for display purposes (player cards, leaderboards).
+        Calculate the official display MMR used everywhere in the system.
 
-        Formula: MMR = 1000 + 100*mu
+        Formula: 1000 + (100 * mu) - (200 * sigma)
 
-        This formula does NOT include sigma (uncertainty) because:
-        - Inactive players shouldn't have their displayed rating penalized
-        - Provides a stable, intuitive rating that only changes with match results
-        - New players start at ~3500 MMR (mu=25)
-
-        Args:
-            mu: Skill estimate from TrueSkill
-
-        Returns:
-            Display MMR value (typically 1500-4500 range)
+        The sigma penalty is settled doctrine (owner decision 2026-07-02):
+        it measured +2.3pp match-prediction accuracy over the no-sigma
+        formula (McNemar p=0.031, n=860; see
+        docs/superpowers/campaign/rating-consolidation-log.md Session 2),
+        besides ensuring ranks are 'earned' through games.
         """
-        return RatingSystem.MMR_BASE + (RatingSystem.MMR_MU_MULTIPLIER * mu)
+        return (
+            RatingSystem.MMR_BASE
+            + (RatingSystem.MMR_MU_MULTIPLIER * mu)
+            - (200.0 * sigma)
+        )
 
     @staticmethod
     def get_conservative_rating(mu: float, sigma: float) -> float:
@@ -382,7 +381,7 @@ class RatingSystem:
 
             # Use post-match display MMR for this calculation
             # Using display MMR (not conservative) for consistency with Player.mmr
-            match_mmr = RatingSystem.calculate_display_mmr(mp.mu_after)
+            match_mmr = RatingSystem.calculate_display_mmr(mp.mu_after, mp.sigma_after)
 
             weighted_mmr_sum += match_mmr * weight
             total_weight += weight
@@ -413,6 +412,8 @@ class RatingSystem:
         4. Updates player statistics
         5. Creates MatchPlayer records
         """
+        from .services.player_service import PlayerService
+
         # Organize players by team
         team_1_players = [p for p in replay_data.players if p.team == 1]
         team_2_players = [p for p in replay_data.players if p.team == 2]
@@ -421,22 +422,30 @@ class RatingSystem:
         team_1_db = []
         team_2_db = []
 
+        # Get game mode and player count for alias resolution
+        game_mode = match.game_mode
+        num_players = len(replay_data.players)
+
         for player_data in team_1_players:
-            player = db.query(Player).filter(Player.name == player_data.name).first()
+            # Resolve canonical name (handle aliases like barcodes)
+            resolved_name = PlayerService.resolve_canonical_name(
+                db, player_data.name, game_mode, num_players
+            )
+            player = db.query(Player).filter(Player.name == resolved_name).first()
             if not player:
-                player = Player(
-                    name=player_data.name, is_ai=1 if player_data.is_ai else 0
-                )
+                player = Player(name=resolved_name, is_ai=1 if player_data.is_ai else 0)
                 db.add(player)
                 db.flush()
             team_1_db.append((player, player_data))
 
         for player_data in team_2_players:
-            player = db.query(Player).filter(Player.name == player_data.name).first()
+            # Resolve canonical name (handle aliases like barcodes)
+            resolved_name = PlayerService.resolve_canonical_name(
+                db, player_data.name, game_mode, num_players
+            )
+            player = db.query(Player).filter(Player.name == resolved_name).first()
             if not player:
-                player = Player(
-                    name=player_data.name, is_ai=1 if player_data.is_ai else 0
-                )
+                player = Player(name=resolved_name, is_ai=1 if player_data.is_ai else 0)
                 db.add(player)
                 db.flush()
             team_2_db.append((player, player_data))
@@ -504,6 +513,12 @@ class RatingSystem:
                     sigma_before=old_rating.sigma,
                     mu_after=new_rating.mu,
                     sigma_after=new_rating.sigma,
+                    mmr_before=RatingSystem.calculate_display_mmr(
+                        old_rating.mu, old_rating.sigma
+                    ),
+                    mmr_after=RatingSystem.calculate_display_mmr(
+                        new_rating.mu, new_rating.sigma
+                    ),
                 )
                 db.add(match_player)
             else:
@@ -511,10 +526,19 @@ class RatingSystem:
                 match_player.sigma_before = old_rating.sigma
                 match_player.mu_after = new_rating.mu
                 match_player.sigma_after = new_rating.sigma
+                match_player.mmr_before = RatingSystem.calculate_display_mmr(
+                    old_rating.mu, old_rating.sigma
+                )
+                match_player.mmr_after = RatingSystem.calculate_display_mmr(
+                    new_rating.mu, new_rating.sigma
+                )
 
             # Update player
             player.mu = new_rating.mu
             player.sigma = new_rating.sigma
+            player.mmr = RatingSystem.calculate_display_mmr(
+                new_rating.mu, new_rating.sigma
+            )
             player.total_games += 1
             if player_data.won:
                 player.wins += 1
@@ -550,6 +574,12 @@ class RatingSystem:
                     sigma_before=old_rating.sigma,
                     mu_after=new_rating.mu,
                     sigma_after=new_rating.sigma,
+                    mmr_before=RatingSystem.calculate_display_mmr(
+                        old_rating.mu, old_rating.sigma
+                    ),
+                    mmr_after=RatingSystem.calculate_display_mmr(
+                        new_rating.mu, new_rating.sigma
+                    ),
                 )
                 db.add(match_player)
             else:
@@ -557,10 +587,19 @@ class RatingSystem:
                 match_player.sigma_before = old_rating.sigma
                 match_player.mu_after = new_rating.mu
                 match_player.sigma_after = new_rating.sigma
+                match_player.mmr_before = RatingSystem.calculate_display_mmr(
+                    old_rating.mu, old_rating.sigma
+                )
+                match_player.mmr_after = RatingSystem.calculate_display_mmr(
+                    new_rating.mu, new_rating.sigma
+                )
 
             # Update player
             player.mu = new_rating.mu
             player.sigma = new_rating.sigma
+            player.mmr = RatingSystem.calculate_display_mmr(
+                new_rating.mu, new_rating.sigma
+            )
             player.total_games += 1
             if player_data.won:
                 player.wins += 1
@@ -596,8 +635,8 @@ class RatingSystem:
             for mp in all_match_players:
                 # Calculate raw MMR change
                 raw_mmr_change = RatingSystem.calculate_display_mmr(
-                    mp.mu_after
-                ) - RatingSystem.calculate_display_mmr(mp.mu_before)
+                    mp.mu_after, mp.sigma_after
+                ) - RatingSystem.calculate_display_mmr(mp.mu_before, mp.sigma_before)
 
                 # Calculate and store PIM + features
                 features = pi_calculator.calculate_and_store_features(
@@ -610,7 +649,7 @@ class RatingSystem:
                     # Initialize hybrid_mmr if None
                     if player.hybrid_mmr is None:
                         player.hybrid_mmr = RatingSystem.calculate_display_mmr(
-                            player.mu
+                            player.mu, player.sigma
                         )
 
                     # Apply hybrid change

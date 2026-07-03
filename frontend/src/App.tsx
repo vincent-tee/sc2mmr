@@ -51,6 +51,7 @@ const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Achievements = lazy(() => import('./pages/Achievements'));
 const HeadToHead = lazy(() => import('./pages/HeadToHead'));
 const MLIntelligence = lazy(() => import('./pages/MLIntelligence'));
+const SquadMeta = lazy(() => import('./pages/SquadMeta'));
 
 /**
  * Loading fallback component for Suspense boundaries
@@ -198,6 +199,14 @@ function App(): React.ReactElement {
                 element={
                   <ErrorBoundary>
                     <MLIntelligence />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/meta"
+                element={
+                  <ErrorBoundary>
+                    <SquadMeta />
                   </ErrorBoundary>
                 }
               />

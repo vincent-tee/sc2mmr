@@ -1,8 +1,12 @@
 /**
  * Leaderboard Type Definitions for SC2 MMR Tracker
  *
- * These types match the backend Pydantic models in:
- * - backend/app/api/leaderboard.py
+ * Streamlined to 5 core categories:
+ * - MMR (display MMR, the rating of record: 1000 + 100*mu - 200*sigma)
+ * - Combat (in-game contribution)
+ * - Win Rate (fundamental stat)
+ * - Win Streak (engagement/fun)
+ * - Duos (partnership rankings)
  */
 
 // =============================================================================
@@ -38,15 +42,22 @@ export interface DuoLeaderboardEntry {
 
 export type LeaderboardCategoryKey =
   | 'mmr'
-  | 'trueskill'
-  | 'hybrid'
+  | 'recent-form'
+  | 'combat'
   | 'winrate'
-  | 'games'
-  | 'achievements'
-  | 'damage'
-  | 'kills'
   | 'winstreak'
-  | 'duos';
+  | 'duos'
+  | 'trios';
+
+export interface TrioLeaderboardEntry {
+  rank: number;
+  player_ids: number[];
+  player_names: string[];
+  wins_together: number;
+  games_together: number;
+  win_rate: number;
+  synergy_score: number;
+}
 
 export interface LeaderboardCategory {
   key: LeaderboardCategoryKey;
@@ -56,21 +67,28 @@ export interface LeaderboardCategory {
   icon: string;
 }
 
-/** All available leaderboard categories */
+/** Streamlined leaderboard categories - 6 core boards */
 export const LEADERBOARD_CATEGORIES: LeaderboardCategory[] = [
   {
     key: 'mmr',
-    name: 'Squad MMR',
-    description: 'Recency-weighted skill rating (Primary)',
+    name: 'MMR',
+    description: 'Overall skill rating (TrueSkill-based MMR)',
     unit: 'MMR',
     icon: '🏆',
   },
   {
-    key: 'trueskill',
-    name: 'TrueSkill',
-    description: 'Pure mathematical skill rating (Stable)',
+    key: 'recent-form',
+    name: 'Recent Form',
+    description: 'Performance weighted by last 30 matches',
     unit: 'MMR',
-    icon: '🔢',
+    icon: '📊',
+  },
+  {
+    key: 'combat',
+    name: 'Combat',
+    description: 'Damage dealers and unit killers',
+    unit: 'score',
+    icon: '⚔️',
   },
   {
     key: 'winrate',
@@ -80,53 +98,25 @@ export const LEADERBOARD_CATEGORIES: LeaderboardCategory[] = [
     icon: '📈',
   },
   {
-    key: 'games',
-    name: 'Most Games',
-    description: 'Total matches played',
-    unit: 'games',
-    icon: '🎮',
-  },
-  {
-    key: 'achievements',
-    name: 'Achievements',
-    description: 'Total achievement points earned',
-    unit: 'pts',
-    icon: '🎖️',
-  },
-  {
-    key: 'damage',
-    name: 'Damage',
-    description: 'Highest average damage per game',
-    unit: 'dmg',
-    icon: '💪',
-  },
-  {
-    key: 'kills',
-    name: 'Kills',
-    description: 'Most units killed on average',
-    unit: 'kills',
-    icon: '💀',
-  },
-  {
     key: 'winstreak',
-    name: 'Streaks',
-    description: 'Longest winning streak ever',
-    unit: 'games',
+    name: 'Hot Streak',
+    description: 'Longest winning streak',
+    unit: 'wins',
     icon: '🔥',
   },
   {
-    key: 'hybrid',
-    name: 'Hybrid (Alpha)',
-    description: 'Performance-adjusted skill rating',
-    unit: 'MMR',
-    icon: '🧪',
+    key: 'duos',
+    name: 'Best Duos',
+    description: 'Most successful partnerships',
+    unit: 'wins',
+    icon: '👥',
   },
   {
-    key: 'duos',
-    name: 'Duos (Alpha)',
-    description: 'Most successful partner combinations',
+    key: 'trios',
+    name: 'Best Trios',
+    description: 'Most successful trios',
     unit: 'wins',
-    icon: '🤝',
+    icon: '👨‍👩‍👦',
   },
 ];
 
@@ -143,24 +133,14 @@ export function getLeaderboardCategory(key: LeaderboardCategoryKey): Leaderboard
 export function formatLeaderboardValue(value: number, category: LeaderboardCategoryKey): string {
   switch (category) {
     case 'mmr':
-    case 'trueskill':
-    case 'hybrid':
+    case 'recent-form':
       return Math.round(value).toLocaleString();
     case 'winrate':
       return `${value.toFixed(1)}%`;
-    case 'games':
     case 'winstreak':
       return value.toLocaleString();
-    case 'achievements':
-      return `${value.toLocaleString()} pts`;
-    case 'damage':
-      return value >= 1000
-        ? `${(value / 1000).toFixed(1)}k`
-        : Math.round(value).toString();
-    case 'kills':
-      return Math.round(value).toLocaleString();
-    case 'duos':
-      return value.toLocaleString();
+    case 'combat':
+      return value.toFixed(1);
     default:
       return value.toString();
   }

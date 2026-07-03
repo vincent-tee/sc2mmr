@@ -238,6 +238,7 @@ const MatchDetail: React.FC = () => {
                 <CommentaryTab
                   commentary={commentary}
                   isLoading={commentaryLoading}
+                  matchData={matchData}
                 />
               </TabPanel>
 
