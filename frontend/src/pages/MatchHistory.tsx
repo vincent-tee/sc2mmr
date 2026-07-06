@@ -25,7 +25,7 @@ import {
   InputGroup,
   InputLeftElement,
 } from '@chakra-ui/react';
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import {
@@ -394,49 +394,75 @@ const MatchCard: React.FC<{
 
 const MATCHES_PER_PAGE = 15;
 
+// Game modes offered in the filter dropdown (mirrors the backend GameMode enum).
+// Static list keeps the dropdown stable without fetching the whole archive.
+const GAME_MODES = [
+  '1v1',
+  '2v2',
+  '3v3',
+  '4v4',
+  '5v5',
+  '2v1',
+  '3v1',
+  '3v2',
+  '4v1',
+  '4v2',
+  '4v3',
+  '5v1',
+  '5v2',
+  '5v3',
+  '5v4',
+];
+
 const MatchHistory: React.FC = () => {
   const navigate = useNavigate();
 
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [searchText, setSearchText] = useState<string>('');
   const [modeFilter, setModeFilter] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
 
-  // Fetch the full archive once so search/filter can span every match, not just one page.
+  // Debounce the search input so each keystroke doesn't fire a request (~300ms).
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchText), 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  const hasFilters = Boolean(debouncedSearch || modeFilter);
+  const availableModes = GAME_MODES;
+
+  // Server-side pagination + filtering: fetch only the current page for the
+  // active filters instead of pulling the whole archive down at once.
   const { data: matchesData, isLoading } = useQuery<MatchListWithPlayersResponse>({
-    queryKey: ['matches-with-players-all'],
+    queryKey: ['matches-with-players', currentPage, debouncedSearch, modeFilter],
     queryFn: async () => {
-      const response = await replaysApi.getMatchesWithPlayers(1000, 0);
+      const response = await replaysApi.getMatchesWithPlayers(
+        MATCHES_PER_PAGE,
+        (currentPage - 1) * MATCHES_PER_PAGE,
+        { search: debouncedSearch, game_mode: modeFilter }
+      );
       return response.data;
     },
     placeholderData: keepPreviousData,
   });
 
-  const allMatches = useMemo(() => matchesData?.matches || [], [matchesData]);
-  const totalMatches = matchesData?.total_count || 0;
+  const pageMatches = useMemo(() => matchesData?.matches || [], [matchesData]);
 
-  // Distinct game modes present in the data, for the mode filter dropdown.
-  const availableModes = useMemo(() => {
-    const modes = new Set(allMatches.map((m) => m.game_mode));
-    return Array.from(modes).sort();
-  }, [allMatches]);
+  // total_count from the server reflects the FILTERED total for the active query.
+  const filteredTotal = matchesData?.total_count || 0;
 
-  // Client-side filtering (backend endpoint accepts only limit/offset).
-  const filteredMatches = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
-    return allMatches.filter((m) => {
-      if (modeFilter && m.game_mode !== modeFilter) return false;
-      if (!q) return true;
-      if (m.map_name.toLowerCase().includes(q)) return true;
-      return m.players.some((p) => p.player_name.toLowerCase().includes(q));
-    });
-  }, [allMatches, searchText, modeFilter]);
+  // Remember the unfiltered grand total (captured whenever no filters are active)
+  // so the header can keep showing the full archive size while filtering.
+  const [grandTotal, setGrandTotal] = useState<number>(0);
+  useEffect(() => {
+    if (!hasFilters && matchesData) {
+      setGrandTotal(matchesData.total_count);
+    }
+  }, [hasFilters, matchesData]);
 
-  const totalPages = Math.ceil(filteredMatches.length / MATCHES_PER_PAGE) || 1;
+  const totalMatches = hasFilters ? grandTotal : filteredTotal;
+  const totalPages = Math.ceil(filteredTotal / MATCHES_PER_PAGE) || 1;
   const safePage = Math.min(currentPage, totalPages);
-  const pageMatches = filteredMatches.slice(
-    (safePage - 1) * MATCHES_PER_PAGE,
-    safePage * MATCHES_PER_PAGE
-  );
 
   const handlePageChange = (newPage: number): void => {
     setCurrentPage(newPage);
@@ -463,8 +489,6 @@ const MatchHistory: React.FC = () => {
     navigate(`/history/${matchId}`);
   };
 
-  const hasFilters = Boolean(searchText || modeFilter);
-
   const header = (
     <PageHeader
       kicker="Battle Log"
@@ -472,7 +496,7 @@ const MatchHistory: React.FC = () => {
       description="Every game the squad has played, with the receipts to prove it."
       stats={[
         { label: 'Battles recorded', value: totalMatches },
-        { label: hasFilters ? 'matches shown' : `of ${totalPages} pages`, value: hasFilters ? filteredMatches.length : safePage },
+        { label: hasFilters ? 'matches shown' : `of ${totalPages} pages`, value: hasFilters ? filteredTotal : safePage },
       ]}
     />
   );
@@ -492,7 +516,7 @@ const MatchHistory: React.FC = () => {
     );
   }
 
-  if (allMatches.length === 0) {
+  if (!hasFilters && filteredTotal === 0) {
     return (
       <Box minH="100vh" pb={16}>
         {header}
@@ -564,7 +588,7 @@ const MatchHistory: React.FC = () => {
           </Box>
 
           {/* Match List */}
-          {filteredMatches.length === 0 ? (
+          {pageMatches.length === 0 ? (
             <EmptyState
               variant="stats"
               title="No Matches Found"
@@ -588,7 +612,7 @@ const MatchHistory: React.FC = () => {
                   fontSize="sm"
                   letterSpacing="wide"
                 >
-                  Page {safePage} of {totalPages} • Showing {pageMatches.length} of {filteredMatches.length} matches
+                  Page {safePage} of {totalPages} • Showing {pageMatches.length} of {filteredTotal} matches
                 </Text>
 
                 <HStack spacing={2}>

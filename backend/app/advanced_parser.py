@@ -63,6 +63,7 @@ class PlayerMetrics:
     damage_taken: int = 0
     damage_dealt_to_structures: int = 0
     damage_ratio: float = 0.0  # Dealt / Taken
+    kill_death_ratio: float = 1.0  # Units killed / units lost
 
     # Timing metrics (in game seconds)
     first_expansion_timing: Optional[int] = None
@@ -568,6 +569,19 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         else:
             # No damage dealt or taken - neutral ratio
             metrics.damage_ratio = 1.0
+
+        # Kill/Death ratio - unit counts killed vs lost. Previously this was
+        # never computed, so every player in every match stored the default
+        # 1.0 even though units_killed/units_lost were parsed. Mirror the
+        # damage_ratio edge-case handling.
+        if metrics.units_lost > 0:
+            metrics.kill_death_ratio = metrics.units_killed / metrics.units_lost
+        elif metrics.units_killed > 0:
+            # Killed units but lost none - cap at 10 to prevent score inflation
+            metrics.kill_death_ratio = 10.0
+        else:
+            # No units killed or lost - neutral ratio
+            metrics.kill_death_ratio = 1.0
 
         # Spending efficiency (how much of collected resources were spent)
         # Approximate as: units built * avg cost

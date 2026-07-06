@@ -363,6 +363,7 @@ class PlayerMatchMetrics(Base):
     units_trained: Mapped[int] = mapped_column(Integer, default=0)
     units_lost: Mapped[int] = mapped_column(Integer, default=0)
     units_killed: Mapped[int] = mapped_column(Integer, default=0)
+    kill_death_ratio: Mapped[float] = mapped_column(Float, default=1.0)
     army_value_built: Mapped[int] = mapped_column(Integer, default=0)
     army_value_killed: Mapped[int] = mapped_column(Integer, default=0)
     army_value_lost: Mapped[int] = mapped_column(Integer, default=0)

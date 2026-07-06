@@ -214,10 +214,19 @@ export const replaysApi: ReplaysApi = {
     });
   },
 
-  // Get matches with player summaries (for match history page)
-  getMatchesWithPlayers: (limit = 20, offset = 0) => {
+  // Get matches with player summaries (for match history page).
+  // Optional search (map name or player name) and game_mode filters are applied
+  // server-side; omitting them preserves the original limit/offset behavior.
+  getMatchesWithPlayers: (
+    limit = 20,
+    offset = 0,
+    filters?: { search?: string; game_mode?: string }
+  ) => {
+    const params: Record<string, string | number> = { limit, offset };
+    if (filters?.search) params.search = filters.search;
+    if (filters?.game_mode) params.game_mode = filters.game_mode;
     return apiClient.get<MatchListWithPlayersResponse>('/replays/matches-with-players', {
-      params: { limit, offset }
+      params
     });
   },
 

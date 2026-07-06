@@ -76,6 +76,7 @@ class ImpactService:
         match_metrics.units_trained = metrics.units_trained
         match_metrics.units_lost = metrics.units_lost
         match_metrics.units_killed = metrics.units_killed
+        match_metrics.kill_death_ratio = metrics.kill_death_ratio
         match_metrics.army_value_built = metrics.army_value_built
         match_metrics.army_value_killed = metrics.army_value_killed
         match_metrics.army_value_lost = metrics.army_value_lost

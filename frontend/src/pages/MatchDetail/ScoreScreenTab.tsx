@@ -48,10 +48,23 @@ const fmtPct = (v: number | null | undefined): string =>
 const fmtSeconds = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : formatDuration(v);
 
-// NOTE: kill_death_ratio is not currently computed by the backend — every
-// player in every match returns exactly 1.0, so a K/D column carries no
-// information and is intentionally omitted here. Reinstate it only once the
-// parser produces real per-player kill/death counts.
+// K/D is derived from the parsed per-player unit kill/loss counts. The backend
+// now computes and stores a real kill_death_ratio, but we derive it here from
+// units_killed / units_lost so the column stays consistent with the Units
+// Killed / Units Lost columns shown in the Military tab.
+const fmtKD = (p: MatchPlayer): string => {
+  const killed = p.units_killed;
+  const lost = p.units_lost;
+  if (killed === null || killed === undefined || lost === null || lost === undefined) {
+    return '—';
+  }
+  if (lost > 0) return (killed / lost).toFixed(2);
+  // Killed units but lost none — cap at 10 to match backend, mirroring how a
+  // flawless engagement is scored without an infinite ratio.
+  if (killed > 0) return '10.00';
+  // No combat recorded either way.
+  return '—';
+};
 
 interface ColumnDef {
   label: string;
@@ -64,6 +77,7 @@ const COLUMNS: Record<Section, ColumnDef[]> = {
     { label: 'Resources Collected', render: (p) => fmtNum(p.total_resources_collected) },
     { label: 'Workers Made', render: (p) => fmtNum(p.workers_created) },
     { label: 'Supply Blocked', render: (p) => fmtSeconds(p.supply_block_seconds) },
+    { label: 'K/D', render: fmtKD },
   ],
   economy: [
     { label: 'Minerals', render: (p) => fmtNum(p.minerals_collected) },
@@ -86,6 +100,7 @@ const COLUMNS: Record<Section, ColumnDef[]> = {
     { label: 'Army Lost', render: (p) => fmtNum(p.army_value_lost) },
     { label: 'Units Killed', render: (p) => fmtNum(p.units_killed) },
     { label: 'Units Lost', render: (p) => fmtNum(p.units_lost) },
+    { label: 'K/D', render: fmtKD },
     { label: 'Damage Dealt', render: (p) => fmtNum(p.damage_dealt) },
     { label: 'Damage Taken', render: (p) => fmtNum(p.damage_taken) },
   ],

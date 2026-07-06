@@ -4,7 +4,7 @@ API endpoints for replay upload and management.
 
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_, false
 from typing import List, Optional, Any, cast, Tuple
 from datetime import datetime
 import os
@@ -20,6 +20,7 @@ from ..models import (
     FailedUpload,
     UploadErrorType,
     PerformanceFeatures,
+    PlayerMatchMetrics,
 )
 from ..replay_parser import (
     parse_replay,
@@ -289,6 +290,7 @@ class MatchListWithPlayersResponse(BaseModel):
 class MatchPlayerResponse(BaseModel):
     """Response model for match player details."""
 
+    player_id: int
     player_name: str
     team_number: int
     race: str
@@ -296,6 +298,24 @@ class MatchPlayerResponse(BaseModel):
     mmr_before: float
     mmr_after: float
     mmr_change: float
+
+    # Score-screen stats (from PlayerMatchMetrics; None if never parsed/voided match)
+    apm: Optional[float] = None
+    minerals_collected: Optional[int] = None
+    vespene_collected: Optional[int] = None
+    total_resources_collected: Optional[int] = None
+    resources_spent: Optional[int] = None
+    spending_efficiency: Optional[float] = None
+    workers_created: Optional[int] = None
+    army_value_built: Optional[int] = None
+    army_value_killed: Optional[int] = None
+    army_value_lost: Optional[int] = None
+    units_killed: Optional[int] = None
+    units_lost: Optional[int] = None
+    damage_dealt: Optional[int] = None
+    damage_taken: Optional[int] = None
+    kill_death_ratio: Optional[float] = None
+    supply_block_seconds: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -529,14 +549,44 @@ def get_matches(limit: int = 50, offset: int = 0, db: Session = Depends(get_db))
 
 @router.get("/matches-with-players", response_model=MatchListWithPlayersResponse)
 def get_matches_with_players(
-    limit: int = 20, offset: int = 0, db: Session = Depends(get_db)
+    limit: int = 20,
+    offset: int = 0,
+    search: Optional[str] = None,
+    game_mode: Optional[str] = None,
+    db: Session = Depends(get_db),
 ):
-    from ..models import PlayerMatchMetrics
+    from ..models import PlayerMatchMetrics, GameMode
 
-    total_count = db.query(func.count(Match.id)).scalar() or 0
+    # Build a filtered base query. With no filters this is identical to
+    # `db.query(Match)`, so behavior stays backward compatible.
+    base_query = db.query(Match)
+
+    # Optional game-mode filter (e.g. "3v3", "4v4"). Unknown modes match nothing.
+    if game_mode:
+        try:
+            base_query = base_query.filter(Match.game_mode == GameMode(game_mode))
+        except ValueError:
+            base_query = base_query.filter(false())
+
+    # Optional search across the map name OR any participating player's name.
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        player_match_ids = (
+            db.query(MatchPlayer.match_id)
+            .join(Player, MatchPlayer.player_id == Player.id)
+            .filter(Player.name.ilike(pattern))
+        )
+        base_query = base_query.filter(
+            or_(
+                Match.map_name.ilike(pattern),
+                Match.id.in_(player_match_ids),
+            )
+        )
+
+    # total_count reflects the FILTERED total so the frontend paginates correctly.
+    total_count = base_query.count()
     matches = (
-        db.query(Match)
-        .order_by(Match.played_at.desc())
+        base_query.order_by(Match.played_at.desc())
         .limit(limit)
         .offset(offset)
         .all()
@@ -624,20 +674,25 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Match not found")
 
     match_players = (
-        db.query(MatchPlayer, Player)
+        db.query(MatchPlayer, Player, PlayerMatchMetrics)
         .join(Player, MatchPlayer.player_id == Player.id)
+        .outerjoin(
+            PlayerMatchMetrics, PlayerMatchMetrics.match_player_id == MatchPlayer.id
+        )
         .filter(MatchPlayer.match_id == match_id)
         .all()
     )
 
     players_data = []
-    for mp_obj, p_obj in match_players:
+    for mp_obj, p_obj, metrics_obj in match_players:
         mp: Any = mp_obj
         p: Any = p_obj
+        metrics: Any = metrics_obj
         mmr_b = float(RatingSystem.calculate_display_mmr(mp.mu_before))
         mmr_a = float(RatingSystem.calculate_display_mmr(mp.mu_after))
         players_data.append(
             MatchPlayerResponse(
+                player_id=int(p.id),
                 player_name=str(p.name),
                 team_number=int(mp.team_number),
                 race=str(mp.race.value),
@@ -645,6 +700,27 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
                 mmr_before=mmr_b,
                 mmr_after=mmr_a,
                 mmr_change=mmr_a - mmr_b,
+                apm=metrics.apm if metrics else None,
+                minerals_collected=metrics.minerals_collected if metrics else None,
+                vespene_collected=metrics.vespene_collected if metrics else None,
+                total_resources_collected=(
+                    metrics.total_resources_collected if metrics else None
+                ),
+                resources_spent=metrics.resources_spent if metrics else None,
+                spending_efficiency=(
+                    metrics.spending_efficiency if metrics else None
+                ),
+                workers_created=metrics.workers_created if metrics else None,
+                army_value_built=metrics.army_value_built if metrics else None,
+                army_value_killed=metrics.army_value_killed if metrics else None,
+                army_value_lost=metrics.army_value_lost if metrics else None,
+                units_killed=metrics.units_killed if metrics else None,
+                units_lost=metrics.units_lost if metrics else None,
+                damage_dealt=metrics.damage_dealt if metrics else None,
+                damage_taken=metrics.damage_taken if metrics else None,
+                kill_death_ratio=metrics.kill_death_ratio if metrics else None,
+                # supply_block_seconds omitted: this branch's PlayerMatchMetrics
+                # schema has no such column (added later on main). Defaults to None.
             )
         )
 
@@ -666,6 +742,32 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
             else:
                 ml_win_prob = 1.0 - perf.ml_win_probability
 
+    # Pre-match win probability. Most matches have this persisted from upload
+    # time, but a handful of historical rows were never populated and would
+    # otherwise render as a meaningless 50/50. For those, recompute the odds
+    # from each team's stored pre-match TrueSkill ratings (mu/sigma before the
+    # game) using the same function the balancer/predictor uses - a pure
+    # function of the two teams' ratings, no ML model involved.
+    team1_prob = match.predicted_team1_win_prob
+    team2_prob = match.predicted_team2_win_prob
+    if team1_prob is None or team2_prob is None:
+        import trueskill
+
+        team1_ratings = [
+            trueskill.Rating(mu=float(mp.mu_before), sigma=float(mp.sigma_before))
+            for mp, _, _ in match_players
+            if int(mp.team_number) == 1
+        ]
+        team2_ratings = [
+            trueskill.Rating(mu=float(mp.mu_before), sigma=float(mp.sigma_before))
+            for mp, _, _ in match_players
+            if int(mp.team_number) == 2
+        ]
+        if team1_ratings and team2_ratings:
+            team1_prob, team2_prob = RatingSystem.calculate_win_probability(
+                team1_ratings, team2_ratings
+            )
+
     return MatchDetailResponse(
         match=MatchResponse(
             id=int(match.id),
@@ -674,8 +776,8 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
             map_name=str(match.map_name),
             duration_seconds=int(match.duration_seconds),
             replay_hash=str(match.replay_hash or ""),
-            predicted_team1_win_prob=match.predicted_team1_win_prob,
-            predicted_team2_win_prob=match.predicted_team2_win_prob,
+            predicted_team1_win_prob=team1_prob,
+            predicted_team2_win_prob=team2_prob,
             ml_predicted_win_prob=ml_win_prob,
         ),
         players=players_data,
