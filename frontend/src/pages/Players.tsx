@@ -85,14 +85,19 @@ const Players: React.FC = () => {
     setSortBy(e.target.value as SortOption);
   };
 
-  const activePlayers = players.filter((p) => p.total_games > 0).length;
+  // Count only the players actually rendered by the grid's active/legacy
+  // filter, so the header stat never disagrees with the card count. Search
+  // is intentionally excluded so the header reflects roster size, not results.
+  const rosterCount = players.filter(
+    (p) => p.total_games > 0 && (showLegacy || p.is_active)
+  ).length;
 
   const header = (
     <PageHeader
       kicker="The Roster"
       title="Squad [Roster]"
       description="Everyone who's ever laddered with the squad — records, races, and receipts."
-      stats={[{ label: 'Active players', value: activePlayers }]}
+      stats={[{ label: showLegacy ? 'Players' : 'Active players', value: rosterCount }]}
       actions={
         <HStack spacing={3}>
           <FormControl w={{ base: '100%', md: '240px' }}>

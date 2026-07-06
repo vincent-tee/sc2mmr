@@ -76,10 +76,10 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           mb={6}
           fontFamily="heading"
           letterSpacing="widest"
-          color="shield.400"
+          color="brand.400"
           textTransform="uppercase"
         >
-          Squad Alpha Analytics
+          Team 1 Analytics
         </Heading>
         <VStack spacing={6} align="stretch">
           {team1Players.map((player) => {
@@ -145,7 +145,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           color="accent.400"
           textTransform="uppercase"
         >
-          Squad Bravo Analytics
+          Team 2 Analytics
         </Heading>
         <VStack spacing={6} align="stretch">
           {team2Players.map((player) => {

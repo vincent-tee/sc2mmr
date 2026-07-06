@@ -249,7 +249,7 @@ const BalanceResults: React.FC<BalanceResultsProps> = ({
             onClick={onExportAll}
             fontFamily="heading"
           >
-            Copy Best Configs
+            Copy Teams
           </Button>
         )}
         <Button

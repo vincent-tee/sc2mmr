@@ -63,7 +63,8 @@ interface SetWinnerResponse {
 
 const FailedUploads: React.FC = () => {
   const [errorTypeFilter, setErrorTypeFilter] = useState<string>('');
-  const [reviewedFilter, setReviewedFilter] = useState<string>('');
+  // Default to actionable rows (not yet reviewed); switch to "All Statuses" to see everything.
+  const [reviewedFilter, setReviewedFilter] = useState<string>('false');
   const [selectedUpload, setSelectedUpload] = useState<FailedUpload | null>(null);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -456,6 +457,7 @@ const FailedUploads: React.FC = () => {
                                   size="xs"
                                   variant="ghost"
                                   colorScheme="blue"
+                                  aria-label="View details"
                                   onClick={() => openDetailsModal(upload)}
                                 >
                                   <Icon as={FiEye} />
@@ -467,6 +469,7 @@ const FailedUploads: React.FC = () => {
                                     size="xs"
                                     variant="ghost"
                                     colorScheme="green"
+                                    aria-label="Mark reviewed"
                                     onClick={() => openReviewModal(upload)}
                                   >
                                     <Icon as={FiCheck} />

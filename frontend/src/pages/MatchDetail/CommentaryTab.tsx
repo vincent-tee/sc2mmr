@@ -227,6 +227,7 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                   mb={3}
                   fontFamily="heading"
                   letterSpacing="wider"
+                  color="brand.400"
                 >
                   Team 1 Analysis
                 </Heading>
@@ -244,6 +245,7 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                   mb={3}
                   fontFamily="heading"
                   letterSpacing="wider"
+                  color="accent.400"
                 >
                   Team 2 Analysis
                 </Heading>

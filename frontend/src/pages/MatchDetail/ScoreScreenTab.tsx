@@ -45,11 +45,13 @@ const fmtNum = (v: number | null | undefined): string =>
 const fmtPct = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
 
-const fmtRatio = (v: number | null | undefined): string =>
-  v === null || v === undefined ? '—' : v.toFixed(2);
-
 const fmtSeconds = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : formatDuration(v);
+
+// NOTE: kill_death_ratio is not currently computed by the backend — every
+// player in every match returns exactly 1.0, so a K/D column carries no
+// information and is intentionally omitted here. Reinstate it only once the
+// parser produces real per-player kill/death counts.
 
 interface ColumnDef {
   label: string;
@@ -62,7 +64,6 @@ const COLUMNS: Record<Section, ColumnDef[]> = {
     { label: 'Resources Collected', render: (p) => fmtNum(p.total_resources_collected) },
     { label: 'Workers Made', render: (p) => fmtNum(p.workers_created) },
     { label: 'Supply Blocked', render: (p) => fmtSeconds(p.supply_block_seconds) },
-    { label: 'K/D', render: (p) => fmtRatio(p.kill_death_ratio) },
   ],
   economy: [
     { label: 'Minerals', render: (p) => fmtNum(p.minerals_collected) },
@@ -87,7 +88,6 @@ const COLUMNS: Record<Section, ColumnDef[]> = {
     { label: 'Units Lost', render: (p) => fmtNum(p.units_lost) },
     { label: 'Damage Dealt', render: (p) => fmtNum(p.damage_dealt) },
     { label: 'Damage Taken', render: (p) => fmtNum(p.damage_taken) },
-    { label: 'K/D', render: (p) => fmtRatio(p.kill_death_ratio) },
   ],
 };
 
@@ -211,14 +211,14 @@ const ScoreScreenTab: React.FC<ScoreScreenTabProps> = ({ matchData, team1Won }) 
       )}
 
       <TeamTable
-        title="Squad Alpha"
-        accentColor="shield.400"
+        title="Team 1"
+        accentColor="brand.400"
         won={team1Won}
         players={team1Players}
         columns={columns}
       />
       <TeamTable
-        title="Squad Bravo"
+        title="Team 2"
         accentColor="accent.400"
         won={!team1Won}
         players={team2Players}

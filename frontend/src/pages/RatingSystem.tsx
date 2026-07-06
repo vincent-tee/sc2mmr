@@ -35,9 +35,6 @@ import {
   AlertIcon,
   AlertTitle,
   AlertDescription,
-  List,
-  ListItem,
-  ListIcon,
   Accordion,
   AccordionItem,
   AccordionButton,
@@ -52,8 +49,9 @@ import {
   FiActivity,
   FiTarget,
   FiClock,
-  FiZap,
+  FiUsers,
 } from 'react-icons/fi';
+import type { IconType } from 'react-icons';
 import PageHeader from '../components/PageHeader';
 
 const RatingSystem: React.FC = () => {
@@ -138,23 +136,21 @@ const RatingSystem: React.FC = () => {
 
                   <Box bg={cardBg} border="3px solid" borderColor={borderColor} borderRadius="xl" boxShadow={brandShadow} p={6}>
                     <Heading size="md" mb={4} fontFamily="heading">Why use this?</Heading>
-                    <List spacing={4}>
-                      {[
-                        { title: 'Natural Team Balancing', desc: 'Handles team games (2v2, 3v3, 4v4) by analyzing individual contributions to the team result.' },
-                        { title: 'Uncertainty Tracking', desc: 'New players move fast through ranks until their "true" skill is found.' },
-                        { title: 'Fair Teams', desc: 'Uses your hidden metrics to create the closest matches possible, aiming for a 50% win chance.' }
-                      ].map((item, i) => (
-                        <ListItem key={i}>
-                          <HStack align="start">
-                            <ListIcon as={FiZap} color="accent.400" mt={1} />
-                            <Box>
-                              <Text fontWeight="bold" fontSize="sm">{item.title}</Text>
-                              <Text fontSize="xs" color="gray.500">{item.desc}</Text>
-                            </Box>
-                          </HStack>
-                        </ListItem>
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacingX={8} spacingY={4}>
+                      {([
+                        { icon: FiUsers, title: 'Natural Team Balancing', desc: 'Handles team games (2v2, 3v3, 4v4) by analyzing individual contributions to the team result.' },
+                        { icon: FiTrendingUp, title: 'Uncertainty Tracking', desc: 'New players move fast through ranks until their "true" skill is found.' },
+                        { icon: FiTarget, title: 'Fair Teams', desc: 'Uses your hidden metrics to create the closest matches possible, aiming for a 50% win chance.' }
+                      ] as { icon: IconType; title: string; desc: string }[]).map((item, i) => (
+                        <HStack key={i} align="start">
+                          <Icon as={item.icon} color="accent.400" mt={1} />
+                          <Box>
+                            <Text fontWeight="bold" fontSize="sm">{item.title}</Text>
+                            <Text fontSize="xs" color="gray.500">{item.desc}</Text>
+                          </Box>
+                        </HStack>
                       ))}
-                    </List>
+                    </SimpleGrid>
                   </Box>
                 </VStack>
               </TabPanel>

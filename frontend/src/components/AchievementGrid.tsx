@@ -12,8 +12,10 @@ import {
   Select,
   Badge,
   Flex,
+  Icon,
   useColorModeValue,
 } from '@chakra-ui/react';
+import { LuTrophy } from 'react-icons/lu';
 import AchievementBadge from './AchievementBadge';
 import {
   type AchievementCategory,
@@ -21,6 +23,7 @@ import {
   type Achievement,
   getCategoryInfo,
 } from '@/types/achievements';
+import { getCategoryIcon } from '@/utils/achievementIcons';
 import { spacing, radii } from '@/theme/tokens';
 
 // =============================================================================
@@ -99,7 +102,7 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = memo(({
       mb={3}
     >
       <HStack spacing={2}>
-        <Text fontSize="xl">{categoryInfo.icon}</Text>
+        <Icon as={getCategoryIcon(category)} boxSize={5} color="brand.500" />
         <Text
           fontWeight="bold"
           fontFamily="heading"
@@ -157,7 +160,7 @@ const CategoryFilter: React.FC<CategoryFilterProps> = memo(({
         const info = getCategoryInfo(cat);
         return (
           <option key={cat} value={cat}>
-            {info.icon} {info.name}
+            {info.name}
           </option>
         );
       })}
@@ -265,7 +268,7 @@ const AchievementGrid: React.FC<AchievementGridProps> = ({
           name={achievement.name}
           description={achievement.description}
           flavor_text={achievement.flavor_text}
-          icon={achievement.icon || '?'}
+          icon={achievement.icon}
           rarity={achievement.rarity}
           category={achievement.category}
           points={achievement.points}
@@ -287,9 +290,7 @@ const AchievementGrid: React.FC<AchievementGridProps> = ({
         py={spacing['3xl']}
         color={emptyTextColor}
       >
-        <Text fontSize="4xl" mb={3}>
-          🏆
-        </Text>
+        <Icon as={LuTrophy} boxSize={10} mb={3} color="gray.600" />
         <Text fontSize="lg">{emptyMessage}</Text>
       </Box>
     );

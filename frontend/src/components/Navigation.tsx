@@ -23,7 +23,6 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
-  MenuDivider,
   Button,
   Icon,
 } from '@chakra-ui/react';
@@ -55,21 +54,18 @@ interface NavItem {
 const primaryItems: NavItem[] = [
   { path: '/', label: 'Home', icon: FiHome },
   { path: '/balance', label: 'Teams', icon: FiZap },
-  { path: '/players', label: 'Squad', icon: FiUsers },
+  { path: '/players', label: 'Roster', icon: FiUsers },
   { path: '/leaderboard', label: 'Ladder', icon: LuTrophy },
   { path: '/history', label: 'Matches', icon: FiBarChart2 },
 ];
 
-// Overflow links in the "More" menu
+// Overflow links in the "More" menu (labels match their page titles)
 const secondaryItems: NavItem[] = [
-  { path: '/predictor', label: 'Predict Match', icon: FiTarget },
-  { path: '/rating-system', label: 'How It Works', icon: FiInfo },
-  { path: '/failed-uploads', label: 'Failed Uploads', icon: FiAlertCircle },
-];
-
-const alphaItems: NavItem[] = [
+  { path: '/predictor', label: 'Match Predictor', icon: FiTarget },
+  { path: '/rating-system', label: 'How the Rating Works', icon: FiInfo },
   { path: '/achievements', label: 'Achievements', icon: FiAward },
   { path: '/h2h', label: 'Head to Head', icon: LuSwords },
+  { path: '/failed-uploads', label: 'Failed Uploads', icon: FiAlertCircle },
 ];
 
 const Navigation: React.FC = () => {
@@ -82,7 +78,7 @@ const Navigation: React.FC = () => {
     return location.pathname.startsWith(path);
   };
 
-  const secondaryActive = [...secondaryItems, ...alphaItems].some((item) => isActive(item.path));
+  const secondaryActive = secondaryItems.some((item) => isActive(item.path));
 
   return (
     <Box
@@ -177,11 +173,11 @@ const Navigation: React.FC = () => {
                 fontWeight={secondaryActive ? '800' : '600'}
                 fontSize="sm"
                 borderRadius="full"
-                bg={secondaryActive ? 'accent.500' : 'transparent'}
-                color={secondaryActive ? 'space.900' : 'gray.400'}
+                bg={secondaryActive ? 'brand.500' : 'transparent'}
+                color={secondaryActive ? 'white' : 'gray.400'}
                 _hover={{
-                  bg: secondaryActive ? 'accent.400' : 'whiteAlpha.100',
-                  color: secondaryActive ? 'space.900' : 'gray.100',
+                  bg: secondaryActive ? 'brand.400' : 'whiteAlpha.100',
+                  color: secondaryActive ? 'white' : 'gray.100',
                 }}
               >
                 <HStack spacing={1}>
@@ -211,27 +207,6 @@ const Navigation: React.FC = () => {
                     borderRadius="lg"
                     my={0.5}
                     _hover={{ bg: isActive(item.path) ? 'brand.400' : 'whiteAlpha.100' }}
-                  >
-                    {item.label}
-                  </MenuItem>
-                ))}
-                <MenuDivider borderColor="whiteAlpha.200" mx={-2} my={2} />
-                <Text fontSize="10px" fontWeight="bold" color="gray.600" px={3} py={1} letterSpacing="widest">
-                  ALPHA FEATURES
-                </Text>
-                {alphaItems.map((item) => (
-                  <MenuItem
-                    key={item.path}
-                    icon={<Icon as={item.icon} boxSize="16px" opacity={0.6} />}
-                    onClick={() => navigate(item.path)}
-                    bg={isActive(item.path) ? 'brand.500' : 'transparent'}
-                    color={isActive(item.path) ? 'white' : 'gray.500'}
-                    fontFamily="heading"
-                    fontWeight="600"
-                    fontSize="sm"
-                    borderRadius="lg"
-                    my={0.5}
-                    _hover={{ bg: isActive(item.path) ? 'brand.400' : 'whiteAlpha.100', color: 'gray.300' }}
                   >
                     {item.label}
                   </MenuItem>
@@ -326,7 +301,7 @@ const Navigation: React.FC = () => {
               <Text fontSize="xs" color="gray.500" fontWeight="bold" px={2} pt={4} letterSpacing="widest">
                 MORE
               </Text>
-              {[...secondaryItems, ...alphaItems].map((item) => {
+              {secondaryItems.map((item) => {
                 const active = isActive(item.path);
                 return (
                   <Button
@@ -341,10 +316,10 @@ const Navigation: React.FC = () => {
                     size="md"
                     fontFamily="heading"
                     fontWeight="600"
-                    bg={active ? 'accent.500' : 'transparent'}
-                    color={active ? 'space.900' : 'gray.400'}
+                    bg={active ? 'brand.500' : 'transparent'}
+                    color={active ? 'white' : 'gray.400'}
                     borderRadius="lg"
-                    _hover={{ bg: active ? 'accent.400' : 'whiteAlpha.100', color: active ? 'space.900' : 'gray.200' }}
+                    _hover={{ bg: active ? 'brand.400' : 'whiteAlpha.100', color: active ? 'white' : 'gray.200' }}
                   >
                     {item.label}
                   </Button>

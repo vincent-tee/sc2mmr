@@ -54,9 +54,9 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
             fontFamily="heading"
             letterSpacing="widest"
             textTransform="uppercase"
-            color="shield.400"
+            color="brand.400"
           >
-            Squad Alpha
+            Team 1
           </Heading>
           {team1Won && (
             <Badge
@@ -152,7 +152,7 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
             textTransform="uppercase"
             color="accent.400"
           >
-            Squad Bravo
+            Team 2
           </Heading>
           {!team1Won && (
             <Badge

@@ -32,63 +32,69 @@ import { formatDateTimeShort, getPlayerAvatarUrl, getPlayerRaces, getRaceColor }
 import type { Player, MatchWithPlayers } from '../types/api';
 
 /** Compact match row for the battles feed */
-const MatchRow: React.FC<{ match: MatchWithPlayers; onClick: () => void }> = ({ match, onClick }) => (
-  <Flex
-    as="button"
-    onClick={onClick}
-    w="100%"
-    textAlign="left"
-    align="center"
-    gap={4}
-    px={4}
-    py={3}
-    bg="space.800"
-    borderRadius="xl"
-    border="1px solid"
-    borderColor="whiteAlpha.100"
-    transition="all 0.18s ease"
-    _hover={{ borderColor: 'brand.500', bg: 'space.700', transform: 'translateX(4px)' }}
-  >
-    <Box
-      flexShrink={0}
-      px={2.5}
-      py={1}
-      borderRadius="md"
-      bg={match.winner_team === 1 ? 'rgba(255, 107, 53, 0.15)' : 'rgba(78, 205, 196, 0.12)'}
+const MatchRow: React.FC<{ match: MatchWithPlayers; onClick: () => void }> = ({ match, onClick }) => {
+  const allPlayers = match.players || [];
+  const winners = allPlayers.filter((p) => p.won);
+  const losers = allPlayers.filter((p) => !p.won);
+  const winnerNames = winners.map((p) => p.player_name).join(', ');
+  const teamColor = match.winner_team === 2 ? 'accent' : 'brand';
+  // Winners first so the emphasized avatars lead the stack
+  const orderedPlayers = [...winners, ...losers];
+
+  return (
+    <Flex
+      as="button"
+      onClick={onClick}
+      w="100%"
+      textAlign="left"
+      align="center"
+      gap={4}
+      px={4}
+      py={3}
+      bg="space.800"
+      borderRadius="xl"
       border="1px solid"
-      borderColor={match.winner_team === 1 ? 'brand.500' : 'accent.500'}
+      borderColor="whiteAlpha.100"
+      transition="all 0.18s ease"
+      _hover={{ borderColor: 'brand.500', bg: 'space.700', transform: 'translateX(4px)' }}
     >
-      <Text
-        fontFamily="mono"
-        fontSize="xs"
-        fontWeight="700"
-        color={match.winner_team === 1 ? 'brand.400' : 'accent.400'}
-        whiteSpace="nowrap"
+      <Flex
+        flexShrink={0}
+        w="34px"
+        h="34px"
+        align="center"
+        justify="center"
+        borderRadius="md"
+        bg={match.winner_team === 2 ? 'rgba(78, 205, 196, 0.12)' : 'rgba(255, 107, 53, 0.15)'}
+        border="1px solid"
+        borderColor={`${teamColor}.500`}
       >
-        T{match.winner_team} WIN
-      </Text>
-    </Box>
-    <Box flex={1} minW={0}>
-      <Text fontWeight="800" fontFamily="heading" color="gray.100" noOfLines={1}>
-        {match.map_name}
-      </Text>
-      <Text fontSize="xs" color="gray.500">
-        {match.game_mode} · {formatDateTimeShort(match.played_at)}
-      </Text>
-    </Box>
-    <AvatarGroup size="xs" max={4} flexShrink={0}>
-      {(match.players || []).slice(0, 4).map((player, idx) => (
-        <Avatar
-          key={player.player_id || idx}
-          src={getPlayerAvatarUrl(player.player_name, player.race)}
-          name={player.player_name}
-          size="xs"
-          bg={`${getRaceColor(player.race)}.500`}
-        />
-      ))}
-    </AvatarGroup>
-  </Flex>
-);
+        <Icon as={FiAward} color={`${teamColor}.400`} boxSize="16px" />
+      </Flex>
+      <Box flex={1} minW={0}>
+        <Text fontWeight="800" fontFamily="heading" color="gray.100" noOfLines={1}>
+          {match.map_name}
+        </Text>
+        <Text fontSize="xs" color="gray.500" noOfLines={1}>
+          {winnerNames ? `Won by ${winnerNames}` : `Team ${match.winner_team} won`} · {formatDateTimeShort(match.played_at)}
+        </Text>
+      </Box>
+      <AvatarGroup size="xs" max={5} flexShrink={0}>
+        {orderedPlayers.slice(0, 5).map((player, idx) => (
+          <Avatar
+            key={player.player_id || idx}
+            src={getPlayerAvatarUrl(player.player_name, player.race)}
+            name={player.player_name}
+            size="xs"
+            bg={`${getRaceColor(player.race)}.500`}
+            opacity={player.won ? 1 : 0.4}
+            borderColor={player.won ? `${teamColor}.400` : 'space.800'}
+          />
+        ))}
+      </AvatarGroup>
+    </Flex>
+  );
+};
 
 /** Ladder strip row with oversized rank numeral */
 const LadderRow: React.FC<{ player: Player; rank: number; onClick: () => void }> = ({
@@ -426,7 +432,14 @@ const Home: React.FC = () => {
                           {wr}%
                         </Text>
                       </HStack>
-                      <Progress value={wr} colorScheme={getRaceColor(race)} bg="blackAlpha.400" borderRadius="full" height="6px" />
+                      <Progress
+                        value={wr}
+                        colorScheme={getRaceColor(race)}
+                        bg="blackAlpha.400"
+                        borderRadius="full"
+                        height="6px"
+                        sx={{ '& > div': { bg: `${getRaceColor(race)}.500` } }}
+                      />
                     </Box>
                   ))}
                 </VStack>
