@@ -3,7 +3,7 @@
  * All backend API calls organized by resource
  */
 import { AxiosResponse, AxiosProgressEvent } from 'axios';
-import apiClient from './client';
+import apiClient, { API_BASE_URL } from './client';
 import type {
   Player,
   PlayerDetail,
@@ -28,25 +28,24 @@ import type {
 export interface PlayersApi {
   getAll: (coreOnly?: boolean) => Promise<AxiosResponse<Player[]>>;
   getRankings: (minGames?: number, coreOnly?: boolean) => Promise<AxiosResponse<PlayerRanking[]>>;
-  getById: (playerId: number, recentMatchesLimit?: number, recentMatchesOffset?: number) => Promise<AxiosResponse<PlayerDetail>>;
+  getCoaching: (playerId: number) => Promise<AxiosResponse<any>>;
+  create: (name: string, isCorePlayer?: boolean) => Promise<AxiosResponse<Player>>;
+  calibrate: (name: string, similarToPlayerId: number) => Promise<AxiosResponse<Player>>;
 }
 
 export const playersApi: PlayersApi = {
-  // Get all players
   getAll: (coreOnly = false) => {
     return apiClient.get<Player[]>('/players/', {
       params: { core_only: coreOnly }
     });
   },
 
-  // Get player rankings
   getRankings: (minGames = 5, coreOnly = false) => {
     return apiClient.get<PlayerRanking[]>('/players/rankings', {
       params: { min_games: minGames, core_only: coreOnly }
     });
   },
 
-  // Get player details
   getById: (playerId: number, recentMatchesLimit = 10, recentMatchesOffset = 0) => {
     return apiClient.get<PlayerDetail>(`/players/${playerId}`, {
       params: {
@@ -56,7 +55,16 @@ export const playersApi: PlayersApi = {
     });
   },
 
-  // Create new player
+  getHistory: (playerId: number, limit = 50) => {
+    return apiClient.get(`/players/${playerId}/history`, {
+      params: { limit }
+    });
+  },
+
+  getCoaching: (playerId: number) => {
+    return apiClient.get(`/players/${playerId}/coaching`);
+  },
+
   create: (name: string, isCorePlayer = true) => {
     return apiClient.post<Player>('/players/', {
       name,
@@ -64,7 +72,6 @@ export const playersApi: PlayersApi = {
     });
   },
 
-  // Calibrate new player
   calibrate: (name: string, similarToPlayerId: number) => {
     return apiClient.post<Player>('/players/calibrate', {
       name,
@@ -78,9 +85,8 @@ export const playersApi: PlayersApi = {
 // =============================================================================
 
 export interface TeamsApi {
-  balance: (playerIds: number[], topN?: number) => Promise<AxiosResponse<TeamSuggestion[]>>;
+  balance: (playerIds: number[], topN?: number, mapName?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
   quickBalance: (playerIds: number[]) => Promise<AxiosResponse<TeamSuggestion[]>>;
-  balanceWithImpact: (playerIds: number[], topN?: number, impactWeight?: number) => Promise<AxiosResponse<TeamSuggestion[]>>;
   balanceWithModel: (playerIds: number[], model?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
   compareModels: (playerIds: number[]) => Promise<AxiosResponse<Record<string, TeamSuggestion[]>>>;
   getModels: () => Promise<AxiosResponse<string[]>>;
@@ -90,10 +96,11 @@ export interface TeamsApi {
 
 export const teamsApi: TeamsApi = {
   // Balance teams (primary feature!)
-  balance: (playerIds: number[], topN = 10) => {
+  balance: (playerIds: number[], topN = 10, mapName?: string) => {
     return apiClient.post<TeamSuggestion[]>('/teams/balance', {
       player_ids: playerIds,
-      top_n: topN
+      top_n: topN,
+      map_name: mapName
     });
   },
 
@@ -102,15 +109,6 @@ export const teamsApi: TeamsApi = {
     return apiClient.post<TeamSuggestion[]>('/teams/quick-balance', {
       player_ids: playerIds,
       top_n: 1
-    });
-  },
-
-  // Balance with impact consideration
-  balanceWithImpact: (playerIds: number[], topN = 10, impactWeight = 0.5) => {
-    return apiClient.post<TeamSuggestion[]>('/teams/balance-with-impact', {
-      player_ids: playerIds,
-      top_n: topN,
-      impact_weight: impactWeight
     });
   },
 
@@ -171,10 +169,14 @@ export interface ReplaysApi {
   getMatchesWithPlayers: (limit?: number, offset?: number) => Promise<AxiosResponse<MatchListWithPlayersResponse>>;
   getMatchById: (matchId: number | string) => Promise<AxiosResponse<MatchDetail>>;
   getMatchCommentary: (matchId: number | string) => Promise<AxiosResponse<{ commentary: string }>>;
+  getMatchDownloadUrl: (matchId: number | string) => string;
   getFailedUploads: (limit?: number, offset?: number, errorType?: string | null, reviewed?: boolean | null) => Promise<AxiosResponse<FailedUpload[]>>;
   markUploadReviewed: (uploadId: number, reviewNotes?: string | null) => Promise<AxiosResponse<FailedUpload>>;
   setManualWinner: (uploadId: number, winnerTeam: number) => Promise<AxiosResponse<ReplayUploadResponse>>;
 }
+
+// Extended timeout for upload operations (120 seconds)
+const UPLOAD_TIMEOUT = 120000;
 
 export const replaysApi: ReplaysApi = {
   // Upload single replay
@@ -186,6 +188,7 @@ export const replaysApi: ReplaysApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: UPLOAD_TIMEOUT,
       onUploadProgress
     });
   },
@@ -199,6 +202,7 @@ export const replaysApi: ReplaysApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: UPLOAD_TIMEOUT,
       onUploadProgress
     });
   },
@@ -225,6 +229,11 @@ export const replaysApi: ReplaysApi = {
   // Get AI-generated match commentary
   getMatchCommentary: (matchId: number | string) => {
     return apiClient.get<{ commentary: string }>(`/replays/matches/${matchId}/commentary`);
+  },
+
+  // Direct download URL for the .SC2Replay file (used as an <a href>, not fetched via axios)
+  getMatchDownloadUrl: (matchId: number | string) => {
+    return `${API_BASE_URL}/replays/matches/${matchId}/download`;
   },
 
   // Get failed uploads
@@ -327,89 +336,6 @@ export const impactApi: ImpactApi = {
     return apiClient.get(`/impact/players/${playerId}/attack-patterns`, {
       params: { limit }
     });
-  }
-};
-
-// =============================================================================
-// Adaptive & ML API
-// =============================================================================
-
-export interface AccuracyTrend {
-  date: string;
-  trueskill_accuracy: number;
-  hybrid_accuracy: number;
-  trueskill_total: number;
-  hybrid_total: number;
-}
-
-export interface ShapImportance {
-  feature: string;
-  importance: number;
-}
-
-export interface BalanceMethodSuccessRate {
-  success_rate: number;
-  total_matches: number;
-}
-
-export interface AdaptiveApi {
-  getAccuracyComparison: (days?: number) => Promise<AxiosResponse<{
-    total_matches: number;
-    results: Record<string, { correct: number; total: number }>;
-    trends: AccuracyTrend[];
-  }>>;
-  getBalanceMethodSuccessRate: () => Promise<AxiosResponse<Record<string, BalanceMethodSuccessRate>>>;
-  getShapImportance: () => Promise<AxiosResponse<{ features: ShapImportance[] }>>;
-  trainXGBoost: () => Promise<AxiosResponse<{
-    status: string;
-    model_type: string;
-    train_samples: number;
-    test_samples: number;
-    train_accuracy: number;
-    test_accuracy: number;
-    feature_importance: Record<string, number>;
-  }>>;
-  getMLModelsStatus: () => Promise<AxiosResponse<{
-    xgboost: { is_trained: boolean; accuracy: number | null };
-    build_classifier: { use_clustering: boolean };
-  }>>;
-  backfillPredictions: () => Promise<AxiosResponse<{ status: string, message: string }>>;
-  getTheories: () => Promise<AxiosResponse<{ theories: any[] }>>;
-  submitTheory: (theory: string) => Promise<AxiosResponse<any>>;
-  getFeatureSuggestions: () => Promise<AxiosResponse<{ suggestions: any[] }>>;
-  submitFeatureSuggestion: (name: string, desc: string) => Promise<AxiosResponse<any>>;
-}
-
-export const adaptiveApi: AdaptiveApi = {
-  getAccuracyComparison: (days = 90) => {
-    return apiClient.get('/adaptive/accuracy-comparison', { params: { days } });
-  },
-  getBalanceMethodSuccessRate: () => {
-    return apiClient.get('/adaptive/balance-method-success-rate');
-  },
-  getShapImportance: () => {
-    return apiClient.get('/adaptive/shap-importance');
-  },
-  trainXGBoost: () => {
-    return apiClient.post('/adaptive/train-ml-model');
-  },
-  getMLModelsStatus: () => {
-    return apiClient.get('/adaptive/ml-models-status');
-  },
-  backfillPredictions: () => {
-    return apiClient.post('/adaptive/backfill-predictions');
-  },
-  getTheories: () => {
-    return apiClient.get('/adaptive/meta-feedback');
-  },
-  submitTheory: (theory: string) => {
-    return apiClient.post('/adaptive/meta-feedback', { theory });
-  },
-  getFeatureSuggestions: () => {
-    return apiClient.get('/adaptive/feature-suggestions');
-  },
-  submitFeatureSuggestion: (feature_name: string, description: string) => {
-    return apiClient.post('/adaptive/feature-suggestions', { feature_name, description });
   }
 };
 

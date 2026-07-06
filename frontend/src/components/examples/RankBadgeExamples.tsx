@@ -19,9 +19,9 @@ export const AllRankTiers = () => (
       <RankBadge mmr={1750} />     {/* Silver */}
       <RankBadge mmr={2150} />     {/* Gold */}
       <RankBadge mmr={2450} />     {/* Platinum */}
-      <RankBadge mmr={2750} />     {/* Diamond */}
-      <RankBadge mmr={3050} />     {/* Master */}
-      <RankBadge mmr={3500} />     {/* Grandmaster */}
+      <RankBadge mmr={2850} />     {/* Diamond */}
+      <RankBadge mmr={3450} />     {/* Master */}
+      <RankBadge mmr={3900} />     {/* Grandmaster */}
     </HStack>
   </VStack>
 );
@@ -32,12 +32,12 @@ export const AllRankTiers = () => (
  */
 export const SizeVariants = () => (
   <VStack spacing={4} align="start">
-    <Heading size="md">Size Variants (Diamond Rank - 2750 MMR)</Heading>
+    <Heading size="md">Size Variants (Diamond Rank - 2850 MMR)</Heading>
     <VStack spacing={3}>
-      <HStack><Text w="100px">xs (extra small):</Text><RankBadge mmr={2750} size="xs" /></HStack>
-      <HStack><Text w="100px">sm (small):</Text><RankBadge mmr={2750} size="sm" /></HStack>
-      <HStack><Text w="100px">md (medium):</Text><RankBadge mmr={2750} size="md" /></HStack>
-      <HStack><Text w="100px">lg (large):</Text><RankBadge mmr={2750} size="lg" /></HStack>
+      <HStack><Text w="100px">xs (extra small):</Text><RankBadge mmr={2850} size="xs" /></HStack>
+      <HStack><Text w="100px">sm (small):</Text><RankBadge mmr={2850} size="sm" /></HStack>
+      <HStack><Text w="100px">md (medium):</Text><RankBadge mmr={2850} size="md" /></HStack>
+      <HStack><Text w="100px">lg (large):</Text><RankBadge mmr={2850} size="lg" /></HStack>
     </VStack>
   </VStack>
 );
@@ -54,9 +54,9 @@ export const WithMMRDisplay = () => (
       <RankBadge mmr={1750} showMMR={true} />     {/* Silver with MMR */}
       <RankBadge mmr={2150} showMMR={true} />     {/* Gold with MMR */}
       <RankBadge mmr={2450} showMMR={true} />     {/* Platinum with MMR */}
-      <RankBadge mmr={2750} showMMR={true} />     {/* Diamond with MMR */}
-      <RankBadge mmr={3050} showMMR={true} />     {/* Master with MMR */}
-      <RankBadge mmr={3500} showMMR={true} />     {/* Grandmaster with MMR */}
+      <RankBadge mmr={2850} showMMR={true} />     {/* Diamond with MMR */}
+      <RankBadge mmr={3450} showMMR={true} />     {/* Master with MMR */}
+      <RankBadge mmr={3900} showMMR={true} />     {/* Grandmaster with MMR */}
     </HStack>
   </VStack>
 );
@@ -73,9 +73,9 @@ export const WithoutIcon = () => (
       <RankBadge mmr={1750} showIcon={false} />     {/* Silver */}
       <RankBadge mmr={2150} showIcon={false} />     {/* Gold */}
       <RankBadge mmr={2450} showIcon={false} />     {/* Platinum */}
-      <RankBadge mmr={2750} showIcon={false} />     {/* Diamond */}
-      <RankBadge mmr={3050} showIcon={false} />     {/* Master */}
-      <RankBadge mmr={3500} showIcon={false} />     {/* Grandmaster */}
+      <RankBadge mmr={2850} showIcon={false} />     {/* Diamond */}
+      <RankBadge mmr={3450} showIcon={false} />     {/* Master */}
+      <RankBadge mmr={3900} showIcon={false} />     {/* Grandmaster */}
     </HStack>
   </VStack>
 );
@@ -134,7 +134,7 @@ export const PlayerComparison = () => (
       <VStack spacing={2} align="center">
         <Text fontWeight="bold" color="brand.300">Team 1</Text>
         <RankBadge mmr={2550} size="md" showMMR={true} />
-        <RankBadge mmr={2750} size="md" showMMR={true} />
+        <RankBadge mmr={2850} size="md" showMMR={true} />
         <RankBadge mmr={2350} size="md" showMMR={true} />
       </VStack>
 
@@ -218,11 +218,11 @@ export const RankBoundaries = () => (
 
       <GridItem>
         <Text fontSize="sm" color="gray.500">Bottom of Master</Text>
-        <RankBadge mmr={2900} showMMR={true} />
+        <RankBadge mmr={3300} showMMR={true} />
       </GridItem>
       <GridItem>
         <Text fontSize="sm" color="gray.500">Grandmaster</Text>
-        <RankBadge mmr={3200} showMMR={true} />
+        <RankBadge mmr={3800} showMMR={true} />
       </GridItem>
     </Grid>
   </VStack>

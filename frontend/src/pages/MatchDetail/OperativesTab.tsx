@@ -32,6 +32,7 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
   matchData,
   team1Won,
 }) => {
+  const cardBg = 'space.800';
   const winnerBg = 'rgba(72, 187, 120, 0.05)';
   const loserBg = 'rgba(245, 101, 101, 0.05)';
   const borderColor = 'space.900';

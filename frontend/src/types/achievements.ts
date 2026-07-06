@@ -60,7 +60,11 @@ export interface PlayerAchievementsResponse {
   player_name: string;
   total_achievements: number;
   total_points: number;
-  achievements: PlayerAchievement[];
+  // NOTE: matches backend PlayerAchievementsResponse.awarded
+  // (backend/app/api/achievements.py) - this field was previously misnamed
+  // "achievements" here, which didn't match the actual API response; fixed
+  // since PlayerDetail.tsx already reads `.awarded` at runtime.
+  awarded: PlayerAchievement[];
   available_achievements?: Achievement[];
 }
 

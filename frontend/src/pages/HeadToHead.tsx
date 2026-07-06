@@ -22,6 +22,7 @@ import {
   StatLabel,
   StatNumber,
   StatHelpText,
+  useColorModeValue,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -36,6 +37,7 @@ import {
   getH2HWinRate,
 } from '../types/headtohead';
 import VSScreen from '../components/VSScreen';
+import PageHeader from '../components/PageHeader';
 
 // Design tokens
 const cardBg = 'space.800';
@@ -353,23 +355,14 @@ const HeadToHead: React.FC = () => {
   }, [h2hData]);
 
   return (
-    <Box bg="space.900" minH="100vh" py={8}>
-      <Container maxW="container.xl">
+    <Box minH="100vh" pb={16}>
+      <PageHeader
+        kicker="Grudge Matches"
+        title="Head to [Head]"
+        description="Compare any two players and settle the rivalry with receipts."
+      />
+      <Container maxW="container.xl" pt={8}>
         <VStack spacing={8} align="stretch">
-          {/* Header */}
-          <Box textAlign="center">
-            <Heading
-              size="2xl"
-              fontFamily="heading"
-              color="brand.400"
-              letterSpacing="wider"
-            >
-              🆚 Head to Head
-            </Heading>
-            <Text color="gray.500" mt={2}>
-              Compare players and discover rivalries
-            </Text>
-          </Box>
 
           {/* Player Selectors */}
           <Box
@@ -441,6 +434,8 @@ const HeadToHead: React.FC = () => {
                   h2hData.head_to_head.player1_wins > h2hData.head_to_head.player2_wins ? 1 :
                   h2hData.head_to_head.player2_wins > h2hData.head_to_head.player1_wins ? 2 : null
                 }
+                probabilityLabel="Win Rate"
+                oddsBarLabel="Head-to-Head Record"
               />
 
               {/* Rivalry Meter */}
@@ -550,7 +545,7 @@ const HeadToHead: React.FC = () => {
           {/* Biggest Rivalries */}
           <Box>
             <Heading size="lg" color="gray.200" mb={4} fontFamily="heading">
-              🔥 Biggest Rivalries
+              Biggest Rivalries
             </Heading>
             {rivalriesLoading ? (
               <VStack spacing={2}>

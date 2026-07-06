@@ -79,7 +79,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           color="shield.400"
           textTransform="uppercase"
         >
-          <Text as="span" className="emoji-font">🛡️</Text> Squad Alpha Analytics
+          Squad Alpha Analytics
         </Heading>
         <VStack spacing={6} align="stretch">
           {team1Players.map((player) => {
@@ -145,7 +145,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           color="accent.400"
           textTransform="uppercase"
         >
-          <Text as="span" className="emoji-font">⚔️</Text> Squad Bravo Analytics
+          Squad Bravo Analytics
         </Heading>
         <VStack spacing={6} align="stretch">
           {team2Players.map((player) => {

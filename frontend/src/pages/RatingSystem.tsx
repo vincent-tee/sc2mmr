@@ -54,6 +54,7 @@ import {
   FiClock,
   FiZap,
 } from 'react-icons/fi';
+import PageHeader from '../components/PageHeader';
 
 const RatingSystem: React.FC = () => {
   const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
@@ -61,21 +62,14 @@ const RatingSystem: React.FC = () => {
   const borderColor = 'space.700';
 
   return (
-    <Box bg="space.900" minH="100vh" pb={10}>
-      <Container maxW="container.xl" py={8}>
+    <Box minH="100vh" pb={16}>
+      <PageHeader
+        kicker="Under the Hood"
+        title="How the [Rating] Works"
+        description="Understanding how your skill is tracked, rated, and balanced."
+      />
+      <Container maxW="container.xl" pt={8}>
         <VStack spacing={8} align="stretch">
-          {/* Header */}
-          <Box>
-            <HStack spacing={3} mb={2}>
-              <Icon as={FiTarget} boxSize={8} color="brand.500" />
-              <Heading size="xl" fontFamily="heading" letterSpacing="wider">
-                Rating System
-              </Heading>
-            </HStack>
-            <Text color="gray.400" fontSize="lg">
-              Understanding how your skill is tracked and balanced.
-            </Text>
-          </Box>
 
           {/* Overview Alert */}
           <Alert
@@ -172,11 +166,11 @@ const RatingSystem: React.FC = () => {
                     <Text fontSize="sm" color="gray.500" mb={4} fontWeight="bold" letterSpacing="widest">THE CALCULATION</Text>
                     <Box bg="space.900" p={6} borderRadius="xl" display="inline-block" border="2px dashed" borderColor="brand.500">
                       <Text fontSize="2xl" fontWeight="black" fontFamily="mono" color="brand.400">
-                        MMR = 1000 + (100 × μ) - (300 × σ)
+                        MMR = 1000 + (100 × μ) - (200 × σ)
                       </Text>
                     </Box>
                     <Text mt={6} fontSize="sm" color="gray.400" maxW="600px" mx="auto">
-                      We start with a baseline of 1000, add 100 points per skill level (mu), and subtract 300 points per uncertainty level (sigma). 
+                      We start with a baseline of 1000, add 100 points per skill level (mu), and subtract 200 points per uncertainty level (sigma).
                       This ensures that as the system gets more certain about you, your MMR stabilizes upwards.
                     </Text>
                   </Box>
@@ -187,9 +181,9 @@ const RatingSystem: React.FC = () => {
                         <Tr><Th color="gray.500">Player State</Th><Th isNumeric color="gray.500">Skill (μ)</Th><Th isNumeric color="gray.500">Uncertainty (σ)</Th><Th isNumeric color="gray.500">Final MMR</Th></Tr>
                       </Thead>
                       <Tbody>
-                        <Tr><Td><Badge>New Recruit</Badge></Td><Td isNumeric>25.0</Td><Td isNumeric>8.3</Td><Td isNumeric fontWeight="bold">1,010</Td></Tr>
-                        <Tr><Td><Badge colorScheme="brand">Rising Star</Badge></Td><Td isNumeric>32.0</Td><Td isNumeric>3.5</Td><Td isNumeric fontWeight="bold">3,150</Td></Tr>
-                        <Tr><Td><Badge colorScheme="purple">Squad Leader</Badge></Td><Td isNumeric>38.0</Td><Td isNumeric>2.5</Td><Td isNumeric fontWeight="bold" color="purple.400">4,050</Td></Tr>
+                        <Tr><Td><Badge>New Recruit</Badge></Td><Td isNumeric>25.0</Td><Td isNumeric>8.3</Td><Td isNumeric fontWeight="bold">1,840</Td></Tr>
+                        <Tr><Td><Badge colorScheme="brand">Rising Star</Badge></Td><Td isNumeric>32.0</Td><Td isNumeric>3.5</Td><Td isNumeric fontWeight="bold">3,500</Td></Tr>
+                        <Tr><Td><Badge colorScheme="purple">Squad Leader</Badge></Td><Td isNumeric>36.0</Td><Td isNumeric>2.5</Td><Td isNumeric fontWeight="bold" color="purple.400">4,100</Td></Tr>
                       </Tbody>
                     </Table>
                   </Box>
@@ -204,7 +198,6 @@ const RatingSystem: React.FC = () => {
                     {[
                       { title: 'Winning a Match', content: 'Your skill estimate (μ) increases and uncertainty (σ) decreases. MMR typically rises by 25-75 points.' },
                       { title: 'Losing a Match', content: 'Your skill estimate (μ) decreases and uncertainty (σ) decreases. MMR typically drops by 25-75 points.' },
-                      { title: 'Performance Multipliers', content: 'The system analyzes your combat and economy. Carrying your team can boost gains by 50% or mitigate losses by 50%.' },
                       { title: 'Skill Decay', content: 'Extended inactivity increases your uncertainty (σ). While your skill stays the same, your displayed rank will become more conservative until you play again.' }
                     ].map((item, i) => (
                       <AccordionItem key={i} border="none" mb={2}>
@@ -232,7 +225,6 @@ const RatingSystem: React.FC = () => {
                       <Tr><Td fontWeight="bold">MMR Base</Td><Td><Code>1000</Code></Td><Td fontSize="xs" color="gray.400">Floor for all displayed ratings</Td></Tr>
                       <Tr><Td fontWeight="bold">Display Scale</Td><Td><Code>100x</Code></Td><Td fontSize="xs" color="gray.400">Points awarded per mu point</Td></Tr>
                       <Tr><Td fontWeight="bold">Recency Half-Life</Td><Td><Code>90 Days</Code></Td><Td fontSize="xs" color="gray.400">Recent matches count for more</Td></Tr>
-                      <Tr><Td fontWeight="bold">Performance Cap</Td><Td><Code>1.5x</Code></Td><Td fontSize="xs" color="gray.400">Max boost from individual performance</Td></Tr>
                     </Tbody>
                   </Table>
                 </Box>
@@ -240,7 +232,7 @@ const RatingSystem: React.FC = () => {
             </TabPanels>
           </Tabs>
 
-          {/* Footer Footer */}
+          {/* Footer */}
           <Box bg="rgba(78, 205, 196, 0.1)" border="2px solid" borderColor="accent.400" borderRadius="xl" p={6}>
             <HStack align="start" spacing={4}>
               <Icon as={FiInfo} color="accent.400" boxSize={6} mt={1} />
