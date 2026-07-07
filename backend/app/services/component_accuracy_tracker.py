@@ -23,16 +23,31 @@ logger = logging.getLogger(__name__)
 class ComponentAccuracyTracker:
     """Track prediction accuracy with Exponential Moving Average."""
 
-    COMPONENTS = ["trueskill_mmr", "session_mmr", "combat", "economic", "efficiency"]
+    COMPONENTS = [
+        "trueskill_mmr",
+        "session_mmr",
+        "combat",
+        "economic",
+        "efficiency",
+        "teamwork",
+    ]
     MIN_PREDICTIONS = 10  # Minimum before trusting accuracy
     EMA_ALPHA = 0.1  # Recent predictions matter more
 
-    # Default weights (before enough data)
+    # Default weights (Regression Validated Dec 29)
+    # Optimal formula: recency_weighted_mmr + (avg_overall_impact - 60) * 6
+    # Achieves 79.1% accuracy (+2.5% over TrueSkill baseline of 76.6%)
+    #
+    # Key findings:
+    # - teamwork (avg_overall_impact) is the only metric that improves prediction
+    # - combat/economic/efficiency provide no additional value
+    # - session_mmr is not used directly; recency_weighted_mmr is used as base
     DEFAULT_WEIGHTS = {
-        "session_mmr": 0.40,
-        "combat": 0.25,
-        "economic": 0.20,
-        "efficiency": 0.15,
+        "session_mmr": 0.0,  # Not used - recency_weighted_mmr is the base
+        "teamwork": 1.0,  # Full weight - this is the key predictor
+        "combat": 0.0,  # No value added in regression
+        "economic": 0.0,  # No value added in regression
+        "efficiency": 0.0,  # No value added in regression
     }
 
     @staticmethod
@@ -102,6 +117,7 @@ class ComponentAccuracyTracker:
             "efficiency": float(
                 np.mean([p.avg_efficiency_score or 50 for p in players])
             ),
+            "teamwork": float(np.mean([p.avg_overall_impact or 50 for p in players])),
         }
 
     @staticmethod
@@ -154,6 +170,18 @@ class ComponentAccuracyTracker:
             db.rollback()
             logger.error(f"Error updating accuracy for {component}: {e}")
             raise
+
+    @staticmethod
+    def get_component_accuracy(component: str, db: Session) -> float:
+        """
+        Get current EMA accuracy for a single component.
+        """
+        accuracy = (
+            db.query(ComponentAccuracy)
+            .filter(ComponentAccuracy.component_name == component)
+            .first()
+        )
+        return accuracy.accuracy if accuracy else 0.5
 
     @staticmethod
     def get_all_accuracies(db: Session) -> Dict[str, float]:
@@ -252,7 +280,7 @@ class ComponentAccuracyTracker:
             return ComponentAccuracyTracker.DEFAULT_WEIGHTS.copy()
 
         # Filter to only ML-relevant components (exclude trueskill_mmr for balancing)
-        ml_components = ["session_mmr", "combat", "economic", "efficiency"]
+        ml_components = ["session_mmr", "combat", "economic", "efficiency", "teamwork"]
         valid_accuracies = {k: v for k, v in accuracies.items() if k in ml_components}
 
         # Normalize to sum to 1.0

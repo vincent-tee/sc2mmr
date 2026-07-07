@@ -113,6 +113,9 @@ def _make_match(session, *, game_mode, map_name, players, days_ago=0, probs=None
                 mu_after=26.0 if won else 19.0,
                 sigma_before=6.0,
                 sigma_after=5.9,
+                # Stored display MMR (what /players/{id}/history charts)
+                mmr_before=3500.0 if won else 3000.0,
+                mmr_after=3600.0 if won else 2900.0,
             )
         )
     session.commit()
@@ -251,17 +254,14 @@ def test_player_history_chronological_with_display_mmr(client, seeded):
     assert len(body["history"]) == 2
     played = [e["played_at"] for e in body["history"]]
     assert played == sorted(played)  # chronological
-    # Winner rows seeded with mu_after=26.0, losers 19.0; assert via the same
-    # display function the endpoint uses so the test tracks formula changes.
-    from app.rating_system import RatingSystem
-
-    assert body["history"][0]["mmr"] == pytest.approx(
-        RatingSystem.calculate_display_mmr(26.0)
+    # The endpoint charts the STORED display MMR (mmr_after column):
+    # Alice won m1 (3600) then lost m3 (2900).
+    assert body["history"][0]["mmr"] == pytest.approx(3600.0)
+    assert body["history"][1]["mmr"] == pytest.approx(2900.0)
+    assert body["history"][1]["mmr_change"] == pytest.approx(-100.0)
+    assert {"match_id", "map_name", "played_at", "mmr", "won"} <= set(
+        body["history"][0]
     )
-    assert body["history"][1]["mmr"] == pytest.approx(
-        RatingSystem.calculate_display_mmr(19.0)
-    )
-    assert {"match_id", "map_name", "played_at", "mmr"} <= set(body["history"][0])
 
 
 def test_player_history_unknown_player_404(client, seeded):

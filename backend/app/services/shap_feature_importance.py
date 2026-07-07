@@ -155,50 +155,42 @@ class SHAPFeatureImportance:
 
 
 def prepare_shap_dataset_from_database(db_session: Any, limit: int = 1000):
-    """
-    Prepare dataset for SHAP analysis from database.
-    """
-    from ..models import MatchPlayer, Player, PlayerMatchMetrics
+    from ..models import Match, MatchPlayer
+    from .ml_predictor import FeatureExtractor
 
-    query = (
-        db_session.query(MatchPlayer, Player, PlayerMatchMetrics)
-        .join(Player, MatchPlayer.player_id == Player.id)
-        .join(PlayerMatchMetrics, PlayerMatchMetrics.match_player_id == MatchPlayer.id)
+    recent_matches = (
+        db_session.query(Match)
+        .join(MatchPlayer)
+        .order_by(Match.played_at.desc())
         .limit(limit)
+        .all()
     )
 
     dataset = []
-    feature_names = [
-        "apm",
-        "combat_score",
-        "economic_score",
-        "efficiency_score",
-        "overall_impact",
-        "team_fight_participation",
-        "win_rate",
-    ]
+    for match in recent_matches:
+        team1_ids = [mp.player_id for mp in match.participants if mp.team_number == 1]
+        team2_ids = [mp.player_id for mp in match.participants if mp.team_number == 2]
 
-    for match_player, player, metrics in query:
-        features = [
-            float(getattr(metrics, "apm", 0) or 0),
-            float(getattr(metrics, "combat_score", 0) or 0),
-            float(getattr(metrics, "economic_score", 0) or 0),
-            float(getattr(metrics, "efficiency_score", 0) or 0),
-            float(getattr(metrics, "overall_impact", 0) or 0),
-            float(getattr(metrics, "team_fight_participation", 0) or 0),
-            float(getattr(player, "win_rate", 0.5) or 0.5),
-        ]
+        if not team1_ids or not team2_ids:
+            continue
 
-        outcome = 1 if match_player.won else 0
-        dataset.append({"features": features, "outcome": outcome})
+        try:
+            team1_f = FeatureExtractor.extract_team_features(db_session, team1_ids)
+            team2_f = FeatureExtractor.extract_team_features(db_session, team2_ids)
+            features = FeatureExtractor.create_match_features(team1_f, team2_f)
+
+            outcome = 1 if match.winner_team == 1 else 0
+            dataset.append({"features": features, "outcome": outcome})
+        except Exception:
+            continue
 
     if not dataset:
-        return np.array([]), np.array([]), feature_names
+        return np.array([]), np.array([]), FeatureExtractor.FEATURE_NAMES
 
     X = np.array([d["features"] for d in dataset])
     y = np.array([d["outcome"] for d in dataset])
 
-    return X, y, feature_names
+    return X, y, FeatureExtractor.FEATURE_NAMES
 
 
 def calculate_feature_importance(

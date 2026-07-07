@@ -23,6 +23,7 @@ from ..services.adaptive_balancer import (
     MLMetricsBalancer,
     ComponentAccuracyTracker,
 )
+from ..services.balance_capture import BalancePredictionService
 
 
 router = APIRouter(prefix="/teams", tags=["teams"])
@@ -39,6 +40,8 @@ class BalanceWithMLMetricsRequest(BaseModel):
     player_ids: List[int]
     use_adaptive_weights: bool = True
     manual_weights: Optional[dict] = None
+    top_n: int = 10
+    map_name: Optional[str] = None
 
 
 class MLPlayerBreakdown(BaseModel):
@@ -50,6 +53,7 @@ class MLPlayerBreakdown(BaseModel):
     combat: float
     economic: float
     efficiency: float
+    teamwork: float
     ml_rating: float
     total_games: int
 
@@ -71,6 +75,7 @@ class MLBalanceResponse(BaseModel):
     weights_used: dict
     component_accuracies: dict
     is_adaptive: bool
+    tactical_forecast: Optional[dict] = None
 
 
 # Request/Response models
@@ -79,6 +84,7 @@ class BalanceTeamsRequest(BaseModel):
 
     player_ids: List[int]
     top_n: int = 10
+    map_name: Optional[str] = None
     ai_difficulty: Optional[str] = (
         None  # "easy", "medium", "hard", "very_hard", "elite"
     )
@@ -90,6 +96,7 @@ class PlayerInfo(BaseModel):
     id: int
     name: str
     mmr: float
+    unified_mmr: Optional[float] = None
     mu: float
     sigma: float
 
@@ -118,6 +125,9 @@ class TeamSuggestionResponse(BaseModel):
     team_2_avg_impact: float = 0.0
     impact_balance_score: float = 1.0
     impact_difference: float = 0.0
+    # Combined historical pair/trio synergy of the split; the frontend shows a
+    # chemistry badge when positive. Computed by GroupSynergy in the balancer.
+    total_synergy: float = 0.0
 
 
 class CustomPlayerInfo(BaseModel):
@@ -171,9 +181,17 @@ def balance_with_custom_players(
     if len(player_infos) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 players total")
 
+    # Fetch synergy data
+    from ..models import GroupSynergy
+
+    synergies = (
+        db.query(GroupSynergy).filter(GroupSynergy.player_count.in_([2, 3])).all()
+    )
+    synergy_map = {s.player_ids_key: s.synergy_score for s in synergies}
+
     # Generate suggestions
     suggestions = TeamBalancer.generate_team_suggestions(
-        player_infos, top_n=request.top_n
+        player_infos, top_n=request.top_n, synergy_data=synergy_map
     )
 
     # Convert to response format
@@ -182,7 +200,14 @@ def balance_with_custom_players(
         analysis = BalancerStats.analyze_suggestion(suggestion)
 
         def to_player_info(p: BalancerPlayerInfo) -> PlayerInfo:
-            return PlayerInfo(id=p.id, name=p.name, mmr=p.mmr, mu=p.mu, sigma=p.sigma)
+            return PlayerInfo(
+                id=p.id,
+                name=p.name,
+                mmr=p.mmr,
+                unified_mmr=p.unified_mmr,
+                mu=p.mu,
+                sigma=p.sigma,
+            )
 
         responses.append(
             TeamSuggestionResponse(
@@ -205,10 +230,185 @@ def balance_with_custom_players(
                 team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
                 impact_balance_score=analysis["balance"]["impact_balance_score"],
                 impact_difference=analysis["balance"]["impact_difference"],
+                total_synergy=analysis["balance"]["total_synergy"],
             )
         )
 
     return responses
+
+
+class DraftPickResponse(BaseModel):
+    """A single pick in a captain's draft."""
+
+    pick_number: int
+    team_index: int
+    role: str  # "captain" | "pick"
+    player: PlayerInfo
+
+
+class DraftTeamResponse(BaseModel):
+    """A team's roster from a captain's draft."""
+
+    players: List[PlayerInfo]
+    total_mmr: float
+    avg_mmr: float
+
+
+class DraftResponse(BaseModel):
+    """Response for a captain's-draft team construction."""
+
+    teams: List[DraftTeamResponse]
+    draft_log: List[DraftPickResponse]
+
+
+class DraftRequest(BaseModel):
+    """Request for captain's-draft team construction."""
+
+    player_ids: List[int]
+    custom_players: List[CustomPlayerInfo] = []
+    num_teams: int = 2
+
+
+@router.post("/draft", response_model=DraftResponse)
+def draft_teams(request: DraftRequest, db: Session = Depends(get_db)):
+    """
+    POC: captain's-draft team construction (snake draft) - a transparent,
+    explainable alternative to /balance's exhaustive-search optimal split.
+    Not validated as producing better-balanced teams; see
+    TeamBalancer.snake_draft's docstring.
+    """
+    from ..balancer import PlayerInfo as BalancerPlayerInfo, TeamBalancer
+
+    db_players = db.query(Player).filter(Player.id.in_(request.player_ids)).all()
+    player_infos = [BalancerPlayerInfo.from_player(p) for p in db_players]
+
+    for idx, cp in enumerate(request.custom_players):
+        player_infos.append(
+            BalancerPlayerInfo(
+                id=-(idx + 1),
+                name=cp.name,
+                mu=cp.mu,
+                sigma=cp.sigma,
+                mmr=cp.mmr,
+                overall_impact=cp.overall_impact,
+                total_games=cp.total_games,
+            )
+        )
+
+    if len(player_infos) < max(2, request.num_teams):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need at least {max(2, request.num_teams)} players total",
+        )
+
+    try:
+        result = TeamBalancer.snake_draft(player_infos, num_teams=request.num_teams)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    def to_player_info(p: "BalancerPlayerInfo") -> PlayerInfo:
+        return PlayerInfo(
+            id=p.id, name=p.name, mmr=p.mmr, unified_mmr=p.unified_mmr,
+            mu=p.mu, sigma=p.sigma,
+        )
+
+    teams_response = [
+        DraftTeamResponse(
+            players=[to_player_info(p) for p in team],
+            total_mmr=sum(p.mmr for p in team),
+            avg_mmr=sum(p.mmr for p in team) / len(team) if team else 0.0,
+        )
+        for team in result["teams"]
+    ]
+    draft_log_response = [
+        DraftPickResponse(
+            pick_number=entry["pick_number"],
+            team_index=entry["team_index"],
+            role=entry["role"],
+            player=to_player_info(entry["player"]),
+        )
+        for entry in result["draft_log"]
+    ]
+
+    return DraftResponse(teams=teams_response, draft_log=draft_log_response)
+
+
+class SwapSuggestionResponse(BaseModel):
+    """A single suggested player swap between two fixed teams."""
+
+    player_out_of_team_1: PlayerInfo
+    player_out_of_team_2: PlayerInfo
+    new_match_quality: float
+    new_win_probability: float
+    quality_delta: float
+
+
+class SuggestSwapsResponse(BaseModel):
+    """Response for swap-suggestion analysis of a fixed split."""
+
+    current_match_quality: float
+    current_win_probability: float
+    suggestions: List[SwapSuggestionResponse]
+
+
+class SuggestSwapsRequest(BaseModel):
+    """Request to analyze a fixed team split for improving swaps."""
+
+    team_1_ids: List[int]
+    team_2_ids: List[int]
+    custom_players: List[CustomPlayerInfo] = []
+    top_n: int = 3
+
+
+@router.post("/suggest-swaps", response_model=SuggestSwapsResponse)
+def suggest_swaps(request: SuggestSwapsRequest, db: Session = Depends(get_db)):
+    """
+    Given a fixed 2-team split (e.g. from a manual draft or hand-adjusted
+    teams), suggest single-player swaps that would improve balance. See
+    TeamBalancer.suggest_swaps' docstring - this is a local search around
+    the given split using the proven TrueSkill scoring, not a claim of
+    global optimality.
+    """
+    from ..balancer import PlayerInfo as BalancerPlayerInfo, TeamBalancer
+
+    def resolve_players(ids: List[int]) -> List["BalancerPlayerInfo"]:
+        db_players = db.query(Player).filter(Player.id.in_(ids)).all()
+        by_id = {p.id: BalancerPlayerInfo.from_player(p) for p in db_players}
+        for idx, cp in enumerate(request.custom_players):
+            by_id[-(idx + 1)] = BalancerPlayerInfo(
+                id=-(idx + 1), name=cp.name, mu=cp.mu, sigma=cp.sigma,
+                mmr=cp.mmr, overall_impact=cp.overall_impact, total_games=cp.total_games,
+            )
+        return [by_id[i] for i in ids if i in by_id]
+
+    team_1 = resolve_players(request.team_1_ids)
+    team_2 = resolve_players(request.team_2_ids)
+
+    if not team_1 or not team_2:
+        raise HTTPException(status_code=400, detail="Both teams need at least one player")
+
+    result = TeamBalancer.suggest_swaps(team_1, team_2, top_n=request.top_n)
+
+    def to_player_info(p: "BalancerPlayerInfo") -> PlayerInfo:
+        return PlayerInfo(
+            id=p.id, name=p.name, mmr=p.mmr, unified_mmr=p.unified_mmr,
+            mu=p.mu, sigma=p.sigma,
+        )
+
+    return SuggestSwapsResponse(
+        current_match_quality=result["current_match_quality"],
+        current_win_probability=result["current_win_probability"],
+        suggestions=[
+            SwapSuggestionResponse(
+                player_out_of_team_1=to_player_info(c["player_out_of_team_1"]),
+                player_out_of_team_2=to_player_info(c["player_out_of_team_2"]),
+                new_match_quality=c["new_match_quality"],
+                new_win_probability=c["new_win_probability"],
+                quality_delta=c["quality_delta"],
+            )
+            for c in result["suggestions"]
+        ],
+    )
 
 
 @router.post("/balance", response_model=List[TeamSuggestionResponse])
@@ -245,7 +445,12 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
     try:
         # Generate team suggestions
         suggestions = TeamBalancer.balance_teams(
-            db, request.player_ids, top_n=request.top_n
+            db, request.player_ids, top_n=request.top_n, map_name=request.map_name
+        )
+
+        # Capture predictions for calibration tracking (resolved on upload)
+        BalancePredictionService.record_suggestions(
+            db, "mmr_v1", suggestions, max_rank=3
         )
 
         # Convert to response format
@@ -257,22 +462,14 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
             # Build team 1 info
             team_1_players = [
                 PlayerInfo(
-                    id=p["id"],
-                    name=p["name"],
-                    mmr=p["mmr"],
-                    mu=p["mu"],
-                    sigma=p["sigma"],
+                    id=player.id,
+                    name=player.name,
+                    mmr=player.mmr,
+                    unified_mmr=player.unified_mmr,
+                    mu=player.mu,
+                    sigma=player.sigma,
                 )
-                for p in [
-                    {
-                        "id": player.id,
-                        "name": player.name,
-                        "mmr": player.mmr,
-                        "mu": player.mu,
-                        "sigma": player.sigma,
-                    }
-                    for player in suggestion.team_1
-                ]
+                for player in suggestion.team_1
             ]
 
             team_1_info = TeamInfo(
@@ -284,22 +481,14 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
             # Build team 2 info
             team_2_players = [
                 PlayerInfo(
-                    id=p["id"],
-                    name=p["name"],
-                    mmr=p["mmr"],
-                    mu=p["mu"],
-                    sigma=p["sigma"],
+                    id=player.id,
+                    name=player.name,
+                    mmr=player.mmr,
+                    unified_mmr=player.unified_mmr,
+                    mu=player.mu,
+                    sigma=player.sigma,
                 )
-                for p in [
-                    {
-                        "id": player.id,
-                        "name": player.name,
-                        "mmr": player.mmr,
-                        "mu": player.mu,
-                        "sigma": player.sigma,
-                    }
-                    for player in suggestion.team_2
-                ]
+                for player in suggestion.team_2
             ]
 
             team_2_info = TeamInfo(
@@ -326,6 +515,7 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
                     team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
                     impact_balance_score=analysis["balance"]["impact_balance_score"],
                     impact_difference=analysis["balance"]["impact_difference"],
+                    total_synergy=analysis["balance"]["total_synergy"],
                 )
             )
 
@@ -362,6 +552,171 @@ def quick_balance(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
         )
 
     return suggestions[0]
+
+
+# =============================================================================
+# Composite-Objective Balancing (win-prob + spread + components + synergy)
+# =============================================================================
+
+
+class CompositeTeamSuggestionResponse(TeamSuggestionResponse):
+    """Team suggestion ranked by the composite objective, with breakdown."""
+
+    composite_score: float
+    skill_spread_diff: float
+    component_imbalance: float
+    synergy_imbalance: float
+    team_1_synergy: float
+    team_2_synergy: float
+    ml_win_probability: Optional[float] = None
+
+
+class BalanceCompositeRequest(BaseModel):
+    """Request for composite-objective balancing."""
+
+    player_ids: List[int]
+    top_n: int = 10
+    map_name: Optional[str] = None
+    # Off by default: the ML re-rank has not been shown to beat plain MMR/
+    # TrueSkill balancing (see .moai/docs/ml-model-findings.md and
+    # docs/superpowers/campaign/rating-consolidation-log.md, 2026-07-06
+    # entries). Opt-in only, for experimentation.
+    use_ml: bool = False
+
+
+@router.post(
+    "/balance-composite", response_model=List[CompositeTeamSuggestionResponse]
+)
+def balance_teams_composite(
+    request: BalanceCompositeRequest, db: Session = Depends(get_db)
+):
+    """
+    Generate balanced teams using the composite objective.
+
+    Unlike /teams/balance (pure MMR-sum difference), this ranks splits by:
+    - predicted win probability closest to 50% (TrueSkill, plus XGBoost
+      re-rank of the top candidates when the model is trained)
+    - TrueSkill match quality (uncertainty-aware)
+    - penalties for within-team skill-spread mismatch, team-profile
+      (combat/economic/efficiency/impact/aggression) imbalance, and
+      one-sided synergy
+
+    Every suggestion is logged for calibration tracking and resolved
+    against the actual outcome when the replay is uploaded.
+    """
+    num_players = len(request.player_ids)
+    if num_players < 2:
+        raise HTTPException(
+            status_code=400, detail=f"Need at least 2 players, got {num_players}"
+        )
+    if num_players > 20:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many players: {num_players}. Maximum is 20 players (10v10)",
+        )
+
+    try:
+        suggestions = TeamBalancer.balance_teams_composite(
+            db,
+            request.player_ids,
+            top_n=request.top_n,
+            map_name=request.map_name,
+            use_ml=request.use_ml,
+        )
+
+        BalancePredictionService.record_suggestions(
+            db, "composite_v1", suggestions, max_rank=3
+        )
+
+        responses = []
+        for suggestion in suggestions:
+            analysis = BalancerStats.analyze_suggestion(suggestion)
+
+            def to_team_info(team, key):
+                return TeamInfo(
+                    players=[
+                        PlayerInfo(
+                            id=p.id,
+                            name=p.name,
+                            mmr=p.mmr,
+                            unified_mmr=p.unified_mmr,
+                            mu=p.mu,
+                            sigma=p.sigma,
+                        )
+                        for p in team
+                    ],
+                    total_mmr=analysis[key]["total_mmr"],
+                    avg_mmr=analysis[key]["avg_mmr"],
+                )
+
+            responses.append(
+                CompositeTeamSuggestionResponse(
+                    team_1=to_team_info(suggestion.team_1, "team_1"),
+                    team_2=to_team_info(suggestion.team_2, "team_2"),
+                    mmr_difference=analysis["balance"]["mmr_difference"],
+                    match_quality=analysis["balance"]["match_quality"],
+                    win_probability_team_1=analysis["balance"][
+                        "win_probability_team_1"
+                    ],
+                    win_probability_team_2=analysis["balance"][
+                        "win_probability_team_2"
+                    ],
+                    fairness_rating=analysis["balance"]["fairness_rating"],
+                    team_1_avg_impact=analysis["balance"]["team_1_avg_impact"],
+                    team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
+                    impact_balance_score=analysis["balance"]["impact_balance_score"],
+                    impact_difference=analysis["balance"]["impact_difference"],
+                    composite_score=round(suggestion.composite_score, 4),
+                    skill_spread_diff=round(suggestion.skill_spread_diff, 1),
+                    component_imbalance=round(suggestion.component_imbalance, 4),
+                    synergy_imbalance=round(suggestion.synergy_imbalance, 2),
+                    team_1_synergy=round(suggestion.team_1_synergy, 2),
+                    team_2_synergy=round(suggestion.team_2_synergy, 2),
+                    ml_win_probability=(
+                        round(suggestion.ml_win_probability, 4)
+                        if suggestion.ml_win_probability is not None
+                        else None
+                    ),
+                )
+            )
+        return responses
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+@router.get("/balance-calibration")
+def get_balance_calibration(
+    method: Optional[str] = None,
+    days: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Calibration metrics for balancer predictions vs actual outcomes.
+
+    Returns Brier score, log loss, directional accuracy, and reliability
+    bins per balancing method (from captured balance-time predictions),
+    plus the upload-time TrueSkill baseline stored on matches.
+    Lower Brier/log-loss = better-calibrated balancing.
+    """
+    try:
+        methods = BalancePredictionService.get_calibration(db, method=method, days=days)
+        baseline = BalancePredictionService.get_upload_baseline_calibration(
+            db, days=days
+        )
+        return {
+            "methods": methods,
+            "upload_trueskill_baseline": baseline,
+            "notes": (
+                "methods = captured balance-time predictions (rank-1 picks only), "
+                "resolved against uploaded replays. Brier: 0.25 = coin flip, "
+                "lower is better."
+            ),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 # =============================================================================
@@ -559,139 +914,6 @@ def list_ai_difficulties():
     }
 
 
-class BalanceWithImpactRequest(BaseModel):
-    """Request to balance teams with impact consideration."""
-
-    player_ids: List[int]
-    top_n: int = 10
-    impact_weight: float = 0.5  # 0-1: how much to prioritize impact balance
-
-
-@router.post("/balance-with-impact", response_model=List[TeamSuggestionResponse])
-def balance_teams_with_impact(
-    request: BalanceWithImpactRequest, db: Session = Depends(get_db)
-):
-    """
-    Balance teams with consideration for high-impact vs low-impact player distribution.
-
-    This ensures each team gets a mix of:
-    - Strong players (high MMR, high impact, shot callers)
-    - Weaker players (lower MMR, lower impact, learning players)
-
-    Args:
-        request: BalanceWithImpactRequest with player IDs and impact weight
-        db: Database session
-
-    Returns:
-        List of TeamSuggestionResponse objects, sorted by balanced score
-
-    Impact Weight:
-        - 0.0 = Pure MMR balance (ignores impact scores)
-        - 0.5 = Equal weight to MMR and impact distribution (recommended)
-        - 1.0 = Pure impact balance (ignores MMR, only balances impact)
-
-    Raises:
-        HTTPException: If invalid number of players or players not found
-    """
-    # Validate minimum players
-    num_players = len(request.player_ids)
-    if num_players < 2:
-        raise HTTPException(
-            status_code=400, detail=f"Need at least 2 players, got {num_players}"
-        )
-
-    if num_players > 20:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many players: {num_players}. Maximum is 20 players (10v10)",
-        )
-
-    # Validate impact_weight
-    if not (0 <= request.impact_weight <= 1):
-        raise HTTPException(
-            status_code=400,
-            detail=f"impact_weight must be between 0 and 1, got {request.impact_weight}",
-        )
-
-    try:
-        # Generate impact-aware team suggestions
-        suggestions = TeamBalancer.balance_with_impact_priority(
-            db,
-            request.player_ids,
-            top_n=request.top_n,
-            impact_weight=request.impact_weight,
-        )
-
-        # Convert to response format (same as balance_teams endpoint)
-        responses = []
-        for suggestion in suggestions:
-            analysis = BalancerStats.analyze_suggestion(suggestion)
-
-            team_1_players = [
-                PlayerInfo(
-                    id=player.id,
-                    name=player.name,
-                    mmr=player.mmr,
-                    mu=player.mu,
-                    sigma=player.sigma,
-                )
-                for player in suggestion.team_1
-            ]
-
-            team_1_info = TeamInfo(
-                players=team_1_players,
-                total_mmr=analysis["team_1"]["total_mmr"],
-                avg_mmr=analysis["team_1"]["avg_mmr"],
-            )
-
-            team_2_players = [
-                PlayerInfo(
-                    id=player.id,
-                    name=player.name,
-                    mmr=player.mmr,
-                    mu=player.mu,
-                    sigma=player.sigma,
-                )
-                for player in suggestion.team_2
-            ]
-
-            team_2_info = TeamInfo(
-                players=team_2_players,
-                total_mmr=analysis["team_2"]["total_mmr"],
-                avg_mmr=analysis["team_2"]["avg_mmr"],
-            )
-
-            responses.append(
-                TeamSuggestionResponse(
-                    team_1=team_1_info,
-                    team_2=team_2_info,
-                    mmr_difference=analysis["balance"]["mmr_difference"],
-                    match_quality=analysis["balance"]["match_quality"],
-                    win_probability_team_1=analysis["balance"][
-                        "win_probability_team_1"
-                    ],
-                    win_probability_team_2=analysis["balance"][
-                        "win_probability_team_2"
-                    ],
-                    fairness_rating=analysis["balance"]["fairness_rating"],
-                    team_1_avg_impact=analysis["balance"]["team_1_avg_impact"],
-                    team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
-                    impact_balance_score=analysis["balance"]["impact_balance_score"],
-                    impact_difference=analysis["balance"]["impact_difference"],
-                )
-            )
-
-        return responses
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
-
-# Multi-Model Balancing Endpoints
-
-
 class BalanceWithModelRequest(BaseModel):
     """Request to balance teams using specific rating model."""
 
@@ -714,11 +936,15 @@ class ModelBalanceResponse(BaseModel):
     win_confidence: float
 
 
-@router.post("/balance-with-model", response_model=ModelBalanceResponse)
+@router.post(
+    "/balance-with-model", response_model=List[ModelBalanceResponse], deprecated=True
+)
 def balance_teams_with_model(
     request: BalanceWithModelRequest, db: Session = Depends(get_db)
 ):
     """
+    DEPRECATED: Use /balance instead.
+
     Balance teams using a specific rating model.
 
     Available models:
@@ -737,7 +963,7 @@ def balance_teams_with_model(
         db: Database session
 
     Returns:
-        ModelBalanceResponse with balanced teams
+        List of ModelBalanceResponse with balanced teams
 
     Raises:
         HTTPException: If invalid model or players not found
@@ -773,87 +999,87 @@ def balance_teams_with_model(
         missing_ids = set(request.player_ids) - found_ids
         raise HTTPException(status_code=404, detail=f"Players not found: {missing_ids}")
 
-    # Generate all possible team splits
     # Support both even and uneven player counts
     if num_players % 2 == 0:
         team_1_size = num_players // 2
     else:
         team_1_size = (num_players // 2) + 1
 
-    best_balance = None
-    best_quality = -1
+    all_suggestions = []
 
-    for team1_indices in combinations(range(len(all_ratings)), team_1_size):
-        team1_ratings = [all_ratings[i] for i in team1_indices]
-        team2_ratings = [
-            all_ratings[i] for i in range(len(all_ratings)) if i not in team1_indices
-        ]
+    # To avoid mirrors, fix the first player in Team 1
+    first_rating = all_ratings[0]
+    remaining_ratings = all_ratings[1:]
+
+    for team1_indices in combinations(range(len(remaining_ratings)), team_1_size - 1):
+        team1_ratings = [first_rating] + [remaining_ratings[i] for i in team1_indices]
+        team2_ratings = [r for r in all_ratings if r not in team1_ratings]
 
         # Calculate match quality for this split
         quality = RatingModelService.calculate_match_quality(
             team1_ratings, team2_ratings, model
         )
 
-        if quality > best_quality:
-            best_quality = quality
-            best_balance = (team1_ratings, team2_ratings)
+        # Calculate ratings
+        team1_rating = RatingModelService.calculate_team_rating(team1_ratings, model)
+        team2_rating = RatingModelService.calculate_team_rating(team2_ratings, model)
 
-    if not best_balance:
-        raise HTTPException(status_code=500, detail="Failed to generate balanced teams")
+        # Predict winner
+        predicted_winner, confidence = RatingModelService.predict_match_winner(
+            team1_ratings, team2_ratings, model
+        )
 
-    team1_ratings, team2_ratings = best_balance
+        # Format team players
+        team1_players = [
+            {
+                "id": r.player_id,
+                "name": r.player_name,
+                "rating": r.get_rating(model),
+                "trueskill_mmr": r.trueskill_mmr,
+                "impact_score": r.overall_impact,
+            }
+            for r in team1_ratings
+        ]
 
-    # Calculate ratings
-    team1_rating = RatingModelService.calculate_team_rating(team1_ratings, model)
-    team2_rating = RatingModelService.calculate_team_rating(team2_ratings, model)
+        team2_players = [
+            {
+                "id": r.player_id,
+                "name": r.player_name,
+                "rating": r.get_rating(model),
+                "trueskill_mmr": r.trueskill_mmr,
+                "impact_score": r.overall_impact,
+            }
+            for r in team2_ratings
+        ]
 
-    # Predict winner
-    predicted_winner, confidence = RatingModelService.predict_match_winner(
-        team1_ratings, team2_ratings, model
-    )
+        all_suggestions.append(
+            ModelBalanceResponse(
+                model=model.value,
+                model_description=get_model_description(model),
+                team_1=team1_players,
+                team_2=team2_players,
+                team_1_rating=team1_rating,
+                team_2_rating=team2_rating,
+                rating_difference=abs(team1_rating - team2_rating),
+                match_quality=quality,
+                predicted_winner=predicted_winner,
+                win_confidence=confidence,
+            )
+        )
 
-    # Format response
-    team1_players = [
-        {
-            "id": r.player_id,
-            "name": r.player_name,
-            "rating": r.get_rating(model),
-            "trueskill_mmr": r.trueskill_mmr,
-            "impact_score": r.overall_impact,
-        }
-        for r in team1_ratings
-    ]
+    # Sort by quality descending
+    all_suggestions.sort(key=lambda x: x.match_quality, reverse=True)
 
-    team2_players = [
-        {
-            "id": r.player_id,
-            "name": r.player_name,
-            "rating": r.get_rating(model),
-            "trueskill_mmr": r.trueskill_mmr,
-            "impact_score": r.overall_impact,
-        }
-        for r in team2_ratings
-    ]
-
-    return ModelBalanceResponse(
-        model=model.value,
-        model_description=get_model_description(model),
-        team_1=team1_players,
-        team_2=team2_players,
-        team_1_rating=team1_rating,
-        team_2_rating=team2_rating,
-        rating_difference=abs(team1_rating - team2_rating),
-        match_quality=best_quality,
-        predicted_winner=predicted_winner,
-        win_confidence=confidence,
-    )
+    return all_suggestions[: request.top_n]
 
 
-@router.post("/compare-models")
+@router.post("/compare-models", deprecated=True)
 def compare_balance_models(
     request: BalanceWithModelRequest, db: Session = Depends(get_db)
 ):
     """
+    DEPRECATED: Developer tool only. Use /balance-quality for metrics.
+
     Compare all rating models for the same set of players.
 
     Shows how different models would balance the same players,
@@ -1223,11 +1449,15 @@ def predict_match_ml(request: MLPredictRequest, db: Session = Depends(get_db)):
 # =============================================================================
 
 
-@router.post("/balance-with-ml-metrics", response_model=MLBalanceResponse)
+@router.post(
+    "/balance-with-ml-metrics", response_model=List[MLBalanceResponse], deprecated=True
+)
 def balance_teams_with_ml_metrics(
     request: BalanceWithMLMetricsRequest, db: Session = Depends(get_db)
 ):
     """
+    DEPRECATED: Use /balance instead.
+
     Balance teams using ML metrics including:
     - Session-weighted MMR (40% default weight)
     - Combat score (25%)
@@ -1244,7 +1474,7 @@ def balance_teams_with_ml_metrics(
         db: Database session
 
     Returns:
-        MLBalanceResponse with detailed team breakdowns and synergy bonuses
+        List of MLBalanceResponse with detailed team breakdowns and synergy bonuses
     """
     # Validate minimum players
     num_players = len(request.player_ids)
@@ -1260,68 +1490,246 @@ def balance_teams_with_ml_metrics(
         )
 
     try:
-        # Get balance suggestion
-        suggestion = MLMetricsBalancer.balance_teams(
+        # Get balance suggestions
+        suggestions = MLMetricsBalancer.balance_teams(
             player_ids=request.player_ids,
             db=db,
             use_adaptive_weights=request.use_adaptive_weights,
             manual_weights=request.manual_weights,
+            top_n=request.top_n,
+            map_name=request.map_name,
+        )
+
+        # Get tactical forecast
+        from ..services.tactical_forecast import TacticalForecastService
+
+        forecast = TacticalForecastService.get_forecast(
+            request.player_ids, request.map_name, db
         )
 
         # Get component accuracies
-        components = ["session_mmr", "combat", "economic", "efficiency"]
+        components = ["session_mmr", "combat", "economic", "efficiency", "teamwork"]
         accuracies = {
             comp: ComponentAccuracyTracker.get_component_accuracy(comp, db)
             for comp in components
         }
 
         # Convert to response format
-        team_1_players = [
-            MLPlayerBreakdown(
-                player_id=p.player_id,
-                player_name=p.player_name,
-                session_mmr=p.session_mmr,
-                combat=p.combat,
-                economic=p.economic,
-                efficiency=p.efficiency,
-                ml_rating=p.ml_rating,
-                total_games=p.total_games,
-            )
-            for p in suggestion.team1
-        ]
+        responses = []
+        for suggestion in suggestions:
+            team_1_players = [
+                MLPlayerBreakdown(
+                    player_id=p.player_id,
+                    player_name=p.player_name,
+                    session_mmr=p.session_mmr,
+                    combat=p.combat,
+                    economic=p.economic,
+                    efficiency=p.efficiency,
+                    teamwork=p.teamwork,
+                    ml_rating=p.ml_rating,
+                    total_games=p.total_games,
+                )
+                for p in suggestion.team1
+            ]
 
-        team_2_players = [
-            MLPlayerBreakdown(
-                player_id=p.player_id,
-                player_name=p.player_name,
-                session_mmr=p.session_mmr,
-                combat=p.combat,
-                economic=p.economic,
-                efficiency=p.efficiency,
-                ml_rating=p.ml_rating,
-                total_games=p.total_games,
-            )
-            for p in suggestion.team2
-        ]
+            team_2_players = [
+                MLPlayerBreakdown(
+                    player_id=p.player_id,
+                    player_name=p.player_name,
+                    session_mmr=p.session_mmr,
+                    combat=p.combat,
+                    economic=p.economic,
+                    efficiency=p.efficiency,
+                    teamwork=p.teamwork,
+                    ml_rating=p.ml_rating,
+                    total_games=p.total_games,
+                )
+                for p in suggestion.team2
+            ]
 
-        return MLBalanceResponse(
-            team_1=TeamMLBreakdown(
-                players=team_1_players,
-                total_ml_rating=suggestion.team1_total,
-                synergy_bonus=suggestion.team1_synergy,
-            ),
-            team_2=TeamMLBreakdown(
-                players=team_2_players,
-                total_ml_rating=suggestion.team2_total,
-                synergy_bonus=suggestion.team2_synergy,
-            ),
-            balance_score=suggestion.balance_score,
-            weights_used=suggestion.weights_used,
-            component_accuracies=accuracies,
-            is_adaptive=request.use_adaptive_weights,
-        )
+            responses.append(
+                MLBalanceResponse(
+                    team_1=TeamMLBreakdown(
+                        players=team_1_players,
+                        total_ml_rating=suggestion.team1_total,
+                        synergy_bonus=suggestion.team1_synergy,
+                    ),
+                    team_2=TeamMLBreakdown(
+                        players=team_2_players,
+                        total_ml_rating=suggestion.team2_total,
+                        synergy_bonus=suggestion.team2_synergy,
+                    ),
+                    balance_score=suggestion.balance_score,
+                    weights_used=suggestion.weights_used,
+                    component_accuracies=accuracies,
+                    is_adaptive=request.use_adaptive_weights,
+                    tactical_forecast=forecast,
+                )
+            )
+
+        return responses
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ML balancing error: {str(e)}")
+
+
+# =============================================================================
+# Timing-Adjusted Balancing Endpoint (Validated by Regression Analysis)
+# =============================================================================
+
+
+class TimingAdjustedBalanceRequest(BaseModel):
+    """Request to balance teams using timing-adjusted MMR."""
+
+    player_ids: List[int]
+    top_n: int = 10
+
+
+class TimingPlayerInfo(BaseModel):
+    """Player info with timing adjustment details."""
+
+    id: int
+    name: str
+    mmr: float
+    timing_adjusted_mmr: float
+    timing_bonus: float
+    avg_first_damage_timing: float  # seconds
+
+
+class BalanceQualityMetrics(BaseModel):
+    """Historical balance quality statistics."""
+
+    total_matches: int
+    matches_with_data: int
+    avg_mmr_difference: float
+    median_mmr_difference: float
+    pct_within_100: float  # % of matches with MMR diff <= 100
+    pct_within_200: float
+    pct_within_300: float
+    prediction_accuracy: float  # % where higher-MMR team won
+    close_game_accuracy: float  # Prediction accuracy on close games
+    lopsided_games: int  # Games with > 500 MMR diff
+    closest_match: dict
+    most_lopsided_match: dict
+
+
+@router.get("/balance-quality", response_model=BalanceQualityMetrics)
+def get_balance_quality_metrics(db: Session = Depends(get_db)):
+    """
+    Get historical balance quality metrics.
+
+    Analyzes all past matches to show:
+    - Average MMR difference between teams
+    - % of matches within various thresholds (100, 200, 300 MMR)
+    - Prediction accuracy (did higher MMR team win?)
+    - Close game vs lopsided game breakdown
+
+    Use this to evaluate how well the balancer is working.
+
+    Returns:
+        BalanceQualityMetrics with detailed statistics
+    """
+    from ..models import Match, MatchPlayer
+    import statistics
+
+    # Get all matches with their team compositions
+    matches = db.query(Match).filter(Match.played_at.isnot(None)).all()
+
+    match_data = []
+    for match in matches:
+        match_players = (
+            db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
+        )
+
+        team1_players = [mp for mp in match_players if mp.team_number == 1]
+        team2_players = [mp for mp in match_players if mp.team_number == 2]
+
+        if not team1_players or not team2_players:
+            continue
+
+        # Get player MMRs at time of match (using current MMR as proxy)
+        team1_mmr = 0
+        team2_mmr = 0
+
+        for mp in team1_players:
+            player = db.query(Player).filter(Player.id == mp.player_id).first()
+            if player:
+                team1_mmr += player.mmr
+
+        for mp in team2_players:
+            player = db.query(Player).filter(Player.id == mp.player_id).first()
+            if player:
+                team2_mmr += player.mmr
+
+        mmr_diff = abs(team1_mmr - team2_mmr)
+        team1_won = any(mp.won for mp in team1_players)
+        higher_mmr_won = (team1_mmr > team2_mmr) == team1_won
+
+        match_data.append(
+            {
+                "match_id": match.id,
+                "team1_mmr": team1_mmr,
+                "team2_mmr": team2_mmr,
+                "mmr_diff": mmr_diff,
+                "team1_won": team1_won,
+                "higher_mmr_won": higher_mmr_won,
+                "played_at": match.played_at,
+            }
+        )
+
+    if not match_data:
+        raise HTTPException(status_code=404, detail="No matches found")
+
+    # Calculate metrics
+    mmr_diffs = [m["mmr_diff"] for m in match_data]
+    avg_diff = statistics.mean(mmr_diffs)
+    median_diff = statistics.median(mmr_diffs)
+
+    within_100 = sum(1 for d in mmr_diffs if d < 100) / len(mmr_diffs) * 100
+    within_200 = sum(1 for d in mmr_diffs if d < 200) / len(mmr_diffs) * 100
+    within_300 = sum(1 for d in mmr_diffs if d < 300) / len(mmr_diffs) * 100
+
+    prediction_acc = (
+        sum(1 for m in match_data if m["higher_mmr_won"]) / len(match_data) * 100
+    )
+
+    # Close game accuracy (games with < 300 MMR diff)
+    close_games = [m for m in match_data if m["mmr_diff"] < 300]
+    close_acc = (
+        sum(1 for m in close_games if m["higher_mmr_won"]) / len(close_games) * 100
+        if close_games
+        else 0
+    )
+
+    lopsided = sum(1 for d in mmr_diffs if d > 500)
+
+    # Find closest and most lopsided matches
+    closest = min(match_data, key=lambda x: x["mmr_diff"])
+    most_lopsided = max(match_data, key=lambda x: x["mmr_diff"])
+
+    return BalanceQualityMetrics(
+        total_matches=len(matches),
+        matches_with_data=len(match_data),
+        avg_mmr_difference=round(avg_diff, 1),
+        median_mmr_difference=round(median_diff, 1),
+        pct_within_100=round(within_100, 1),
+        pct_within_200=round(within_200, 1),
+        pct_within_300=round(within_300, 1),
+        prediction_accuracy=round(prediction_acc, 1),
+        close_game_accuracy=round(close_acc, 1),
+        lopsided_games=lopsided,
+        closest_match={
+            "match_id": closest["match_id"],
+            "mmr_diff": closest["mmr_diff"],
+            "played_at": str(closest["played_at"]) if closest["played_at"] else None,
+        },
+        most_lopsided_match={
+            "match_id": most_lopsided["match_id"],
+            "mmr_diff": most_lopsided["mmr_diff"],
+            "played_at": str(most_lopsided["played_at"])
+            if most_lopsided["played_at"]
+            else None,
+        },
+    )

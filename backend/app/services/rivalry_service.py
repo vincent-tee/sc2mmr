@@ -2,7 +2,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from ..models import Match, PlayerRivalry
+from ..config import settings
+from ..models import Match, Player, PlayerRivalry
 
 
 class RivalryService:
@@ -12,6 +13,14 @@ class RivalryService:
         Scan all matches and populate player_rivalries table.
         Returns count of rivalries created/updated.
         """
+        # AI opponents (Computer (Easy)/(Elite)/etc.) are practice-mode
+        # fillers, not real rivals for a real-life friend group - exclude
+        # them from rivalry tracking, same as the leaderboard excludes them
+        # from rankings (Player.is_ai == 0 in app/api/leaderboard.py).
+        ai_player_ids = {
+            pid for (pid,) in db.query(Player.id).filter(Player.is_ai == 1).all()
+        }
+
         # Get all matches
         matches = db.query(Match).order_by(Match.played_at).all()
 
@@ -19,8 +28,16 @@ class RivalryService:
 
         for match in matches:
             participants = match.participants
-            team1 = [p for p in participants if p.team_number == 1]
-            team2 = [p for p in participants if p.team_number == 2]
+            team1 = [
+                p
+                for p in participants
+                if p.team_number == 1 and p.player_id not in ai_player_ids
+            ]
+            team2 = [
+                p
+                for p in participants
+                if p.team_number == 2 and p.player_id not in ai_player_ids
+            ]
 
             # Each player on team1 vs each player on team2
             for p1 in team1:
@@ -52,13 +69,19 @@ class RivalryService:
                     else:
                         rivalry_data[key]["p2_wins"] += 1
 
-                    # Track MMR swing
-                    from ..config import settings
-
-                    swing = (
-                        abs(part_1.mu_after - part_1.mu_before)
-                        * settings.mmr_mu_multiplier
-                    )
+                    # Track MMR swing. Prefer the actual stored display-MMR
+                    # snapshot (mmr_after - mmr_before) - it reflects
+                    # whichever display formula was live when the match was
+                    # recorded, sigma term included. Fall back to the
+                    # mu-only approximation only for legacy rows that
+                    # predate the mmr_before/after snapshot columns.
+                    if part_1.mmr_before is not None and part_1.mmr_after is not None:
+                        swing = abs(part_1.mmr_after - part_1.mmr_before)
+                    else:
+                        swing = (
+                            abs(part_1.mu_after - part_1.mu_before)
+                            * settings.mmr_mu_multiplier
+                        )
                     rivalry_data[key]["mmr_swings"].append(swing)
 
                     if match.played_at >= rivalry_data[key]["last_match"].played_at:

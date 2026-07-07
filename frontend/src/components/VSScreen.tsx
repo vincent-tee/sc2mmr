@@ -15,7 +15,7 @@ import {
   Tooltip,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
-import { formatMMR } from '../utils/formatting';
+import { formatMMR, getRaceColor } from '../utils/formatting';
 
 // =============================================================================
 // Types
@@ -25,13 +25,13 @@ interface TeamPlayerInfo {
   name: string;
   mmr: number;
   race: string;
-  impact_score?: number;
 }
 
 interface TeamData {
   players: TeamPlayerInfo[];
   totalMMR: number;
   winProbability?: number;
+  /** Historical pair/trio synergy bonus baked into this team's win probability (BalanceResults only). */
   synergyBonus?: number;
 }
 
@@ -46,6 +46,9 @@ export interface VSScreenProps {
   matchInfo?: MatchInfo;
   winner?: 1 | 2 | null;
   onViewDetails?: () => void;
+  /** True for a not-yet-played, model-predicted matchup (BalanceResults). Swaps the
+   * "WINNER" crown for a lower-key "Advantage" badge so a prediction isn't mistaken
+   * for a recorded result. */
   isPrediction?: boolean;
   /**
    * Label for the per-team win-probability stat. Defaults to "Win Prob",
@@ -65,6 +68,16 @@ export interface VSScreenProps {
 // Race Icon Helper
 // =============================================================================
 
+const getRaceIcon = (race: string): string => {
+  const raceMap: Record<string, string> = {
+    Terran: 'T',
+    Protoss: 'P',
+    Zerg: 'Z',
+    Random: 'R',
+  };
+  return raceMap[race] || '?';
+};
+
 // getRaceIconColor available if needed for race-specific icon colors
 // const getRaceIconColor = (race: string): string => {
 //   const colorMap: Record<string, string> = {
@@ -82,21 +95,23 @@ export interface VSScreenProps {
 
 const pulseGlow = keyframes`
   0%, 100% {
-    box-shadow: 0 0 10px rgba(255, 140, 26, 0.1);
+    box-shadow: 0 0 20px rgba(255, 140, 26, 0.4), 0 0 40px rgba(255, 140, 26, 0.2);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 15px rgba(255, 140, 26, 0.2);
-    transform: scale(1.01);
+    box-shadow: 0 0 30px rgba(255, 140, 26, 0.6), 0 0 60px rgba(255, 140, 26, 0.3);
+    transform: scale(1.05);
   }
 `;
 
 const swordGlow = keyframes`
   0%, 100% {
-    text-shadow: 0 0 5px rgba(255, 140, 26, 0.2);
+    text-shadow: 0 0 20px rgba(255, 140, 26, 0.8), 0 0 40px rgba(255, 140, 26, 0.4);
+    filter: brightness(1);
   }
   50% {
-    text-shadow: 0 0 10px rgba(255, 140, 26, 0.4);
+    text-shadow: 0 0 30px rgba(255, 140, 26, 1), 0 0 60px rgba(255, 140, 26, 0.6);
+    filter: brightness(1.2);
   }
 `;
 
@@ -143,6 +158,8 @@ interface PlayerRowProps {
 }
 
 const PlayerRow: React.FC<PlayerRowProps> = ({ player, isWinner, side, index }) => {
+  const raceBgColor = getRaceColor(player.race);
+
   const rowContent = (
     <HStack
       spacing={3}
@@ -150,6 +167,22 @@ const PlayerRow: React.FC<PlayerRowProps> = ({ player, isWinner, side, index }) 
       w="100%"
       animation={`${side === 'left' ? slideInLeft : slideInRight} 0.4s ease-out ${index * 0.1}s both`}
     >
+      {side === 'right' && (
+        <Badge
+          bg={`${raceBgColor}.500`}
+          color={player.race === 'Protoss' ? 'gray.900' : 'white'}
+          fontSize="sm"
+          fontWeight="bold"
+          px={2}
+          py={1}
+          borderRadius="md"
+          minW="28px"
+          textAlign="center"
+        >
+          {getRaceIcon(player.race)}
+        </Badge>
+      )}
+
       <Text
         fontSize="md"
         fontWeight="semibold"
@@ -169,6 +202,22 @@ const PlayerRow: React.FC<PlayerRowProps> = ({ player, isWinner, side, index }) 
       >
         {formatMMR(player.mmr)}
       </Text>
+
+      {side === 'left' && (
+        <Badge
+          bg={`${raceBgColor}.500`}
+          color={player.race === 'Protoss' ? 'gray.900' : 'white'}
+          fontSize="sm"
+          fontWeight="bold"
+          px={2}
+          py={1}
+          borderRadius="md"
+          minW="28px"
+          textAlign="center"
+        >
+          {getRaceIcon(player.race)}
+        </Badge>
+      )}
     </HStack>
   );
 
@@ -180,16 +229,11 @@ interface TeamPanelProps {
   teamNumber: 1 | 2;
   isWinner: boolean;
   side: 'left' | 'right';
+  isPrediction?: boolean;
+  probabilityLabel?: string;
 }
 
-const TeamPanel: React.FC<TeamPanelProps & { isPrediction?: boolean; probabilityLabel?: string }> = ({
-  team,
-  teamNumber,
-  isWinner,
-  side,
-  isPrediction,
-  probabilityLabel = 'Win Prob',
-}) => {
+const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side, isPrediction, probabilityLabel = 'Win Prob' }) => {
   const bgColor = useColorModeValue('gray.800', 'space.800');
   const borderColor = isWinner ? 'shield.500' : 'whiteAlpha.200';
 
@@ -228,27 +272,22 @@ const TeamPanel: React.FC<TeamPanelProps & { isPrediction?: boolean; probability
       {isWinner && (
         <Box
           position="absolute"
-          top="-8px"
+          top="-12px"
           left="50%"
           transform="translateX(-50%)"
-          fontSize="8px"
-          fontWeight="black"
+          fontSize="xs"
+          fontWeight="bold"
           fontFamily="heading"
-          px={1.5}
-          py={0.5}
-          bg={isPrediction ? 'rgba(45, 55, 72, 0.8)' : 'shield.500'}
-          color={isPrediction ? 'gray.400' : 'space.900'}
-          borderRadius="sm"
-          boxShadow={isPrediction ? 'none' : '0 3px 12px rgba(245, 158, 11, 0.4)'}
-          border={isPrediction ? '1px solid' : 'none'}
-          borderColor="whiteAlpha.200"
+          px={3}
+          py={1}
+          bg={isPrediction ? 'whiteAlpha.300' : 'shield.500'}
+          color={isPrediction ? 'gray.200' : 'space.900'}
+          borderRadius="md"
+          boxShadow={isPrediction ? 'none' : '0 3px 12px rgba(245, 158, 11, 0.6)'}
           zIndex={2}
           whiteSpace="nowrap"
-          textTransform="uppercase"
-          letterSpacing="widest"
-          opacity={isPrediction ? 0.8 : 1}
         >
-          {isPrediction ? 'Advantage' : 'Winner'}
+          {isPrediction ? 'ADVANTAGE' : '🏆 WINNER'}
         </Box>
       )}
 
@@ -283,41 +322,41 @@ const TeamPanel: React.FC<TeamPanelProps & { isPrediction?: boolean; probability
         {/* Team Stats */}
         <Box
           w="100%"
-          pt={2}
+          pt={3}
           borderTop="1px solid"
           borderColor="whiteAlpha.200"
         >
           <HStack justify={side === 'left' ? 'flex-end' : 'flex-start'} spacing={4}>
             <VStack spacing={0} align={side === 'left' ? 'flex-end' : 'flex-start'}>
-              <Text fontSize="10px" color="gray.500" fontWeight="black" textTransform="uppercase">
-                Avg MMR
+              <Text fontSize="xs" color="gray.500" letterSpacing="wider">
+                Total MMR
               </Text>
               <Text
-                fontSize="md"
+                fontSize="lg"
                 fontWeight="bold"
                 fontFamily="mono"
                 color={isWinner ? 'shield.400' : 'gray.200'}
               >
-                {formatMMR(team.totalMMR / team.players.length)}
+                {formatMMR(team.totalMMR)}
               </Text>
             </VStack>
 
             {team.winProbability !== undefined && (
               <VStack spacing={0} align={side === 'left' ? 'flex-end' : 'flex-start'}>
-                <Text fontSize="10px" color="gray.500" fontWeight="black" textTransform="uppercase">
+                <Text fontSize="xs" color="gray.500" letterSpacing="wider">
                   {probabilityLabel}
                 </Text>
                 <HStack spacing={1}>
                   <Text
-                    fontSize="md"
+                    fontSize="lg"
                     fontWeight="bold"
                     fontFamily="mono"
                     color={team.winProbability >= 50 ? 'shield.400' : 'gray.400'}
                   >
                     {team.winProbability.toFixed(1)}%
                   </Text>
-                  {team.synergyBonus && team.synergyBonus > 0 && (
-                    <Tooltip label={`Chemistry Bonus: +${team.synergyBonus.toFixed(0)} Synergy points from historical pairings.`}>
+                  {team.synergyBonus !== undefined && team.synergyBonus > 0 && (
+                    <Tooltip label={`Chemistry bonus: +${team.synergyBonus.toFixed(0)} synergy points from historical pairings`}>
                       <Badge colorScheme="purple" variant="solid" fontSize="10px" px={1} borderRadius="full">
                         +{team.synergyBonus.toFixed(0)}
                       </Badge>
@@ -451,6 +490,7 @@ const VSScreen: React.FC<VSScreenProps> = ({
         align="stretch"
         position="relative"
       >
+        {/* Team 1 Panel */}
         <TeamPanel
           team={team1}
           teamNumber={1}

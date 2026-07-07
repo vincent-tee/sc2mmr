@@ -9,6 +9,7 @@ import { ChakraProvider } from '@chakra-ui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import App from './App';
+import AuthGate from './components/AuthGate';
 import theme from './theme';
 
 // Create React Query client with default options
@@ -33,7 +34,9 @@ createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ChakraProvider theme={theme}>
-        <App />
+        <AuthGate>
+          <App />
+        </AuthGate>
       </ChakraProvider>
     </QueryClientProvider>
   </StrictMode>

@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: 5175, // Pinned per-project port (3000 = Next.js apps); must stay in backend cors_origins
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

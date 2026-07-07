@@ -12,6 +12,7 @@ from typing import Dict, Optional, Any, List, cast
 from sqlalchemy import func
 from datetime import datetime, timedelta
 
+from ..auth import require_admin
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
@@ -116,41 +117,6 @@ def create_meta_feedback(request: MetaFeedbackRequest, db: Session = Depends(get
     db.add(feedback)
     db.commit()
     return {"status": "success", "message": "Theory recorded"}
-
-
-@router.post("/backfill-predictions")
-def backfill_predictions(db: Session = Depends(get_db)):
-    """
-    Run predictions on past matches to populate trends.
-    """
-    from ..services.ml_predictor import get_ml_predictor
-
-    predictor = get_ml_predictor()
-    if not predictor.is_trained:
-        raise HTTPException(status_code=400, detail="Model must be trained first")
-
-    matches = db.query(Match).filter(Match.played_at.isnot(None)).all()
-    updated_count = 0
-
-    for match in matches:
-        match_players = (
-            db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
-        )
-        t1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
-        t2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]
-
-        if t1_ids and t2_ids:
-            prediction = predictor.predict(db, t1_ids, t2_ids)
-            match.predicted_team1_win_prob = (
-                prediction["team_1_win_probability"] / 100.0
-            )
-            match.predicted_team2_win_prob = (
-                prediction["team_2_win_probability"] / 100.0
-            )
-            updated_count += 1
-
-    db.commit()
-    return {"status": "success", "message": f"Updated {updated_count} matches"}
 
 
 @router.get("/accuracy-comparison")
@@ -276,58 +242,36 @@ def get_accuracy_comparison(days: int = 90, db: Session = Depends(get_db)):
         )
 
     # Calculate cross-validated accuracy (more reliable than stored predictions)
+    #
+    # Uses the same leak-free chronological dataset as MLPredictor.train() -
+    # NOT FeatureExtractor.extract_team_features() per match, which reads
+    # current Player-row aggregates and leaks each match's own outcome (and
+    # everything since) into its own "historical" features. See
+    # .moai/docs/ml-model-findings.md, 2026-07-06 entry.
     cv_accuracy = None
     baseline_accuracy = None
     cv_training_size = 0
     try:
-        from sklearn.model_selection import cross_val_score
+        from sklearn.model_selection import StratifiedKFold, cross_val_score
         from sklearn.linear_model import LogisticRegression
+        from ..services.ml_predictor import build_chronological_dataset
 
-        # Get all matches for CV
-        all_matches = db.query(Match).filter(Match.played_at.isnot(None)).all()
+        X_arr, y_arr, _ = build_chronological_dataset(db)
 
-        X = []
-        y = []
+        if len(X_arr) >= 10:
+            mmr_diff_idx = FeatureExtractor.FEATURE_NAMES.index("sum_mmr_diff")
+            decided = X_arr[:, mmr_diff_idx] != 0
+            if decided.any():
+                baseline_accuracy = round(
+                    float(np.mean((X_arr[decided, mmr_diff_idx] > 0) == (y_arr[decided] == 1))) * 100,
+                    1,
+                )
 
-        for match in all_matches:
-            match_players = (
-                db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
-            )
-            team1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
-            team2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]
-
-            if not team1_ids or not team2_ids:
-                continue
-
-            team1_features = FeatureExtractor.extract_team_features(db, team1_ids)
-            team2_features = FeatureExtractor.extract_team_features(db, team2_ids)
-            feature_vector = FeatureExtractor.create_match_features(
-                team1_features, team2_features
-            )
-            X.append(feature_vector)
-
-            team1_won = any(mp.won and mp.team_number == 1 for mp in match_players)
-            y.append(1 if team1_won else 0)
-
-        if len(X) >= 10:
-            X_arr = np.array(X)
-            y_arr = np.array(y)
-
-            # Baseline: higher MMR wins
-            try:
-                mmr_diff_idx = FeatureExtractor.FEATURE_NAMES.index("sum_mmr_diff")
-            except ValueError:
-                # Fallback if renamed back or differently
-                mmr_diff_idx = 1
-
-            baseline_correct = np.sum((X_arr[:, mmr_diff_idx] > 0) == (y_arr == 1))
-            baseline_accuracy = round(baseline_correct / len(y_arr) * 100, 1)
-
-            # Cross-validated model accuracy
-            lr = LogisticRegression(max_iter=1000, C=0.1, random_state=42)
-            cv_scores = cross_val_score(lr, X_arr, y_arr, cv=5)
+            cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            lr = LogisticRegression(max_iter=1000, C=1.0, random_state=42)
+            cv_scores = cross_val_score(lr, X_arr, y_arr, cv=cv)
             cv_accuracy = round(cv_scores.mean() * 100, 1)
-            cv_training_size = len(X)
+            cv_training_size = len(X_arr)
     except Exception as e:
         logger.warning(f"CV accuracy calculation failed: {e}")
         cv_training_size = 0
@@ -500,7 +444,7 @@ def get_shap_importance():
     }
 
 
-@router.post("/train-ml-model")
+@router.post("/train-ml-model", dependencies=[Depends(require_admin)])
 def train_ml_model_endpoint(db: Session = Depends(get_db)):
     """
     Train the ML prediction model.
@@ -510,7 +454,7 @@ def train_ml_model_endpoint(db: Session = Depends(get_db)):
     return train_ml_model(db)
 
 
-@router.post("/build-order/retrain")
+@router.post("/build-order/retrain", dependencies=[Depends(require_admin)])
 def retrain_build_order_classifier(db: Session = Depends(get_db)):
     """
     Retrain the K-Means build order classifier on all available data.
@@ -544,7 +488,11 @@ def get_ml_models_status(db: Session = Depends(get_db)):
     build_clf = get_classifier()
 
     return {
-        "xgboost": {
+        # LogisticRegression, not XGBoost - see ml_predictor.py MLPredictor._get_model().
+        # This CV accuracy is NOT a proven improvement over the "higher summed
+        # MMR wins" baseline (see .moai/docs/ml-model-findings.md, 2026-07-06) -
+        # lab/diagnostic status only, not a product claim.
+        "win_predictor": {
             "is_trained": bool(ml.is_trained),
             "accuracy": round(float(ml.training_accuracy) * 100, 1)
             if ml.is_trained

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, desc, text
 
+from ..auth import require_admin
 from ..database import get_db
 from ..models import Player, PlayerRivalry, Match
 from ..services.rivalry_service import RivalryService
@@ -92,7 +93,7 @@ def get_intensity_label(score: float) -> str:
 # ---------------------------------------------------------------------
 
 
-@router.post("/calculate-all")
+@router.post("/calculate-all", dependencies=[Depends(require_admin)])
 def calculate_all_rivalries(db: Session = Depends(get_db)):
     """
     Force recalculation of all player rivalries.

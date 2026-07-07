@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from ..auth import require_admin
 from ..database import get_db
 from ..services import AchievementService
 
@@ -49,7 +50,7 @@ class PlayerAchievementsResponse(BaseModel):
     player_name: str
     total_achievements: int
     total_points: int
-    achievements: List[AchievementResponse]
+    awarded: List[AchievementResponse]
     available_achievements: Optional[List[dict]] = None
 
 
@@ -118,7 +119,7 @@ async def get_player_achievements(
         "player_name": player.name,
         "total_achievements": len(achievements),
         "total_points": total_points,
-        "achievements": achievements,
+        "awarded": achievements,
     }
 
     if include_available:
@@ -207,7 +208,7 @@ async def check_player_achievements(
     }
 
 
-@router.post("/check-all")
+@router.post("/check-all", dependencies=[Depends(require_admin)])
 async def check_all_player_achievements(
     db: Session = Depends(get_db),
 ):

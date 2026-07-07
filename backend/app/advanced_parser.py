@@ -49,6 +49,11 @@ class PlayerMetrics:
     resources_spent: int = 0
     spending_efficiency: float = 0.0  # Spent / Collected
     workers_created: int = 0
+    workers_killed: int = 0
+    early_workers_killed: int = 0  # < 5 min
+    mid_workers_killed: int = 0  # 5-10 min
+    workers_lost: int = 0
+    early_workers_lost: int = 0  # < 5 min
 
     # Army metrics
     units_trained: int = 0
@@ -73,6 +78,8 @@ class PlayerMetrics:
 
     # Mechanics
     apm: float = 0.0
+    supply_block_seconds: int = 0
+    lethality_score: float = 0.0
 
     # Unit composition (top 5 units by count)
     unit_composition: Optional[Dict[str, int]] = None
@@ -244,7 +251,16 @@ def parse_replay_advanced(
         # Initialize metrics for each player
         player_metrics_dict = {}
 
-        for player in replay.players:
+        # basic_data.players already carries the correctly-determined win/loss
+        # per player (including the resource/supply fallback for replays where
+        # sc2reader can't report a definitive result — see replay_parser.py).
+        # Re-deriving `won` here from the raw `player.result` field instead
+        # bypasses that fallback and can leave every player marked as having
+        # lost when sc2reader's result is ambiguous. Both loops walk the same
+        # replay's player list in the same (slot) order, so match positionally.
+        basic_won_by_index = {i: p.won for i, p in enumerate(basic_data.players)}
+
+        for idx, player in enumerate(replay.players):
             is_ai = not getattr(player, "is_human", False)
             difficulty = getattr(player, "difficulty", None) if is_ai else None
 
@@ -260,7 +276,7 @@ def parse_replay_advanced(
                 player_name=p_name,
                 race=player.play_race,
                 team=player.team_id,
-                won=player.result == "Win",
+                won=basic_won_by_index.get(idx, player.result == "Win"),
                 is_ai=is_ai,
                 difficulty=difficulty,
             )
@@ -320,6 +336,26 @@ def parse_replay_advanced(
             damage_timeline = DamageTimelineExtractor.extract_from_replay(
                 replay, player_id
             )
+
+            # Normalize timeline against total army value killed from PlayerStatsEvent
+            # This fixes the bug where missing UnitDiedEvents cause under-reporting
+            timeline_total = sum(damage_timeline.damage_events.values())
+            if metrics.army_value_killed > 0 and timeline_total > 0:
+                scale_factor = metrics.army_value_killed / timeline_total
+                if scale_factor > 1.1:  # Significant gap
+                    for sec in damage_timeline.damage_events:
+                        damage_timeline.damage_events[sec] = int(
+                            damage_timeline.damage_events[sec] * scale_factor
+                        )
+            elif metrics.army_value_killed > 0 and timeline_total == 0:
+                # If timeline is empty but we know they killed stuff,
+                # distribute damage across the game for participation baseline
+                avg_dmg = metrics.army_value_killed / max(
+                    1, replay.game_length.seconds // 30
+                )
+                for sec in range(60, replay.game_length.seconds, 30):
+                    damage_timeline.damage_events[sec] = int(avg_dmg)
+
             metrics.damage_timeline = damage_timeline
 
             # Update timing metrics from timeline
@@ -342,9 +378,36 @@ def parse_replay_advanced(
             total_damage = metrics.damage_dealt
             if total_damage > 0:
                 early_damage_ratio = metrics.early_game_damage / total_damage
-                metrics.aggression_score = min(
-                    100, early_damage_ratio * 200
-                )  # Scale to 0-100
+                metrics.aggression_score = min(100, early_damage_ratio * 200)
+
+        # Process all events for Lethality (Abilities)
+        try:
+            import json
+
+            with open("config/abilities_config.json", "r") as f:
+                ability_config = json.load(f)
+            high_micro = ability_config.get("ability_categories", {}).get(
+                "high_micro", []
+            )
+            medium_micro = ability_config.get("ability_categories", {}).get(
+                "medium_micro", []
+            )
+        except:
+            high_micro = ["Storm", "Stim", "Blink", "EMP"]
+            medium_micro = ["GuardianShield", "ForceField"]
+
+        for event in getattr(replay, "events", []):
+            if (
+                "CommandEvent" in type(event).__name__
+                or "CmdEvent" in type(event).__name__
+            ):
+                pid = getattr(event, "player", None)
+                if pid and pid.pid in player_metrics_dict:
+                    ability_name = str(getattr(event, "ability_name", ""))
+                    if any(hm in ability_name for hm in high_micro):
+                        player_metrics_dict[pid.pid].lethality_score += 1.0
+                    elif any(mm in ability_name for mm in medium_micro):
+                        player_metrics_dict[pid.pid].lethality_score += 0.5
 
         # Detect team engagements (where 3+ players are fighting)
         player_metrics_list = list(player_metrics_dict.values())
@@ -420,6 +483,16 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
     base_timings = {}
 
     for event in events:
+        # Supply Block Detection
+        if event.name == "PlayerStatsEvent":
+            pid = event.pid
+            if pid in player_metrics:
+                # Supply block: food_used >= food_made and not at 200 supply
+                if event.food_used >= event.food_made and event.food_made < 200:
+                    player_metrics[
+                        pid
+                    ].supply_block_seconds += 10  # Stats events occur every 10s
+
         # Unit born events
         if event.name == "UnitBornEvent":
             pid = event.control_pid
@@ -474,9 +547,8 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
                     ):
                         player_metrics[pid].first_expansion_timing = event.second
 
-        # Unit died events
+        # Unit died events - Track worker kills/losses and timing
         elif event.name == "UnitDiedEvent":
-            # Try to get unit type name from various possible attributes
             try:
                 unit_name = (
                     getattr(event, "unit_type_name", None)
@@ -484,44 +556,41 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
                     or getattr(getattr(event, "unit", None), "name", None)
                     or "Unknown"
                 )
-            except AttributeError as e:
-                logger.warning(
-                    f"⚠️ AttributeError getting unit type from UnitDiedEvent: {e}"
-                )
+            except AttributeError:
                 unit_name = "Unknown"
 
             if unit_name == "Unknown":
-                # Debug logging: show what attributes are actually available
-                logger.info(
-                    f"🔍 UnitDiedEvent with unknown unit type. Available attributes: {dir(event)}"
-                )
-                logger.info(
-                    f"  event.__dict__: {event.__dict__ if hasattr(event, '__dict__') else 'N/A'}"
-                )
-                if hasattr(event, "unit"):
-                    logger.info(f"  event.unit type: {type(event.unit)}")
-                    logger.info(
-                        f"  event.unit.__dict__: {event.unit.__dict__ if hasattr(event.unit, '__dict__') else 'N/A'}"
-                    )
-                # Skip if we can't determine the unit type
                 continue
 
             unit_cost = get_unit_cost(unit_name)
+            is_worker = unit_name in ["SCV", "Probe", "Drone"]
+            second = getattr(event, "second", 0)
 
+            # Track Kills
             if hasattr(event, "killer_pid") and event.killer_pid in player_metrics:
-                killer_pid = event.killer_pid
-                # Killer gains credit
-                player_metrics[killer_pid].army_value_killed += unit_cost
-                player_metrics[killer_pid].units_killed += 1
+                k_pid = event.killer_pid
+                player_metrics[k_pid].army_value_killed += unit_cost
+                player_metrics[k_pid].units_killed += 1
 
-            # DAMAGE TAKEN (owner tracking)
-            # Note: UnitDiedEvent doesn't have unit_pid, we need to access event.unit.owner
+                if is_worker:
+                    player_metrics[k_pid].workers_killed += 1
+                    if second < 300:  # < 5 min
+                        player_metrics[k_pid].early_workers_killed += 1
+                    elif second < 600:  # 5-10 min
+                        player_metrics[k_pid].mid_workers_killed += 1
+
+            # Track Losses (Owner)
             if event.unit and hasattr(event.unit, "owner"):
                 owner = event.unit.owner
                 if hasattr(owner, "pid") and owner.pid in player_metrics:
-                    owner_pid = owner.pid
-                    player_metrics[owner_pid].army_value_lost += unit_cost
-                    player_metrics[owner_pid].units_lost += 1
+                    o_pid = owner.pid
+                    player_metrics[o_pid].army_value_lost += unit_cost
+                    player_metrics[o_pid].units_lost += 1
+
+                    if is_worker:
+                        player_metrics[o_pid].workers_lost += 1
+                        if second < 300:  # < 5 min
+                            player_metrics[o_pid].early_workers_lost += 1
 
         # Upgrade complete events could be tracked here
         # elif event.name == 'UpgradeCompleteEvent':
@@ -531,32 +600,43 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
         elif event.name == "PlayerStatsEvent":
             pid = event.pid
             if pid in player_metrics:
-                # These events are cumulative; keep updating to get the final values
-                # Resource collection
-                player_metrics[pid].minerals_collected = getattr(
-                    event, "minerals_collection_rate", 0
-                )
-                player_metrics[pid].vespene_collected = getattr(
-                    event, "vespene_collection_rate", 0
-                )
-                player_metrics[pid].total_resources_collected = (
-                    player_metrics[pid].minerals_collected
-                    + player_metrics[pid].vespene_collected
+                # Use current resources + used resources as a proxy for total collected
+                # (Since total collected is not a direct attribute)
+                min_collected = (
+                    getattr(event, "minerals_used_current", 0)
+                    + getattr(event, "minerals_used_in_progress", 0)
+                    + getattr(event, "minerals_current", 0)
                 )
 
-                # Army value lost (from PlayerStatsEvent is more accurate than UnitDiedEvent)
-                minerals_lost = getattr(event, "minerals_lost_army", 0)
-                vespene_lost = getattr(event, "vespene_lost_army", 0)
-                player_metrics[pid].army_value_lost = minerals_lost + vespene_lost
+                vesp_collected = (
+                    getattr(event, "vespene_used_current", 0)
+                    + getattr(event, "vespene_used_in_progress", 0)
+                    + getattr(event, "vespene_current", 0)
+                )
+
+                player_metrics[pid].minerals_collected = min_collected
+                player_metrics[pid].vespene_collected = vesp_collected
+                player_metrics[pid].total_resources_collected = (
+                    min_collected + vesp_collected
+                )
+
+                # Army value lost
+                player_metrics[pid].army_value_lost = getattr(
+                    event, "resources_lost", 0
+                )
 
                 # Army value killed
-                minerals_killed = getattr(event, "minerals_killed_army", 0)
-                vespene_killed = getattr(event, "vespene_killed_army", 0)
-                player_metrics[pid].army_value_killed = minerals_killed + vespene_killed
+                player_metrics[pid].army_value_killed = getattr(
+                    event, "resources_killed", 0
+                )
 
-                # Units lost count from resources (divide by avg unit cost ~100)
-                if player_metrics[pid].units_lost == 0 and minerals_lost > 0:
-                    player_metrics[pid].units_lost = max(1, minerals_lost // 100)
+                # Supply Block Detection
+                # food_used >= food_made and not at 200 supply (max)
+                if (
+                    getattr(event, "food_used", 0) >= getattr(event, "food_made", 0)
+                    and getattr(event, "food_made", 0) < 200
+                ):
+                    player_metrics[pid].supply_block_seconds += 10
 
                 # Workers active
                 workers = getattr(event, "workers_active_count", 0)
@@ -772,27 +852,26 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
 
     # ==========================================================================
     # COMBAT SCORE (0-100) - Combat effectiveness
-    # Metrics: army_value_killed, damage_ratio
-    # Note: damage_dealt == army_value_killed, so we use only army_value_killed
+    # Metrics: army_value_killed, damage_ratio, lethality (ability usage)
     # ==========================================================================
-    capped_ratio = min(metrics.damage_ratio, 10.0)  # Cap to prevent outliers
-    kill_value_score = min(100, metrics.army_value_killed / 500)  # Cap at 50k value
-    ratio_score = min(100, capped_ratio * 10)  # 10:1 ratio = 100 points
+    capped_ratio = min(metrics.damage_ratio, 10.0)
+    kill_value_score = min(100, metrics.army_value_killed / 500)
+    ratio_score = min(100, capped_ratio * 10)
+    # Lethality score: 1 pt per high-micro ability, cap at 50 pts
+    lethality_bonus = min(50, metrics.lethality_score) * 2
 
-    metrics.combat_score = (kill_value_score + ratio_score) / 2
+    metrics.combat_score = (kill_value_score + ratio_score + lethality_bonus) / 3
 
     # ==========================================================================
     # EFFICIENCY SCORE (0-100) - Resource conversion efficiency
-    # Metrics: spending_efficiency (how much of collected resources were used)
-    # This is DISTINCT from combat which measures killing, and economic which measures collection
+    # Metrics: spending_efficiency, APM, Supply Blocks
     # ==========================================================================
-    # Spending efficiency: what % of resources collected were converted to army/units
     spending_score = min(100, metrics.spending_efficiency * 100)
-
-    # APM efficiency: higher APM generally means more efficient play (capped at 150 APM = 100 pts)
     apm_score = min(100, (metrics.apm / 150) * 100) if metrics.apm > 0 else 50
+    # Supply block penalty: 1 pt per 10s blocked, cap at -50 pts
+    supply_penalty = max(-50, -(metrics.supply_block_seconds / 10))
 
-    metrics.efficiency_score = (spending_score + apm_score) / 2
+    metrics.efficiency_score = max(0, (spending_score + apm_score) / 2 + supply_penalty)
 
     # ==========================================================================
     # TEAM CONTRIBUTION SCORE (0-100) - Teamwork in team fights
@@ -804,15 +883,37 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
     team_contribution_score = (participation_score + team_fight_effectiveness_score) / 2
 
     # ==========================================================================
-    # OVERALL IMPACT - Weighted combination optimized for team games
-    # Weights: Combat 35%, Team 35%, Economic 20%, Efficiency 10%
+    # PLAYER ARCHETYPE DETECTION
     # ==========================================================================
+    if metrics.early_workers_killed >= 5:
+        metrics.player_archetype = "The Reaper (Aggressor)"
+    elif metrics.lethality_score >= 20 and metrics.kill_death_ratio > 1.5:
+        metrics.player_archetype = "The Assassin (Micro)"
+    elif metrics.workers_created >= 60 and metrics.spending_efficiency > 0.8:
+        metrics.player_archetype = "The Titan (Macro)"
+    elif metrics.early_workers_lost == 0 and metrics.team_fight_participation > 0.7:
+        metrics.player_archetype = "The Wall (Defender)"
+    elif metrics.team_fight_participation > 0.8:
+        metrics.player_archetype = "The Vanguard (Teamwork)"
+    else:
+        metrics.player_archetype = "Tactical Balanced"
+
+    # ==========================================================================
+    # OVERALL IMPACT - Weighted combination optimized for team games
+    # Weights: Combat 30%, Team 35%, Economic 15%, Efficiency 20%
+    # ==========================================================================
+    # Trading efficiency (KD Ratio) bonus
+    kd_bonus = min(10, metrics.kill_death_ratio * 2)
+
     metrics.overall_impact = (
-        metrics.combat_score * 0.35  # Combat effectiveness
-        + team_contribution_score * 0.35  # Team fight participation critical
-        + metrics.economic_score * 0.20  # Economy matters but less in team games
-        + metrics.efficiency_score * 0.10  # Unit trading efficiency
+        metrics.combat_score * 0.30
+        + team_contribution_score * 0.35
+        + metrics.economic_score * 0.15
+        + metrics.efficiency_score * 0.20
+        + kd_bonus
     )
+    # Cap impact at 100
+    metrics.overall_impact = min(100, metrics.overall_impact)
 
 
 def calculate_player_synergy(

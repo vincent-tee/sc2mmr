@@ -22,6 +22,7 @@ import {
 } from '@chakra-ui/react';
 import { FiAward } from 'react-icons/fi';
 import { useState } from 'react';
+import { formatDuration } from '@/utils/formatting';
 import type { MatchDetail as MatchDetailType, MatchPlayer } from '@/types/api';
 
 interface ScoreScreenTabProps {
@@ -43,6 +44,9 @@ const fmtNum = (v: number | null | undefined): string =>
 
 const fmtPct = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
+
+const fmtSeconds = (v: number | null | undefined): string =>
+  v === null || v === undefined ? '—' : formatDuration(v);
 
 // The backend's stored kill_death_ratio is the source of truth (computed and
 // capped at 10 by the parser). One exception: rows uploaded before the K/D
@@ -76,6 +80,7 @@ const COLUMNS: Record<Section, ColumnDef[]> = {
     { label: 'APM', render: (p) => fmtNum(p.apm) },
     { label: 'Resources Collected', render: (p) => fmtNum(p.total_resources_collected) },
     { label: 'Workers Made', render: (p) => fmtNum(p.workers_created) },
+    { label: 'Supply Blocked', render: (p) => fmtSeconds(p.supply_block_seconds) },
     { label: 'K/D', render: fmtKD },
   ],
   economy: [

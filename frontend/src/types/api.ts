@@ -102,6 +102,7 @@ export interface MatchPlayerSummary {
   race: string;
   won: boolean;
   mmr_change: number;
+  mmr_before?: number;
   damage_dealt: number | null;
   damage_ratio: number | null;
   impact_score: number | null;
@@ -168,6 +169,7 @@ export interface MatchPlayer {
   damage_dealt: number | null;
   damage_taken: number | null;
   kill_death_ratio: number | null;
+  supply_block_seconds: number | null;
 }
 
 export interface PlayerHistoryEntry {
@@ -175,10 +177,13 @@ export interface PlayerHistoryEntry {
   map_name: string;
   played_at: string;
   mmr: number;
+  mmr_change?: number;
+  won?: boolean;
 }
 
 export interface PlayerHistoryResponse {
   player_id: number;
+  player_name?: string;
   history: PlayerHistoryEntry[];
 }
 

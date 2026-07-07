@@ -19,10 +19,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.auto_adaptive import trigger_auto_optimization  # type: ignore
 from app.exceptions import (  # type: ignore
     DuplicateReplayError,
+    DuplicateGameError,
     ReplayParseError,
     ValidationError,
     WinnerDeterminationError,
@@ -95,7 +97,10 @@ class MatchOrchestrationResult:
     message: str
 
 
-from app.services.commandcenter_parser import get_commandcenter_parser  # type: ignore
+from app.services.commandcenter_parser import (  # type: ignore
+    get_commandcenter_parser,
+    parse_replay_isolated,
+)
 
 
 class MatchOrchestrator:
@@ -124,25 +129,62 @@ class MatchOrchestrator:
         result = self.parser.parse(file_path, manual_winner_team=manual_winner_team)
 
         # 1b. Augmented Parsing (CommandCenter based)
+        # Runs in an isolated child process with a hard timeout — the SC2
+        # engine can hang indefinitely on connection failure instead of
+        # returning, which would otherwise freeze this thread forever
+        # (this pipeline runs on the replay-folder watcher's background
+        # thread; a hang here stops all future replay ingestion).
         if use_cc_parser and self.cc_parser:
             try:
                 num_players = len(result.players)
-                cc_metrics = self.cc_parser.parse_replay(
-                    file_path, num_players=num_players
-                )
-                self._augment_with_cc_metrics(result, cc_metrics)
+                cc_metrics = parse_replay_isolated(file_path, num_players=num_players)
+                if cc_metrics:
+                    self._augment_with_cc_metrics(result, cc_metrics)
+                else:
+                    logger.warning(
+                        f"CommandCenter parsing produced no metrics for {file_path}; "
+                        "falling back to sc2reader-based metrics"
+                    )
             except Exception as e:
                 logger.error(f"CommandCenter parsing failed: {e}")
 
         parse_time_ms = (time.time() - parse_start) * 1000
 
-        # 2. Duplicate Detection
+        # 2. Duplicate Detection (by hash and fingerprint)
         duplicate_start = time.time()
+
+        # 2a. Check for exact file duplicate (same replay file)
         existing = (
             self.db.query(Match).filter(Match.replay_hash == result.replay_hash).first()
         )
         if existing:
             raise DuplicateReplayError(result.replay_hash, existing.id)
+
+        # 2b. Check for same game from different observer (fingerprint match)
+        if result.game_fingerprint:
+            fingerprint_match = (
+                self.db.query(Match)
+                .filter(Match.game_fingerprint == result.game_fingerprint)
+                .first()
+            )
+            if fingerprint_match:
+                # Same game found - compare durations
+                if fingerprint_match.duration_seconds >= result.duration_seconds:
+                    # Existing has more or equal data - reject new upload
+                    raise DuplicateGameError(
+                        game_fingerprint=result.game_fingerprint,
+                        existing_match_id=fingerprint_match.id,
+                        existing_duration=fingerprint_match.duration_seconds,
+                        new_duration=result.duration_seconds,
+                    )
+                else:
+                    # New replay has more data - delete old match and proceed
+                    logger.info(
+                        f"Replacing match {fingerprint_match.id} with longer replay "
+                        f"({fingerprint_match.duration_seconds}s -> {result.duration_seconds}s)"
+                    )
+                    self._delete_match_and_recalculate(fingerprint_match.id)
+
         duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
 
         # 3. DB Record Creation (Match & MatchPlayers)
@@ -256,6 +298,7 @@ class MatchOrchestrator:
             duration_seconds=result.duration_seconds,
             replay_file_path=result.replay_file_path,
             replay_hash=result.replay_hash,
+            game_fingerprint=result.game_fingerprint,
         )
         self.db.add(match)
         self.db.flush()
@@ -299,6 +342,7 @@ class MatchOrchestrator:
             map_name=result.map_name,
             duration_seconds=result.duration_seconds,
             replay_hash=result.replay_hash,
+            game_fingerprint=result.game_fingerprint or "",
             players=[
                 PlayerData(
                     name=resolve_player_name(p.name),  # Use canonical name
@@ -314,6 +358,39 @@ class MatchOrchestrator:
         # C. Performance Adjustments (PIM)
         PerformanceRatingAdjuster.adjust_ratings_for_match(self.db, int(match.id))
         ImpactService.update_synergies(self.db, int(match.id))
+
+        # D. Achievements - checked against the totals/metrics/synergies just
+        # written above. Non-blocking: an achievement bug must never break
+        # ingestion for the batch/observer pipeline.
+        try:
+            from app.services import AchievementService  # type: ignore
+
+            for pr in result.players:
+                canonical_name = resolve_player_name(pr.name)
+                player = (
+                    self.db.query(Player)
+                    .filter(Player.name == canonical_name)
+                    .first()
+                )
+                if player:
+                    AchievementService.check_and_award_all(
+                        self.db, int(player.id), int(match.id)
+                    )
+        except Exception as e:
+            logger.warning(f"Achievement check failed for match {match.id}: {e}")
+
+        # E. Head-to-head/rivalry stats (player_rivalries table, backing the
+        # /h2h page) - same non-blocking rationale as Achievements above.
+        # This mirrors the equivalent call added to the HTTP upload path
+        # (app/api/replays.py); both pipelines must stay in sync or rivalry
+        # data silently goes stale for matches ingested via this path
+        # (batch scripts / replay observer).
+        try:
+            from app.services.rivalry_service import RivalryService  # type: ignore
+
+            RivalryService.calculate_all_rivalries(self.db)
+        except Exception as e:
+            logger.warning(f"Rivalry recalculation failed for match {match.id}: {e}")
 
     def save_metrics_only(self, match: Match, result: ProcessedMatchResult):
         """Save metrics and features without updating ratings."""
@@ -362,7 +439,15 @@ class MatchOrchestrator:
 
     def _trigger_post_processing(self, match: Match, result: ProcessedMatchResult):
         """Trigger background tasks and optimizations."""
-        # Online Learning
+        # A. ML Feature Extraction (Essential for SHAP and Win Prob)
+        try:
+            MLFeaturesService.extract_and_save_ml_features(
+                self.db, str(match.replay_file_path), int(match.id)
+            )
+        except Exception as e:
+            logger.warning(f"ML Feature extraction failed: {e}")
+
+        # B. Online Learning
         try:
             from app.online_learning import OnlineLearningEngine  # type: ignore
 
@@ -372,8 +457,74 @@ class MatchOrchestrator:
         except Exception as e:
             logger.warning(f"Online learning failed: {e}")
 
-        # Auto Optimization
+        # C. Auto Optimization (Weights)
         try:
             trigger_auto_optimization(self.db)
         except Exception as e:
             logger.warning(f"Auto-optimization failed: {e}")
+
+        # D. Automated ML Retraining (Every 15 matches)
+        try:
+            match_count = self.db.query(Match).count()
+            if match_count % 15 == 0:
+                from .ml_predictor import train_ml_model
+
+                logger.info(
+                    f"Triggering automated ML retraining (Match #{match_count})"
+                )
+                train_ml_model(self.db)
+        except Exception as e:
+            logger.warning(f"Automated ML retraining failed: {e}")
+
+        # E. Live Forecast Feed
+        try:
+            from app.services.tactical_forecast import TacticalForecastService
+            from app.models import LiveMatchFeed
+
+            pids = [p.player_id for p in match.participants]
+            forecast = TacticalForecastService.get_forecast(
+                pids, match.map_name, self.db
+            )
+
+            # Deactivate old feeds
+            self.db.execute(text("UPDATE live_match_feed SET is_active = 0"))
+
+            new_feed = LiveMatchFeed(
+                match_id=match.id,
+                map_name=match.map_name,
+                forecast_json=forecast,
+                is_active=True,
+            )
+            self.db.add(new_feed)
+            self.db.commit()
+            logger.info(f"Live forecast generated for Match #{match.id}")
+        except Exception as e:
+            logger.warning(f"Live forecast generation failed: {e}")
+
+    def _delete_match_and_recalculate(self, match_id: int) -> None:
+        """
+        Delete a match that will be replaced by a longer replay of the same game.
+
+        This is used when a fingerprint duplicate is found but the new replay
+        has more data (longer duration). We delete the old match so the new
+        one can be inserted properly.
+        """
+        match = self.db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            return
+
+        # Delete related match_players first (CASCADE should handle this, but being explicit)
+        self.db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).delete()
+
+        # Delete performance features
+        self.db.query(PerformanceFeatures).filter(
+            PerformanceFeatures.match_player_id.in_(
+                self.db.query(MatchPlayer.id).filter(MatchPlayer.match_id == match_id)
+            )
+        ).delete(synchronize_session=False)
+
+        # Delete the match
+        self.db.delete(match)
+        self.db.flush()
+
+        logger.info(f"Deleted match {match_id} to be replaced by longer replay")

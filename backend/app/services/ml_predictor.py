@@ -1,19 +1,24 @@
 """
-ML Match Predictor - Enhanced ML Model for SC2 Match Prediction
+ML win-prediction lab, NOT a production balance dependency.
 
-Uses machine learning to predict match outcomes based on:
-- Player metrics (MMR, impact scores, efficiency)
-- Team composition features
-- Historical performance data
-- Momentum and form indicators
+This module is a data-pipeline/model-fitting learning area, kept and
+maintained for that purpose after rigorous re-validation (2026-07-06,
+see .moai/docs/ml-model-findings.md) showed the win predictor here does not
+beat "the team with the higher summed MMR wins" at current data volume
+(n=833: 65.8% CV vs 66.3% baseline; McNemar p=0.76). The team balancer
+(app/balancer.py) does not depend on this module for its default behavior -
+its one optional ML re-rank path defaults off (use_ml=False) and degrades
+gracefully if this model isn't trained.
 
-Designed to be compared against TrueSkill predictions for accuracy benchmarking.
-
-SPEC-ML-001 Implementation - Phase 2: Advanced ML Models
+Treat results from here as a lab exercise, not a proven feature: any new
+accuracy claim needs the same rigor as the entries in ml-model-findings.md
+(fresh baseline, cross-validation, leak audit) before it means anything -
+see sc2mmr-research-methodology and sc2mmr-proof-and-analysis-toolkit.
 """
-
 import logging
+import math
 import pickle
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -28,68 +33,62 @@ from ..models import Match, MatchPlayer, Player, PlayerMatchMetrics
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# Feature Engineering
-# ============================================================================
-
-
 @dataclass
 class TeamFeatures:
-    """Aggregated features for a team."""
-
-    # Core MMR metrics
     avg_mmr: float = 0.0
     avg_recency_mmr: float = 0.0
     max_mmr: float = 0.0
-    mmr_spread: float = 0.0  # max - min within team (coordination difficulty)
+    mmr_spread: float = 0.0
     mmr_std: float = 0.0
     team_size: int = 0
-
-    # Historical performance
     total_games: int = 0
     avg_win_rate: float = 0.5
     avg_recent_win_rate: float = 0.5
     avg_win_streak: float = 0.0
-
-    # In-game performance composites (from PlayerMatchMetrics history)
-    micro_composite: float = 50.0  # Combat + efficiency
-    macro_composite: float = 50.0  # Economic + impact
-
-    # In-game behavioral features
-    avg_aggression: float = 50.0  # How aggressive the player style is
-    avg_first_damage_timing: float = 300.0  # Seconds until first engagement
-    avg_teamfight_participation: float = 0.5  # % of team fights participated in
-    avg_apm: float = 100.0  # Actions per minute (mechanical skill)
-    avg_damage_ratio: float = 1.0  # Damage dealt / damage taken
-    avg_early_game_pct: float = 0.33  # % of damage done in early game
-    avg_late_game_pct: float = 0.33  # % of damage done in late game
-
-    # === Roadmap Section 1: Build/Composition Style ===
-    army_diversity: float = 0.5  # Unit variety (0=one unit, 1=many types)
-    tech_level: float = 0.5  # High-tier vs low-tier unit ratio
-
-    # === Roadmap Section 2: Unit Efficiency ===
-    avg_unit_efficiency: float = 1.0  # Damage per resource spent
-
-    # === Roadmap Section 3: Form & Tilt Detection ===
-    performance_variance: float = 0.0  # Consistency (low=stable, high=tilted)
-    form_trend: float = 0.0  # Recent improvement slope
-
-    # === NEW: Fixed Parser Metrics (adds +6.5% accuracy) ===
-    avg_minerals: float = 5000.0  # Average minerals collected
-    avg_supply_block: float = (
-        20.0  # Average supply block seconds (lower = better macro)
-    )
-    avg_first_expansion: float = 120.0  # Average first expansion timing in seconds
-    avg_army_built: float = 5000.0  # Average army value built
+    micro_composite: float = 50.0
+    macro_composite: float = 50.0
+    avg_aggression: float = 50.0
+    avg_first_damage_timing: float = 300.0
+    avg_teamfight_participation: float = 0.5
+    avg_apm: float = 100.0
+    avg_damage_ratio: float = 1.0
+    avg_early_game_pct: float = 0.33
+    avg_late_game_pct: float = 0.33
+    army_diversity: float = 0.5
+    tech_level: float = 0.5
+    avg_unit_efficiency: float = 1.0
+    performance_variance: float = 0.0
+    form_trend: float = 0.0
+    avg_minerals: float = 5000.0
+    avg_supply_block: float = 20.0
+    avg_first_expansion: float = 120.0
+    avg_army_built: float = 5000.0
 
 
 class FeatureExtractor:
-    """Extracts ML features from player/team data."""
+    HIGH_TIER_UNITS = {
+        "Battlecruiser",
+        "Thor",
+        "Raven",
+        "Banshee",
+        "Liberator",
+        "Ghost",
+        "Carrier",
+        "Tempest",
+        "Mothership",
+        "Colossus",
+        "Disruptor",
+        "HighTemplar",
+        "Archon",
+        "Ultralisk",
+        "BroodLord",
+        "Viper",
+        "Infestor",
+        "Lurker",
+    }
 
     @staticmethod
     def get_player_win_streak(db: Session, player_id: int, max_games: int = 10) -> int:
-        """Get current win streak for a player."""
         recent_matches = (
             db.query(MatchPlayer)
             .filter(MatchPlayer.player_id == player_id)
@@ -98,7 +97,6 @@ class FeatureExtractor:
             .limit(max_games)
             .all()
         )
-
         streak = 0
         for mp in recent_matches:
             if mp.won:
@@ -109,7 +107,6 @@ class FeatureExtractor:
 
     @staticmethod
     def get_recent_win_rate(db: Session, player_id: int, days: int = 30) -> float:
-        """Get win rate over recent period."""
         cutoff = datetime.utcnow() - timedelta(days=days)
         recent_matches = (
             db.query(MatchPlayer)
@@ -118,48 +115,15 @@ class FeatureExtractor:
             .filter(Match.played_at >= cutoff)
             .all()
         )
-
         if not recent_matches:
             return 0.5
-
         wins = sum(1 for mp in recent_matches if mp.won)
         return wins / len(recent_matches)
 
-    # High-tier units for tech level calculation (by race)
-    HIGH_TIER_UNITS = {
-        # Terran
-        "Battlecruiser",
-        "Thor",
-        "Raven",
-        "Banshee",
-        "Liberator",
-        "Ghost",
-        # Protoss
-        "Carrier",
-        "Tempest",
-        "Mothership",
-        "Colossus",
-        "Disruptor",
-        "HighTemplar",
-        "Archon",
-        # Zerg
-        "Ultralisk",
-        "BroodLord",
-        "Viper",
-        "Infestor",
-        "Lurker",
-    }
-
     @staticmethod
     def calculate_army_diversity(unit_composition: Dict[str, int]) -> float:
-        """
-        Calculate army diversity using Shannon entropy.
-        Returns 0-1 where 0 = single unit type, 1 = max diversity.
-        """
         if not unit_composition:
             return 0.5
-
-        # Filter out non-combat units (workers, overlords, larvae)
         non_combat = {
             "SCV",
             "Probe",
@@ -173,71 +137,47 @@ class FeatureExtractor:
         combat_units = {
             k: v for k, v in unit_composition.items() if k not in non_combat and v > 0
         }
-
         if not combat_units:
             return 0.5
-
         total = sum(combat_units.values())
         if total == 0:
             return 0.5
-
-        # Shannon entropy
         entropy = 0.0
         for count in combat_units.values():
             if count > 0:
                 p = count / total
                 entropy -= p * np.log2(p)
-
-        # Normalize to 0-1 (max entropy is log2(n) where n is number of unit types)
         max_entropy = np.log2(len(combat_units)) if len(combat_units) > 1 else 1
         return min(entropy / max_entropy, 1.0) if max_entropy > 0 else 0.5
 
     @staticmethod
     def calculate_tech_level(unit_composition: Dict[str, int]) -> float:
-        """
-        Calculate tech level as ratio of high-tier to total army units.
-        Returns 0-1 where 0 = all low-tier, 1 = all high-tier.
-        """
         if not unit_composition:
             return 0.5
-
         non_combat = {"SCV", "Probe", "Drone", "Overlord", "Larva", "Egg"}
         combat_units = {
             k: v for k, v in unit_composition.items() if k not in non_combat and v > 0
         }
-
         total = sum(combat_units.values())
         if total == 0:
             return 0.5
-
         high_tier_count = sum(
             v for k, v in combat_units.items() if k in FeatureExtractor.HIGH_TIER_UNITS
         )
-
         return high_tier_count / total
 
     @staticmethod
     def calculate_unit_efficiency(
         damage_dealt: float, army_value_built: float
     ) -> float:
-        """
-        Calculate damage dealt per resource spent on army.
-        Higher = more efficient unit usage.
-        """
         if army_value_built <= 0:
             return 1.0
-        return min(damage_dealt / army_value_built, 5.0)  # Cap at 5x
+        return min(damage_dealt / army_value_built, 5.0)
 
     @staticmethod
     def calculate_form_metrics(
         db: Session, player_id: int, limit: int = 10
     ) -> Tuple[float, float]:
-        """
-        Calculate form & tilt metrics (Roadmap Section 3).
-        Returns: (performance_variance, form_trend)
-        - variance: how volatile recent performance is (high = tilted)
-        - trend: slope of recent scores (positive = improving)
-        """
         from ..models import MatchPlayer as MP
 
         recent_metrics = (
@@ -248,35 +188,25 @@ class FeatureExtractor:
             .limit(limit)
             .all()
         )
-
         if len(recent_metrics) < 3:
             return 0.0, 0.0
-
-        # Use overall_impact as the performance metric
         scores = [float(m.overall_impact or 50) for m in recent_metrics]
-
-        # Variance (normalized)
-        variance = float(np.std(scores)) / 25.0  # Normalize to ~0-1 range
-
-        # Trend (linear regression slope)
+        variance = float(np.std(scores)) / 25.0
         x = np.arange(len(scores))
         if len(scores) > 1:
             slope = np.polyfit(x, scores, 1)[0]
-            trend = slope / 10.0  # Normalize
+            trend = slope / 10.0
         else:
             trend = 0.0
-
         return min(variance, 2.0), max(min(trend, 1.0), -1.0)
 
     @staticmethod
     def get_player_match_metrics_avg(
         db: Session, player_id: int, limit: int = 20
     ) -> Dict[str, float]:
-        """Get average in-game metrics from recent matches for a player."""
         from ..models import MatchPlayer as MP, PerformanceFeatures
         import json
 
-        # Get recent match metrics for this player (join with PerformanceFeatures for supply_block)
         recent_data = (
             db.query(PlayerMatchMetrics, PerformanceFeatures)
             .join(MP, PlayerMatchMetrics.match_player_id == MP.id)
@@ -288,7 +218,6 @@ class FeatureExtractor:
             .limit(limit)
             .all()
         )
-
         defaults = {
             "aggression": 50.0,
             "first_damage_timing": 300.0,
@@ -301,169 +230,115 @@ class FeatureExtractor:
             "economic_score": 50.0,
             "efficiency_score": 50.0,
             "overall_impact": 50.0,
-            # Roadmap features
             "army_diversity": 0.5,
             "tech_level": 0.5,
             "unit_efficiency": 1.0,
             "performance_variance": 0.0,
             "form_trend": 0.0,
-            # NEW: Fixed parser metrics (adds +6.5% accuracy)
             "minerals_collected": 5000.0,
             "supply_block_seconds": 20.0,
             "first_expansion_timing": 120.0,
             "army_value_built": 5000.0,
         }
-
         if not recent_data:
             return defaults
-
-        # Aggregate metrics
-        aggression_sum = 0.0
-        timing_sum = 0.0
-        tf_participation_sum = 0.0
-        apm_sum = 0.0
-        damage_ratio_sum = 0.0
-        early_pct_sum = 0.0
-        late_pct_sum = 0.0
-        combat_sum = 0.0
-        economic_sum = 0.0
-        efficiency_sum = 0.0
-        impact_sum = 0.0
-        diversity_sum = 0.0
-        tech_sum = 0.0
-        unit_eff_sum = 0.0
-        # NEW: Fixed parser metrics
-        minerals_sum = 0.0
-        supply_block_sum = 0.0
-        first_exp_sum = 0.0
-        army_built_sum = 0.0
+        agg_sums = {k: 0.0 for k in defaults.keys()}
         count = 0
-
         for m, pf in recent_data:
             count += 1
-            aggression_sum += float(m.aggression_score or 50)
-            timing_sum += float(m.first_damage_timing or 300)
-            tf_participation_sum += float(m.team_fight_participation or 0.5)
-            apm_sum += float(m.apm or 100)
-            damage_ratio_sum += min(float(m.damage_ratio or 1.0), 10.0)
-            combat_sum += float(m.combat_score or 50)
-            economic_sum += float(m.economic_score or 50)
-            efficiency_sum += float(m.efficiency_score or 50)
-            impact_sum += float(m.overall_impact or 50)
-
-            # Calculate damage distribution percentages
+            agg_sums["aggression"] += float(m.aggression_score or 50)
+            agg_sums["first_damage_timing"] += float(m.first_damage_timing or 300)
+            agg_sums["teamfight_participation"] += float(
+                m.team_fight_participation or 0.5
+            )
+            agg_sums["apm"] += float(m.apm or 100)
+            agg_sums["damage_ratio"] += min(float(m.damage_ratio or 1.0), 10.0)
+            agg_sums["combat_score"] += float(m.combat_score or 50)
+            agg_sums["economic_score"] += float(m.economic_score or 50)
+            agg_sums["efficiency_score"] += float(m.efficiency_score or 50)
+            agg_sums["overall_impact"] += float(m.overall_impact or 50)
             total_dmg = float(
                 (m.early_game_damage or 0)
                 + (m.mid_game_damage or 0)
                 + (m.late_game_damage or 0)
             )
             if total_dmg > 0:
-                early_pct_sum += float(m.early_game_damage or 0) / total_dmg
-                late_pct_sum += float(m.late_game_damage or 0) / total_dmg
+                agg_sums["early_game_pct"] += (
+                    float(m.early_game_damage or 0) / total_dmg
+                )
+                agg_sums["late_game_pct"] += float(m.late_game_damage or 0) / total_dmg
             else:
-                early_pct_sum += 0.33
-                late_pct_sum += 0.33
-
-            # Roadmap Section 1 & 2: Unit composition features
+                agg_sums["early_game_pct"] += 0.33
+                agg_sums["late_game_pct"] += 0.33
             if m.unit_composition:
                 comp = (
                     m.unit_composition
                     if isinstance(m.unit_composition, dict)
                     else json.loads(m.unit_composition)
                 )
-                diversity_sum += FeatureExtractor.calculate_army_diversity(comp)
-                tech_sum += FeatureExtractor.calculate_tech_level(comp)
+                agg_sums["army_diversity"] += FeatureExtractor.calculate_army_diversity(
+                    comp
+                )
+                agg_sums["tech_level"] += FeatureExtractor.calculate_tech_level(comp)
             else:
-                diversity_sum += 0.5
-                tech_sum += 0.5
-
-            # Unit efficiency
-            unit_eff_sum += FeatureExtractor.calculate_unit_efficiency(
+                agg_sums["army_diversity"] += 0.5
+                agg_sums["tech_level"] += 0.5
+            agg_sums["unit_efficiency"] += FeatureExtractor.calculate_unit_efficiency(
                 float(m.damage_dealt or 0), float(m.army_value_built or 1)
             )
-
-            # NEW: Fixed parser metrics (from PlayerMatchMetrics and PerformanceFeatures)
-            minerals_sum += float(m.minerals_collected or 5000)
-            # supply_block_seconds is in PerformanceFeatures, not PlayerMatchMetrics
-            supply_block_sum += float(pf.supply_block_seconds if pf else 20)
-            first_exp_sum += float(m.first_expansion_timing or 120)
-            army_built_sum += float(m.army_value_built or 5000)
+            agg_sums["minerals_collected"] += float(m.minerals_collected or 5000)
+            agg_sums["supply_block_seconds"] += float(
+                pf.supply_block_seconds if pf else 20
+            )
+            agg_sums["first_expansion_timing"] += float(m.first_expansion_timing or 120)
+            agg_sums["army_value_built"] += float(m.army_value_built or 5000)
 
         if count == 0:
             count = 1
-
-        # Roadmap Section 3: Form & Tilt
+        results = {k: v / count for k, v in agg_sums.items()}
         perf_variance, form_trend = FeatureExtractor.calculate_form_metrics(
             db, player_id
         )
-
-        return {
-            "aggression": aggression_sum / count,
-            "first_damage_timing": timing_sum / count,
-            "teamfight_participation": tf_participation_sum / count,
-            "apm": apm_sum / count,
-            "damage_ratio": damage_ratio_sum / count,
-            "early_game_pct": early_pct_sum / count,
-            "late_game_pct": late_pct_sum / count,
-            "combat_score": combat_sum / count,
-            "economic_score": economic_sum / count,
-            "efficiency_score": efficiency_sum / count,
-            "overall_impact": impact_sum / count,
-            # Roadmap features
-            "army_diversity": diversity_sum / count,
-            "tech_level": tech_sum / count,
-            "unit_efficiency": unit_eff_sum / count,
-            "performance_variance": perf_variance,
-            "form_trend": form_trend,
-            # NEW: Fixed parser metrics (adds +6.5% accuracy)
-            "minerals_collected": minerals_sum / count,
-            "supply_block_seconds": supply_block_sum / count,
-            "first_expansion_timing": first_exp_sum / count,
-            "army_value_built": army_built_sum / count,
-        }
+        results["performance_variance"] = perf_variance
+        results["form_trend"] = form_trend
+        return results
 
     @staticmethod
     def extract_team_features(db: Session, player_ids: List[int]) -> TeamFeatures:
-        """Extract aggregated features for a team including in-game metrics."""
         players = db.query(Player).filter(Player.id.in_(player_ids)).all()
-
         if not players:
             return TeamFeatures()
-
         features = TeamFeatures()
         features.team_size = len(players)
-
-        mmrs = []
-        win_streaks = []
-
-        # Aggregators for in-game metrics
-        aggression_total = 0.0
-        timing_total = 0.0
-        tf_total = 0.0
-        apm_total = 0.0
-        dmg_ratio_total = 0.0
-        early_pct_total = 0.0
-        late_pct_total = 0.0
-        combat_total = 0.0
-        economic_total = 0.0
-        efficiency_total = 0.0
-        impact_total = 0.0
-        # Roadmap feature aggregators
-        diversity_total = 0.0
-        tech_total = 0.0
-        unit_eff_total = 0.0
-        variance_total = 0.0
-        trend_total = 0.0
-        # NEW: Fixed parser metric aggregators
-        minerals_total = 0.0
-        supply_block_total = 0.0
-        first_exp_total = 0.0
-        army_built_total = 0.0
-
+        mmrs, win_streaks = [], []
+        totals = {
+            k: 0.0
+            for k in [
+                "aggression",
+                "timing",
+                "tf",
+                "apm",
+                "dmg_ratio",
+                "early_pct",
+                "late_pct",
+                "combat",
+                "economic",
+                "efficiency",
+                "impact",
+                "diversity",
+                "tech",
+                "unit_eff",
+                "variance",
+                "trend",
+                "minerals",
+                "supply",
+                "first_exp",
+                "army_built",
+            ]
+        }
         for player in players:
             mmr = player.mmr or 1000
             mmrs.append(mmr)
-
             features.avg_mmr += mmr
             features.avg_recency_mmr += player.recency_weighted_mmr or mmr
             features.total_games += player.total_games or 0
@@ -471,34 +346,28 @@ class FeatureExtractor:
             features.avg_recent_win_rate += FeatureExtractor.get_recent_win_rate(
                 db, player.id
             )
-
-            win_streak = FeatureExtractor.get_player_win_streak(db, player.id)
-            win_streaks.append(win_streak)
-
-            # Get in-game metrics from match history
-            metrics = FeatureExtractor.get_player_match_metrics_avg(db, player.id)
-            aggression_total += metrics["aggression"]
-            timing_total += metrics["first_damage_timing"]
-            tf_total += metrics["teamfight_participation"]
-            apm_total += metrics["apm"]
-            dmg_ratio_total += metrics["damage_ratio"]
-            early_pct_total += metrics["early_game_pct"]
-            late_pct_total += metrics["late_game_pct"]
-            combat_total += metrics["combat_score"]
-            economic_total += metrics["economic_score"]
-            efficiency_total += metrics["efficiency_score"]
-            impact_total += metrics["overall_impact"]
-            # Roadmap features
-            diversity_total += metrics["army_diversity"]
-            tech_total += metrics["tech_level"]
-            unit_eff_total += metrics["unit_efficiency"]
-            variance_total += metrics["performance_variance"]
-            trend_total += metrics["form_trend"]
-            # NEW: Fixed parser metrics
-            minerals_total += metrics["minerals_collected"]
-            supply_block_total += metrics["supply_block_seconds"]
-            first_exp_total += metrics["first_expansion_timing"]
-            army_built_total += metrics["army_value_built"]
+            win_streaks.append(FeatureExtractor.get_player_win_streak(db, player.id))
+            m = FeatureExtractor.get_player_match_metrics_avg(db, player.id)
+            totals["aggression"] += m["aggression"]
+            totals["timing"] += m["first_damage_timing"]
+            totals["tf"] += m["teamfight_participation"]
+            totals["apm"] += m["apm"]
+            totals["dmg_ratio"] += m["damage_ratio"]
+            totals["early_pct"] += m["early_game_pct"]
+            totals["late_pct"] += m["late_game_pct"]
+            totals["combat"] += m["combat_score"]
+            totals["economic"] += m["economic_score"]
+            totals["efficiency"] += m["efficiency_score"]
+            totals["impact"] += m["overall_impact"]
+            totals["diversity"] += m["army_diversity"]
+            totals["tech"] += m["tech_level"]
+            totals["unit_eff"] += m["unit_efficiency"]
+            totals["variance"] += m["performance_variance"]
+            totals["trend"] += m["form_trend"]
+            totals["minerals"] += m["minerals_collected"]
+            totals["supply"] += m["supply_block_seconds"]
+            totals["first_exp"] += m["first_expansion_timing"]
+            totals["army_built"] += m["army_value_built"]
 
         n = len(players)
         if n > 0:
@@ -506,106 +375,219 @@ class FeatureExtractor:
             features.avg_recency_mmr /= n
             features.avg_win_rate /= n
             features.avg_recent_win_rate /= n
-            features.avg_win_streak = sum(win_streaks) / n if win_streaks else 0
-
-            # In-game behavioral features
-            features.avg_aggression = aggression_total / n
-            features.avg_first_damage_timing = timing_total / n
-            features.avg_teamfight_participation = tf_total / n
-            features.avg_apm = apm_total / n
-            features.avg_damage_ratio = dmg_ratio_total / n
-            features.avg_early_game_pct = early_pct_total / n
-            features.avg_late_game_pct = late_pct_total / n
-
-            # Combat composite - use just combat_score (0-100 scale, stable)
-            # efficiency_score can have huge values, avoid it
-            features.micro_composite = combat_total / n
-            features.macro_composite = economic_total / n
-
-            # Roadmap features
-            features.army_diversity = diversity_total / n
-            features.tech_level = tech_total / n
-            features.avg_unit_efficiency = unit_eff_total / n
-            features.performance_variance = variance_total / n
-            features.form_trend = trend_total / n
-
-            # NEW: Fixed parser metrics (adds +6.5% accuracy)
-            features.avg_minerals = minerals_total / n
-            features.avg_supply_block = supply_block_total / n
-            features.avg_first_expansion = first_exp_total / n
-            features.avg_army_built = army_built_total / n
-
+            features.avg_win_streak = sum(win_streaks) / n
+            features.avg_aggression = totals["aggression"] / n
+            features.avg_first_damage_timing = totals["timing"] / n
+            features.avg_teamfight_participation = totals["tf"] / n
+            features.avg_apm = totals["apm"] / n
+            features.avg_damage_ratio = totals["dmg_ratio"] / n
+            features.avg_early_game_pct = totals["early_pct"] / n
+            features.avg_late_game_pct = totals["late_pct"] / n
+            features.micro_composite = totals["combat"] / n
+            features.macro_composite = totals["economic"] / n
+            features.army_diversity = totals["diversity"] / n
+            features.tech_level = totals["tech"] / n
+            features.avg_unit_efficiency = totals["unit_eff"] / n
+            features.performance_variance = totals["variance"] / n
+            features.form_trend = totals["trend"] / n
+            features.avg_minerals = totals["minerals"] / n
+            features.avg_supply_block = totals["supply"] / n
+            features.avg_first_expansion = totals["first_exp"] / n
+            features.avg_army_built = totals["army_built"] / n
         features.max_mmr = max(mmrs) if mmrs else 0
         features.mmr_spread = (max(mmrs) - min(mmrs)) if mmrs else 0
         features.mmr_std = float(np.std(mmrs)) if len(mmrs) > 1 else 0
-
         return features
 
-    # Canonical feature names - used for training and prediction
-    # Updated with newly fixed metrics that improve accuracy from 72% to 79%
-    # Regression analysis showed minerals_diff and supply_block_diff are top contributors
     FEATURE_NAMES = [
-        "experience_diff",  # Total games played
-        "sum_mmr_diff",  # Total team skill
-        "win_rate_diff",  # Historical win consistency
-        "combat_diff",  # Historical combat performance
-        "teamfight_diff",  # Team fight participation
-        "aggression_diff",  # Play style aggressiveness
-        "minerals_diff",  # Economy strength
-        "supply_block_diff",  # Macro skill indicator
-        "max_mmr_diff",  # Presence of a "star" player
-        "team_size_diff",  # Weight for uneven teams
-        "form_trend_diff",  # Recent performance slope
-        "spending_diff",  # Spending Quotient (SQ) gap
+        "experience_diff",
+        "sum_mmr_diff",
+        "win_rate_diff",
+        "combat_diff",
+        "teamfight_diff",
+        "aggression_diff",
+        "minerals_diff",
+        "supply_block_diff",
+        "max_mmr_diff",
+        "team_size_diff",
+        "form_trend_diff",
+        "spending_diff",
     ]
 
     @staticmethod
     def create_match_features(team1: TeamFeatures, team2: TeamFeatures) -> np.ndarray:
-        """
-        Create feature vector from two team features.
-        """
         return np.array(
             [
-                # Experience
                 (team1.total_games - team2.total_games) / 100,
-                # Sum MMR Gap
                 ((team1.avg_mmr * team1.team_size) - (team2.avg_mmr * team2.team_size))
                 / 800,
-                # Win Rate
                 team1.avg_win_rate - team2.avg_win_rate,
-                # Combat Diff
                 (team1.micro_composite - team2.micro_composite) / 50,
-                # Team Fight Participation
                 team1.avg_teamfight_participation - team2.avg_teamfight_participation,
-                # Aggression Diff
                 (team2.avg_aggression - team1.avg_aggression) / 50,
-                # Minerals
                 (team1.avg_minerals - team2.avg_minerals) / 1000,
-                # Supply block
                 (team2.avg_supply_block - team1.avg_supply_block) / 30,
-                # Star player
                 (team1.max_mmr - team2.max_mmr) / 500,
-                # Team size
                 team1.team_size - team2.team_size,
-                # Recent Form Trend
                 team1.form_trend - team2.form_trend,
-                # Spending Quotient (Macro efficiency)
                 (team1.macro_composite - team2.macro_composite) / 50,
             ]
         )
 
 
-# ============================================================================
-# ML Model Wrapper
-# ============================================================================
+def build_chronological_dataset(
+    db: Session, window: int = 20, form_window: int = 10
+) -> Tuple[np.ndarray, np.ndarray, List[int]]:
+    """
+    Build a leak-free (X, y) training set for match-outcome prediction.
+
+    FeatureExtractor.extract_team_features() is fine for predict() on an
+    upcoming match (current player state IS the correct historical-up-to-now
+    state there), but using it to featurize PAST matches for training is a
+    lookahead leak: it reads today's Player.mmr/win_rate and unbounded
+    "recent N" queries, which already contain the outcome of the match being
+    predicted and everything since. This walks matches chronologically and
+    keeps in-memory per-player rolling state that is only ever updated AFTER
+    a match's feature vector has been built, so match N's features reflect
+    only matches < N. See .moai/docs/ml-model-findings.md, 2026-07-06 entry,
+    for the validation that found this (and confirmed removing it changes
+    the accuracy verdict).
+
+    mmr uses match_players.mmr_before directly (already a correct pre-match
+    snapshot) rather than a reconstructed proxy.
+    """
+    matches = (
+        db.query(Match)
+        .filter(Match.played_at.isnot(None))
+        .order_by(Match.played_at.asc(), Match.id.asc())
+        .all()
+    )
+
+    total_games: Dict[int, int] = defaultdict(int)
+    wins: Dict[int, int] = defaultdict(int)
+    metric_hist: Dict[int, Any] = defaultdict(lambda: deque(maxlen=window))
+    impact_hist: Dict[int, Any] = defaultdict(lambda: deque(maxlen=form_window))
+
+    def player_state(pid: int) -> Dict[str, float]:
+        games = total_games[pid]
+        win_rate = wins[pid] / games if games > 0 else 0.5
+        hist = metric_hist[pid]
+        if hist:
+            combat = sum(h["combat"] for h in hist) / len(hist)
+            econ = sum(h["econ"] for h in hist) / len(hist)
+            tf = sum(h["tf"] for h in hist) / len(hist)
+            aggro = sum(h["aggro"] for h in hist) / len(hist)
+            minerals = sum(h["minerals"] for h in hist) / len(hist)
+            supply = sum(h["supply"] for h in hist) / len(hist)
+        else:
+            combat, econ, tf, aggro = 50.0, 50.0, 0.5, 50.0
+            minerals, supply = 5000.0, 20.0
+        impacts = list(impact_hist[pid])
+        if len(impacts) >= 3:
+            slope = float(np.polyfit(np.arange(len(impacts)), impacts, 1)[0])
+            form_trend = max(min(slope / 10.0, 1.0), -1.0)
+        else:
+            form_trend = 0.0
+        return dict(
+            total_games=games, win_rate=win_rate, combat=combat, econ=econ,
+            tf=tf, aggro=aggro, minerals=minerals, supply=supply,
+            form_trend=form_trend,
+        )
+
+    def team_state(rows: List[Tuple[int, float]]) -> Dict[str, float]:
+        n = len(rows)
+        states = [player_state(pid) for pid, _ in rows]
+        mmrs = [mmr for _, mmr in rows]
+        return dict(
+            total_games=sum(s["total_games"] for s in states),
+            avg_mmr=sum(mmrs) / n,
+            team_size=n,
+            avg_win_rate=sum(s["win_rate"] for s in states) / n,
+            micro_composite=sum(s["combat"] for s in states) / n,
+            macro_composite=sum(s["econ"] for s in states) / n,
+            avg_teamfight_participation=sum(s["tf"] for s in states) / n,
+            avg_aggression=sum(s["aggro"] for s in states) / n,
+            avg_minerals=sum(s["minerals"] for s in states) / n,
+            avg_supply_block=sum(s["supply"] for s in states) / n,
+            max_mmr=max(mmrs),
+            form_trend=sum(s["form_trend"] for s in states) / n,
+        )
+
+    def feature_vector(t1: Dict[str, float], t2: Dict[str, float]) -> np.ndarray:
+        return np.array([
+            (t1["total_games"] - t2["total_games"]) / 100,
+            ((t1["avg_mmr"] * t1["team_size"]) - (t2["avg_mmr"] * t2["team_size"])) / 800,
+            t1["avg_win_rate"] - t2["avg_win_rate"],
+            (t1["micro_composite"] - t2["micro_composite"]) / 50,
+            t1["avg_teamfight_participation"] - t2["avg_teamfight_participation"],
+            (t2["avg_aggression"] - t1["avg_aggression"]) / 50,
+            (t1["avg_minerals"] - t2["avg_minerals"]) / 1000,
+            (t2["avg_supply_block"] - t1["avg_supply_block"]) / 30,
+            (t1["max_mmr"] - t2["max_mmr"]) / 500,
+            t1["team_size"] - t2["team_size"],
+            t1["form_trend"] - t2["form_trend"],
+            (t1["macro_composite"] - t2["macro_composite"]) / 50,
+        ])
+
+    X: List[np.ndarray] = []
+    y: List[int] = []
+    match_ids: List[int] = []
+
+    for match in matches:
+        match_players = (
+            db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
+        )
+        team1 = [
+            (mp.player_id, mp.mmr_before if mp.mmr_before is not None else 1000.0)
+            for mp in match_players if mp.team_number == 1
+        ]
+        team2 = [
+            (mp.player_id, mp.mmr_before if mp.mmr_before is not None else 1000.0)
+            for mp in match_players if mp.team_number == 2
+        ]
+        winner = next((mp.team_number for mp in match_players if mp.won), None)
+        if not team1 or not team2 or winner is None:
+            continue
+
+        X.append(feature_vector(team_state(team1), team_state(team2)))
+        y.append(1 if winner == 1 else 0)
+        match_ids.append(match.id)
+
+        # Update rolling state AFTER building this match's feature vector.
+        pmm_rows = (
+            db.query(PlayerMatchMetrics, MatchPlayer.player_id)
+            .join(MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id)
+            .filter(MatchPlayer.match_id == match.id)
+            .all()
+        )
+        metrics_by_player = {
+            pid: dict(
+                combat=float(pmm.combat_score) if pmm.combat_score is not None else 50.0,
+                econ=float(pmm.economic_score) if pmm.economic_score is not None else 50.0,
+                tf=float(pmm.team_fight_participation) if pmm.team_fight_participation is not None else 0.5,
+                aggro=float(pmm.aggression_score) if pmm.aggression_score is not None else 50.0,
+                minerals=float(pmm.minerals_collected) if pmm.minerals_collected is not None else 5000.0,
+                supply=float(pmm.supply_block_seconds) if pmm.supply_block_seconds is not None else 20.0,
+                impact=float(pmm.overall_impact) if pmm.overall_impact is not None else 50.0,
+            )
+            for pmm, pid in pmm_rows
+        }
+        for team_num, rows in ((1, team1), (2, team2)):
+            won_team = team_num == winner
+            for pid, _ in rows:
+                total_games[pid] += 1
+                if won_team:
+                    wins[pid] += 1
+                m = metrics_by_player.get(pid)
+                if m:
+                    metric_hist[pid].append(m)
+                    impact_hist[pid].append(m["impact"])
+
+    return np.array(X), np.array(y), match_ids
 
 
 class MLPredictor:
-    """
-    ML-based match predictor with training and prediction capabilities.
-    """
-
-    MODEL_PATH = Path("data/xgboost_model.pkl")
+    MODEL_PATH = Path(__file__).parent.parent.parent / "data" / "xgboost_model.pkl"
 
     def __init__(self):
         self.model: Any = None
@@ -616,237 +598,152 @@ class MLPredictor:
         self.shap_importance: Dict[str, float] = {}
 
     def _get_model(self):
-        """Get LogisticRegression (preferred) or XGBoost model.
+        from sklearn.linear_model import LogisticRegression
 
-        LogisticRegression with C=0.1 achieved 72% accuracy across 10 seeds,
-        beating the 69.9% TrueSkill baseline 9/10 times.
-        """
-        from sklearn.linear_model import LogisticRegression  # type: ignore
-
-        # LogisticRegression is preferred - more stable with small datasets
-        # C=1.0 provides optimal regularization for our 153-match dataset
-        # Tested: C=1.0 achieves 71.2% vs 69.9% baseline (+1.3%)
         self.is_xgboost = False
         return LogisticRegression(max_iter=1000, C=1.0, random_state=42)
 
     def train(self, db: Session, min_matches: int = 10) -> Dict[str, Any]:
         """
-        Train the model on historical match data.
+        Train on a leak-free chronological feature set (build_chronological_dataset)
+        rather than current-player-state features - see that function's docstring
+        and .moai/docs/ml-model-findings.md (2026-07-06) for why the previous
+        approach's self-reported accuracy was not trustworthy. Reports 5-fold CV
+        accuracy (honest, out-of-sample) alongside the same-data baseline
+        ("higher summed MMR wins") rather than a single train/test split -
+        never report accuracy without the baseline next to it.
         """
-        # Get completed matches
-        matches = (
-            db.query(Match)
-            .filter(Match.played_at.isnot(None))
-            .order_by(Match.played_at.desc())
-            .limit(1000)
-            .all()
-        )
+        from sklearn.model_selection import StratifiedKFold, cross_val_score
 
-        if len(matches) < min_matches:
-            return {
-                "status": "insufficient_data",
-                "matches": len(matches),
-                "required": min_matches,
-            }
-
-        X = []
-        y = []
-
-        for match in matches:
-            match_players = (
-                db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
-            )
-
-            team1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
-            team2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]
-
-            if not team1_ids or not team2_ids:
-                continue
-
-            # Get features
-            team1_features = FeatureExtractor.extract_team_features(db, team1_ids)
-            team2_features = FeatureExtractor.extract_team_features(db, team2_ids)
-
-            feature_vector = FeatureExtractor.create_match_features(
-                team1_features, team2_features
-            )
-            X.append(feature_vector)
-
-            # Label: 1 if team 1 won
-            team1_won = any(mp.won and mp.team_number == 1 for mp in match_players)
-            y.append(1 if team1_won else 0)
-
-        if len(X) < min_matches:
+        X_arr, y_arr, _ = build_chronological_dataset(db)
+        if len(X_arr) < min_matches:
             return {
                 "status": "insufficient_valid_data",
-                "valid_matches": len(X),
+                "valid_matches": len(X_arr),
                 "required": min_matches,
             }
 
-        X_arr = np.array(X)
-        y_arr = np.array(y)
+        # Baseline: same feature set's sum_mmr_diff sign (index 1), which is
+        # leak-free by construction here (mmr_before-derived).
+        mmr_diff_idx = FeatureExtractor.FEATURE_NAMES.index("sum_mmr_diff")
+        decided = X_arr[:, mmr_diff_idx] != 0
+        baseline_accuracy = (
+            float(np.mean((X_arr[decided, mmr_diff_idx] > 0) == (y_arr[decided] == 1)))
+            if decided.any()
+            else None
+        )
 
-        # Chronological train/test split (train on older matches, test on newer)
-        # Data is already sorted by played_at DESC, so we reverse for chronological order
-        # First 80% (oldest) for training, last 20% (newest) for testing
-        split_idx = int(len(X_arr) * 0.8)
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        cv_scores = cross_val_score(self._get_model(), X_arr, y_arr, cv=cv)
+        self.training_accuracy = float(cv_scores.mean())
 
-        # Reverse arrays since matches were fetched DESC (newest first)
-        X_arr = X_arr[::-1]
-        y_arr = y_arr[::-1]
-
-        X_train = X_arr[:split_idx]
-        X_test = X_arr[split_idx:]
-        y_train = y_arr[:split_idx]
-        y_test = y_arr[split_idx:]
-
-        # Train model
+        # CV estimates out-of-sample accuracy; the deployed model is then fit
+        # on all available data (standard practice - CV to evaluate, full fit
+        # to ship).
         self.model = self._get_model()
-        self.model.fit(X_train, y_train)
-
-        # Evaluate
-        train_accuracy = self.model.score(X_train, y_train)
-        test_accuracy = self.model.score(X_test, y_test)
-        self.training_accuracy = float(test_accuracy)
+        self.model.fit(X_arr, y_arr)
         self.is_trained = True
-
-        # Feature importance - use canonical names from FeatureExtractor
-        feature_names = FeatureExtractor.FEATURE_NAMES
-
-        if self.is_xgboost and hasattr(self.model, "feature_importances_"):
-            self.feature_importance = dict(
-                zip(feature_names, self.model.feature_importances_.tolist())
-            )
-        elif hasattr(self.model, "coef_"):
-            # Use coefficients for linear model importance
-            self.feature_importance = dict(
-                zip(feature_names, np.abs(self.model.coef_[0]).tolist())
-            )
-
-        # Advanced Feature Importance (SHAP) - Disabled for now due to dimension mismatch issues
-        # Using native XGBoost feature_importance instead
-        self.shap_importance = {}
-        logger.info("SHAP importance disabled, using native feature importance")
-
-        # Save model
+        self.feature_importance = dict(
+            zip(FeatureExtractor.FEATURE_NAMES, np.abs(self.model.coef_[0]).tolist())
+        )
         self._save_model()
-
         return {
             "status": "success",
-            "model_type": "XGBoost" if self.is_xgboost else "LogisticRegression",
-            "train_samples": len(X_train),
-            "test_samples": len(X_test),
-            "train_accuracy": round(float(train_accuracy) * 100, 1),
-            "test_accuracy": round(float(test_accuracy) * 100, 1),
+            "model_type": "LogisticRegression",
+            "samples": len(X_arr),
+            "cv_folds": 5,
+            "cv_accuracy": round(self.training_accuracy * 100, 1),
+            "baseline_accuracy": round(baseline_accuracy * 100, 1) if baseline_accuracy is not None else None,
+            # Kept for frontend/API backward-compatibility; both now report
+            # the same honest CV figure rather than a leaky train/test split.
+            "train_accuracy": round(self.training_accuracy * 100, 1),
+            "test_accuracy": round(self.training_accuracy * 100, 1),
             "feature_importance": {
                 k: round(v, 4)
                 for k, v in sorted(
-                    (
-                        self.shap_importance
-                        if self.shap_importance
-                        else self.feature_importance
-                    ).items(),
-                    key=lambda x: -x[1],
+                    self.feature_importance.items(), key=lambda x: -x[1]
                 )[:5]
             },
         }
 
-    def explain_prediction(self, feature_vector: np.ndarray) -> List[Dict[str, Any]]:
-        """
-        Explain a single prediction using SHAP values.
-        """
+    def explain_prediction(
+        self, feature_vector: np.ndarray, db: Optional[Session] = None
+    ) -> List[Dict[str, Any]]:
         if not self.is_trained or self.model is None:
             return []
-
+        feature_names = FeatureExtractor.FEATURE_NAMES
+        results = []
         try:
-            from .shap_feature_importance import SHAPFeatureImportance
-
-            feature_names = FeatureExtractor.FEATURE_NAMES
-
-            explainer = SHAPFeatureImportance(self.model, feature_names)
-
-            # Initialize explainer based on model type
-            import shap  # type: ignore
-
-            if self.is_xgboost:
-                explainer.explainer = shap.TreeExplainer(self.model)
+            if not self.is_xgboost and hasattr(self.model, "coef_"):
+                coefs, vals = self.model.coef_[0], feature_vector[0]
+                for name, coef, val in zip(feature_names, coefs, vals):
+                    impact = float(coef * val)
+                    results.append(
+                        {"feature": name, "impact": impact, "magnitude": abs(impact)}
+                    )
             else:
-                explainer.explainer = shap.Explainer(self.model, feature_vector)
+                import shap
+                from .shap_feature_importance import SHAPFeatureImportance
 
-            shap_values = explainer.explain(feature_vector, output_format="array")
-
-            # Handle different SHAP output formats
-            if len(shap_values.shape) == 3:  # Explicit classes
-                impacts_arr = shap_values[0, :, 1]
-            elif len(shap_values.shape) == 2:
-                impacts_arr = shap_values[0]
-            else:
-                impacts_arr = shap_values
-
-            # Combine with names
-            results = []
-            for name, val in zip(feature_names, impacts_arr):
-                results.append(
-                    {
-                        "feature": name,
-                        "impact": float(val),
-                        "magnitude": abs(float(val)),
-                    }
+                explainer_wrapper = SHAPFeatureImportance(self.model, feature_names)
+                explainer_wrapper.explainer = (
+                    shap.TreeExplainer(self.model)
+                    if self.is_xgboost
+                    else shap.Explainer(self.model, feature_vector)
                 )
-
-            # Sort by magnitude
+                shap_values = explainer_wrapper.explain(
+                    feature_vector, output_format="array"
+                )
+                impacts_arr = (
+                    shap_values[0, :, 1]
+                    if len(shap_values.shape) == 3
+                    else shap_values[0]
+                    if len(shap_values.shape) == 2
+                    else shap_values
+                )
+                for name, val in zip(feature_names, impacts_arr):
+                    results.append(
+                        {
+                            "feature": name,
+                            "impact": float(val),
+                            "magnitude": abs(float(val)),
+                        }
+                    )
             results.sort(key=lambda x: x["magnitude"], reverse=True)
             return results
-
         except Exception as e:
-            logger.error(f"SHAP explanation failed: {e}")
+            logger.error(f"Explanation failed: {e}")
             return []
 
     def predict(
         self, db: Session, team1_ids: List[int], team2_ids: List[int]
     ) -> Dict[str, Any]:
-        """
-        Predict match outcome.
-        """
         if not self.is_trained:
             self._load_model()
-
         if self.model is None:
             return {
                 "error": "Model not trained",
                 "team_1_win_probability": 50.0,
                 "team_2_win_probability": 50.0,
             }
-
-        # Extract features
-        team1_features = FeatureExtractor.extract_team_features(db, team1_ids)
-        team2_features = FeatureExtractor.extract_team_features(db, team2_ids)
-
-        feature_vector = FeatureExtractor.create_match_features(
-            team1_features, team2_features
-        ).reshape(1, -1)
-
-        # Predict
-        if hasattr(self.model, "predict_proba"):
-            proba = self.model.predict_proba(feature_vector)[0]
-            team1_prob = float(proba[1]) * 100
-        else:
-            prediction = self.model.predict(feature_vector)[0]
-            team1_prob = 100.0 if prediction == 1 else 0.0
-
-        confidence = abs(team1_prob - 50) / 50  # 0-1 scale
-
-        # Add SHAP explanations
-        shap_explanations = self.explain_prediction(feature_vector)
-
-        # Format key factors from SHAP
+        t1_f, t2_f = (
+            FeatureExtractor.extract_team_features(db, team1_ids),
+            FeatureExtractor.extract_team_features(db, team2_ids),
+        )
+        fv = FeatureExtractor.create_match_features(t1_f, t2_f).reshape(1, -1)
+        team1_prob = (
+            float(self.model.predict_proba(fv)[0][1]) * 100
+            if hasattr(self.model, "predict_proba")
+            else (100.0 if self.model.predict(fv)[0] == 1 else 0.0)
+        )
+        confidence = abs(team1_prob - 50) / 50
+        shap_explanations = self.explain_prediction(fv, db)
         key_factors = []
         for exp in shap_explanations[:3]:
             if exp["magnitude"] > 0.01:
                 team = "Team 1" if exp["impact"] > 0 else "Team 2"
                 factor = exp["feature"].replace("_diff", "").replace("_", " ").title()
                 key_factors.append(f"{team} has advantage in {factor}")
-
         return {
             "predicted_winner": 1 if team1_prob >= 50 else 2,
             "team_1_win_probability": round(team1_prob, 1),
@@ -863,7 +760,6 @@ class MLPredictor:
         }
 
     def _save_model(self) -> None:
-        """Save trained model to disk."""
         try:
             self.MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
             with open(self.MODEL_PATH, "wb") as f:
@@ -882,17 +778,25 @@ class MLPredictor:
             logger.error(f"Failed to save model: {e}")
 
     def _load_model(self) -> bool:
-        """Load model from disk."""
         try:
             if self.MODEL_PATH.exists():
                 with open(self.MODEL_PATH, "rb") as f:
                     data = pickle.load(f)
-                    self.model = data["model"]
-                    self.is_xgboost = data["is_xgboost"]
-                    self.training_accuracy = data["training_accuracy"]
-                    self.feature_importance = data.get("feature_importance", {})
-                    self.shap_importance = data.get("shap_importance", {})
-                    self.is_trained = True
+                    (
+                        self.model,
+                        self.is_xgboost,
+                        self.training_accuracy,
+                        self.feature_importance,
+                        self.shap_importance,
+                        self.is_trained,
+                    ) = (
+                        data["model"],
+                        data["is_xgboost"],
+                        data["training_accuracy"],
+                        data.get("feature_importance", {}),
+                        data.get("shap_importance", {}),
+                        True,
+                    )
                 logger.info(f"Model loaded from {self.MODEL_PATH}")
                 return True
         except Exception as e:
@@ -904,7 +808,6 @@ _predictor_instance: Optional[MLPredictor] = None
 
 
 def get_ml_predictor() -> MLPredictor:
-    """Get or create ML predictor instance."""
     global _predictor_instance
     if _predictor_instance is None:
         _predictor_instance = MLPredictor()
@@ -912,21 +815,10 @@ def get_ml_predictor() -> MLPredictor:
 
 
 def train_ml_model(db: Session) -> Dict[str, Any]:
-    """Train the ML prediction model."""
-    predictor = get_ml_predictor()
-    return predictor.train(db)
+    return get_ml_predictor().train(db)
 
 
 def predict_with_ml(
     db: Session, team1_ids: List[int], team2_ids: List[int]
 ) -> Dict[str, Any]:
-    """Predict match outcome using ML model."""
-    predictor = get_ml_predictor()
-    return predictor.predict(db, team1_ids, team2_ids)
-
-
-# Backwards compatibility aliases
-XGBoostPredictor = MLPredictor
-get_xgboost_predictor = get_ml_predictor
-train_xgboost_model = train_ml_model
-predict_with_xgboost = predict_with_ml
+    return get_ml_predictor().predict(db, team1_ids, team2_ids)

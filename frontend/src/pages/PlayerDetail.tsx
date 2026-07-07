@@ -35,7 +35,6 @@ import {
   TabPanels,
   Tab,
   TabPanel,
-  SimpleGrid,
   Flex,
   Tooltip,
   Link,
@@ -63,7 +62,7 @@ import { playersApi } from '../api/endpoints';
 import { achievementsApi } from '../api/achievements';
 import LoadingState from '../components/LoadingState';
 import RankBadge from '../components/RankBadge';
-import AchievementBadge from '../components/AchievementBadge';
+import AchievementGrid from '../components/AchievementGrid';
 import { formatWinRate, formatDateOnly, formatDateTime } from '../utils/formatting';
 import type { RecentMatch, PlayerDetail as PlayerDetailType } from '@/types/api';
 
@@ -551,25 +550,11 @@ const PlayerDetail: React.FC = () => {
                          </Stat>
                       </HStack>
                       
-                      <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 6 }} spacing={4}>
-                        {achievementData.awarded.map((awarded) => (
-                          <Box key={awarded.code} display="flex" justifyContent="center">
-                            <AchievementBadge
-                              code={awarded.code}
-                              name={awarded.name}
-                              description={awarded.description}
-                              flavor_text={awarded.flavor_text}
-                              icon={awarded.icon || '🎖️'}
-                              rarity={awarded.rarity}
-                              category={awarded.category}
-                              points={awarded.points}
-                              earned
-                              earned_at={awarded.earned_at}
-                              size="sm"
-                            />
-                          </Box>
-                        ))}
-                      </SimpleGrid>
+                      <AchievementGrid
+                        achievements={achievementData.awarded}
+                        badgeSize="sm"
+                        columns={{ base: 2, sm: 3, md: 4, lg: 6 }}
+                      />
                     </VStack>
                   )}
                 </TabPanel>
