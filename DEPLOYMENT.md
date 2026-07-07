@@ -1,5 +1,11 @@
 # Deploying SC2MMR online (group-only)
 
+> **Current deployment (live since 2026-07-07):**
+> - App: **https://sc2mmr.vercel.app** (Vercel project `sc2mmr`, team `vincent-tees-projects`)
+> - API: https://sc2mmr-api-864756980714.australia-southeast2.run.app (Cloud Run `sc2mmr-api`, project `sc2mmr-squad`)
+> - State: `gs://sc2mmr-squad-state` (Litestream DB replica under `sc2mmr-db/`, replays under `replays/`, seed under `seed/`)
+> - Secrets (squad password, admin token, auth secret): `~/sc2mmr-deploy-secrets.txt` on the WSL2 dev machine - not in the repo
+
 Architecture: **Vercel** serves the built frontend; **Cloud Run** runs the
 backend with the SQLite DB replicated to GCS by **Litestream**; replay files
 live in a **GCS bucket**. Access is gated by a shared **group password**
@@ -20,6 +26,7 @@ locally exactly as before (open, local SQLite, local replay dirs).
 | `AUTH_COOKIE_SECURE` / `AUTH_COOKIE_SAMESITE` | no | `true` / `none` (defaults) | Correct for the cross-site Vercel+Cloud Run split; for local auth testing over http use `false` / `lax` |
 | `LITESTREAM_GCS_BUCKET` | yes | `my-sc2mmr-state` | Bucket for the SQLite replica (entrypoint.sh restores on boot, replicates while running) |
 | `LITESTREAM_GCS_PATH` | no | `sc2mmr-db` (default) | Object prefix for the DB replica |
+| `SEED_DB_GCS_URI` | first boot only | `gs://<bucket>/seed/sc2mmr.db` | Plain DB copy used to bootstrap when no replica exists yet; ignored once the replica is live |
 | `REPLAY_GCS_BUCKET` | yes | `my-sc2mmr-state` | Bucket for replay files (uploads + the Download Replay button). Can be the same bucket as Litestream's |
 | `DATABASE_URL` | no | set by entrypoint.sh | Only for non-default DB locations; local runs should leave it unset |
 
@@ -34,12 +41,11 @@ gcloud services enable run.googleapis.com artifactregistry.googleapis.com
 # State bucket (DB replica + replays). Single region near you (Melbourne):
 gcloud storage buckets create gs://<STATE_BUCKET> --location=australia-southeast2
 
-# Seed the DB replica from the local database (one-off), using litestream
-# locally, OR just let the first deploy start empty and re-upload replays.
-# Seeding from local (recommended - keeps all history):
-#   litestream replicate -exec 'sleep 5' backend/data/sc2mmr.db \
-#       gcs://<STATE_BUCKET>/sc2mmr-db
-# (Install litestream locally from litestream.io, run from repo root.)
+# Seed the DB from the local database (one-off). Upload a consistent
+# snapshot; the container's first boot downloads it when no Litestream
+# replica exists yet (SEED_DB_GCS_URI env), then starts replicating:
+python3 -c "import sqlite3; s=sqlite3.connect('backend/data/sc2mmr.db'); d=sqlite3.connect('/tmp/seed.db'); s.backup(d)"
+gcloud storage cp /tmp/seed.db gs://<STATE_BUCKET>/seed/sc2mmr.db
 
 # Copy existing replay files up (keeps the Download Replay button working
 # for historical matches):
