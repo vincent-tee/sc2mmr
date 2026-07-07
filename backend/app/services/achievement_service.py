@@ -3,14 +3,22 @@ Achievement Service for SC2 MMR Tracking.
 
 Handles achievement calculation, tracking, and awarding.
 """
+
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, desc
 
 from ..models import (
-    Player, Match, MatchPlayer, PlayerMatchMetrics, PlayerSynergy,
-    Achievement, PlayerAchievement, AchievementCategory, AchievementRarity,
+    Player,
+    Match,
+    MatchPlayer,
+    PlayerMatchMetrics,
+    PlayerSynergy,
+    Achievement,
+    PlayerAchievement,
+    AchievementCategory,
+    AchievementRarity,
     ACHIEVEMENT_DEFINITIONS,
 )
 
@@ -26,9 +34,11 @@ class AchievementService:
         """
         created = 0
         for achievement_def in ACHIEVEMENT_DEFINITIONS:
-            existing = db.query(Achievement).filter(
-                Achievement.code == achievement_def["code"]
-            ).first()
+            existing = (
+                db.query(Achievement)
+                .filter(Achievement.code == achievement_def["code"])
+                .first()
+            )
 
             if not existing:
                 achievement = Achievement(
@@ -56,11 +66,13 @@ class AchievementService:
     @staticmethod
     def get_player_achievements(db: Session, player_id: int) -> List[Dict[str, Any]]:
         """Get all achievements for a player with full details."""
-        achievements = db.query(PlayerAchievement, Achievement).join(
-            Achievement, PlayerAchievement.achievement_id == Achievement.id
-        ).filter(
-            PlayerAchievement.player_id == player_id
-        ).order_by(desc(PlayerAchievement.earned_at)).all()
+        achievements = (
+            db.query(PlayerAchievement, Achievement)
+            .join(Achievement, PlayerAchievement.achievement_id == Achievement.id)
+            .filter(PlayerAchievement.player_id == player_id)
+            .order_by(desc(PlayerAchievement.earned_at))
+            .all()
+        )
 
         return [
             {
@@ -85,17 +97,24 @@ class AchievementService:
     @staticmethod
     def get_available_achievements(db: Session, player_id: int) -> List[Dict[str, Any]]:
         """Get all achievements a player hasn't earned yet (excluding hidden ones)."""
-        earned_ids = db.query(PlayerAchievement.achievement_id).filter(
-            PlayerAchievement.player_id == player_id
-        ).subquery()
+        earned_ids = (
+            db.query(PlayerAchievement.achievement_id)
+            .filter(PlayerAchievement.player_id == player_id)
+            .subquery()
+        )
 
-        available = db.query(Achievement).filter(
-            and_(
-                Achievement.id.notin_(earned_ids),
-                Achievement.is_active == True,
-                Achievement.is_hidden == False,
+        available = (
+            db.query(Achievement)
+            .filter(
+                and_(
+                    Achievement.id.notin_(earned_ids),
+                    Achievement.is_active == True,
+                    Achievement.is_hidden == False,
+                )
             )
-        ).order_by(Achievement.category, Achievement.rarity).all()
+            .order_by(Achievement.category, Achievement.rarity)
+            .all()
+        )
 
         return [
             {
@@ -124,20 +143,24 @@ class AchievementService:
         Award an achievement to a player.
         Returns the achievement details if newly awarded, None if already has it.
         """
-        achievement = db.query(Achievement).filter(
-            Achievement.code == achievement_code
-        ).first()
+        achievement = (
+            db.query(Achievement).filter(Achievement.code == achievement_code).first()
+        )
 
         if not achievement:
             return None
 
         # Check if already earned
-        existing = db.query(PlayerAchievement).filter(
-            and_(
-                PlayerAchievement.player_id == player_id,
-                PlayerAchievement.achievement_id == achievement.id,
+        existing = (
+            db.query(PlayerAchievement)
+            .filter(
+                and_(
+                    PlayerAchievement.player_id == player_id,
+                    PlayerAchievement.achievement_id == achievement.id,
+                )
             )
-        ).first()
+            .first()
+        )
 
         if existing:
             return None
@@ -188,12 +211,16 @@ class AchievementService:
 
         # Get all active achievements the player doesn't have
         earned_codes = {
-            pa.achievement.code for pa in db.query(PlayerAchievement).join(Achievement).filter(
-                PlayerAchievement.player_id == player_id
-            ).all()
+            pa.achievement.code
+            for pa in db.query(PlayerAchievement)
+            .join(Achievement)
+            .filter(PlayerAchievement.player_id == player_id)
+            .all()
         }
 
-        all_achievements = db.query(Achievement).filter(Achievement.is_active == True).all()
+        all_achievements = (
+            db.query(Achievement).filter(Achievement.is_active == True).all()
+        )
 
         for achievement in all_achievements:
             if achievement.code in earned_codes:
@@ -218,9 +245,13 @@ class AchievementService:
         player = db.query(Player).filter(Player.id == player_id).first()
 
         # Get match history for streak calculations
-        match_history = db.query(MatchPlayer).filter(
-            MatchPlayer.player_id == player_id
-        ).join(Match).order_by(Match.played_at).all()
+        match_history = (
+            db.query(MatchPlayer)
+            .filter(MatchPlayer.player_id == player_id)
+            .join(Match)
+            .order_by(Match.played_at)
+            .all()
+        )
 
         # Calculate streaks
         win_streak, max_win_streak = 0, 0
@@ -237,25 +268,33 @@ class AchievementService:
                 max_loss_streak = max(max_loss_streak, loss_streak)
 
         # Get max damage, kills from matches
-        max_damage = db.query(func.max(PlayerMatchMetrics.damage_dealt)).join(
-            MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id
-        ).filter(MatchPlayer.player_id == player_id).scalar() or 0
+        max_damage = (
+            db.query(func.max(PlayerMatchMetrics.damage_dealt))
+            .join(MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id)
+            .filter(MatchPlayer.player_id == player_id)
+            .scalar()
+            or 0
+        )
 
-        max_kills = db.query(func.max(PlayerMatchMetrics.units_killed)).join(
-            MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id
-        ).filter(MatchPlayer.player_id == player_id).scalar() or 0
-
-        max_resources = db.query(func.max(PlayerMatchMetrics.total_resources_collected)).join(
-            MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id
-        ).filter(MatchPlayer.player_id == player_id).scalar() or 0
+        max_kills = (
+            db.query(func.max(PlayerMatchMetrics.units_killed))
+            .join(MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id)
+            .filter(MatchPlayer.player_id == player_id)
+            .scalar()
+            or 0
+        )
 
         # Get synergy stats
-        synergies = db.query(PlayerSynergy).filter(
-            or_(
-                PlayerSynergy.player1_id == player_id,
-                PlayerSynergy.player2_id == player_id,
+        synergies = (
+            db.query(PlayerSynergy)
+            .filter(
+                or_(
+                    PlayerSynergy.player1_id == player_id,
+                    PlayerSynergy.player2_id == player_id,
+                )
             )
-        ).all()
+            .all()
+        )
 
         best_duo_wins = max([s.wins_together for s in synergies], default=0)
         best_duo_winrate = 0
@@ -265,15 +304,26 @@ class AchievementService:
                 best_duo_winrate = max(best_duo_winrate, wr)
 
         # Get unique play days
-        unique_days = db.query(func.count(func.distinct(func.date(Match.played_at)))).join(
-            MatchPlayer, MatchPlayer.match_id == Match.id
-        ).filter(MatchPlayer.player_id == player_id).scalar() or 0
+        unique_days = (
+            db.query(func.count(func.distinct(func.date(Match.played_at))))
+            .join(MatchPlayer, MatchPlayer.match_id == Match.id)
+            .filter(MatchPlayer.player_id == player_id)
+            .scalar()
+            or 0
+        )
 
         return {
             "total_games": player.total_games,
             "wins": player.wins,
             "losses": player.losses,
-            "mmr": player.hybrid_mmr or player.mmr,
+            # Display MMR (players.mmr) is the "Official - Centralized source of
+            # truth" rating (see Player model docstring). The MMR_2500/3000/3500
+            # achievement thresholds are calibrated against this scale (verified:
+            # only ~3% of active players exceed 3500 on this field, matching the
+            # documented "legendary <5%" rarity). player.hybrid_mmr lives on a much
+            # larger, unbounded compounding scale (some players already exceed 5000
+            # at low game counts) and must never be used for rarity-tiered checks.
+            "mmr": player.mmr,
             "terran_games": player.terran_games,
             "protoss_games": player.protoss_games,
             "zerg_games": player.zerg_games,
@@ -283,7 +333,6 @@ class AchievementService:
             "current_loss_streak": loss_streak,
             "max_damage": max_damage,
             "max_kills": max_kills,
-            "max_resources": max_resources,
             "best_duo_wins": best_duo_wins,
             "best_duo_winrate": best_duo_winrate,
             "unique_play_days": unique_days,
@@ -326,13 +375,11 @@ class AchievementService:
         if req_type == "match_kills":
             return stats["max_kills"] >= threshold, stats["max_kills"]
 
-        if req_type == "match_resources":
-            return stats["max_resources"] >= threshold, stats["max_resources"]
-
         # Race variety achievements
         if req_type == "race_games":
             import json
-            extra = json.loads(achievement.requirement_extra or '{}')
+
+            extra = json.loads(achievement.requirement_extra or "{}")
             race = extra.get("race", "")
             race_games = {
                 "Terran": stats["terran_games"],
@@ -341,16 +388,15 @@ class AchievementService:
             }.get(race, 0)
             return race_games >= threshold, race_games
 
-        if req_type == "race_variety":
-            # All 3 races with threshold games each
-            min_games = min(stats["terran_games"], stats["protoss_games"], stats["zerg_games"])
-            return min_games >= threshold, min_games
-
         if req_type == "single_race_games":
-            max_race = max(stats["terran_games"], stats["protoss_games"], stats["zerg_games"])
-            other_races = stats["total_games"] - max_race
+            max_race = max(
+                stats["terran_games"], stats["protoss_games"], stats["zerg_games"]
+            )
             # 90%+ of games on one race
-            if stats["total_games"] >= threshold and max_race >= stats["total_games"] * 0.9:
+            if (
+                stats["total_games"] >= threshold
+                and max_race >= stats["total_games"] * 0.9
+            ):
                 return True, max_race
             return False, max_race
 
@@ -369,10 +415,20 @@ class AchievementService:
         if req_type == "unique_days":
             return stats["unique_play_days"] >= threshold, stats["unique_play_days"]
 
-        # Match-specific achievements (need current match data)
+        # Match-specific achievements (need current match data).
+        # NOTE: only these four requirement_types have an implementation in
+        # _check_match_specific_achievement below. "first_damage", "tank_win",
+        # "low_spend_win" and "combat_damage_ratio" were previously listed here
+        # too but had no matching logic (always fell through to `return False,
+        # None`) and no Achievement definition ever used them - removed as dead
+        # code. "fast_win"/"long_win"/"upset_win" are implemented but likewise
+        # have no Achievement definition yet; kept since the logic is real and
+        # correct, unlike the removed stubs.
         if match_id and req_type in [
-            "fast_win", "long_win", "upset_win", "first_damage",
-            "glass_cannon", "tank_win", "low_spend_win", "combat_damage_ratio"
+            "fast_win",
+            "long_win",
+            "upset_win",
+            "glass_cannon",
         ]:
             return cls._check_match_specific_achievement(
                 db, player.id, match_id, req_type, threshold
@@ -394,16 +450,24 @@ class AchievementService:
         if not match:
             return False, None
 
-        mp = db.query(MatchPlayer).filter(
-            and_(MatchPlayer.match_id == match_id, MatchPlayer.player_id == player_id)
-        ).first()
+        mp = (
+            db.query(MatchPlayer)
+            .filter(
+                and_(
+                    MatchPlayer.match_id == match_id, MatchPlayer.player_id == player_id
+                )
+            )
+            .first()
+        )
 
         if not mp or not mp.won:
             return False, None
 
-        metrics = db.query(PlayerMatchMetrics).filter(
-            PlayerMatchMetrics.match_player_id == mp.id
-        ).first()
+        metrics = (
+            db.query(PlayerMatchMetrics)
+            .filter(PlayerMatchMetrics.match_player_id == mp.id)
+            .first()
+        )
 
         # Fast win (under threshold seconds)
         if req_type == "fast_win":
@@ -434,8 +498,10 @@ class AchievementService:
                 if team_metrics:
                     max_damage = max(m.damage_dealt for m in team_metrics)
                     max_taken = max(m.damage_taken for m in team_metrics)
-                    if (metrics.damage_dealt == max_damage and
-                        metrics.damage_taken == max_taken):
+                    if (
+                        metrics.damage_dealt == max_damage
+                        and metrics.damage_taken == max_taken
+                    ):
                         return True, metrics.damage_dealt
 
         return False, None
@@ -445,28 +511,38 @@ class AchievementService:
         db: Session, match_id: int, team_number: int
     ) -> List[PlayerMatchMetrics]:
         """Get all metrics for a team in a match."""
-        return db.query(PlayerMatchMetrics).join(
-            MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id
-        ).filter(
-            and_(
-                MatchPlayer.match_id == match_id,
-                MatchPlayer.team_number == team_number,
+        return (
+            db.query(PlayerMatchMetrics)
+            .join(MatchPlayer, PlayerMatchMetrics.match_player_id == MatchPlayer.id)
+            .filter(
+                and_(
+                    MatchPlayer.match_id == match_id,
+                    MatchPlayer.team_number == team_number,
+                )
             )
-        ).all()
+            .all()
+        )
 
     @staticmethod
-    def get_achievement_leaderboard(db: Session, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_achievement_leaderboard(
+        db: Session, limit: int = 20
+    ) -> List[Dict[str, Any]]:
         """Get players ranked by achievement points."""
-        results = db.query(
-            Player.id,
-            Player.name,
-            func.count(PlayerAchievement.id).label("total_achievements"),
-            func.sum(Achievement.points).label("total_points"),
-        ).join(
-            PlayerAchievement, Player.id == PlayerAchievement.player_id
-        ).join(
-            Achievement, PlayerAchievement.achievement_id == Achievement.id
-        ).group_by(Player.id).order_by(desc("total_points")).limit(limit).all()
+        results = (
+            db.query(
+                Player.id,
+                Player.name,
+                func.count(PlayerAchievement.id).label("total_achievements"),
+                func.sum(Achievement.points).label("total_points"),
+            )
+            .join(PlayerAchievement, Player.id == PlayerAchievement.player_id)
+            .join(Achievement, PlayerAchievement.achievement_id == Achievement.id)
+            .filter(Player.is_ai == 0)
+            .group_by(Player.id)
+            .order_by(desc("total_points"))
+            .limit(limit)
+            .all()
+        )
 
         return [
             {
@@ -481,14 +557,20 @@ class AchievementService:
     @staticmethod
     def get_rarest_achievements(db: Session, limit: int = 10) -> List[Dict[str, Any]]:
         """Get the rarest achievements (fewest players have them)."""
-        results = db.query(
-            Achievement,
-            func.count(PlayerAchievement.id).label("earned_count"),
-        ).outerjoin(
-            PlayerAchievement, Achievement.id == PlayerAchievement.achievement_id
-        ).filter(
-            Achievement.is_active == True
-        ).group_by(Achievement.id).order_by("earned_count").limit(limit).all()
+        results = (
+            db.query(
+                Achievement,
+                func.count(PlayerAchievement.id).label("earned_count"),
+            )
+            .outerjoin(
+                PlayerAchievement, Achievement.id == PlayerAchievement.achievement_id
+            )
+            .filter(Achievement.is_active == True)
+            .group_by(Achievement.id)
+            .order_by("earned_count")
+            .limit(limit)
+            .all()
+        )
 
         return [
             {
@@ -505,11 +587,14 @@ class AchievementService:
     @staticmethod
     def get_recent_achievements(db: Session, limit: int = 20) -> List[Dict[str, Any]]:
         """Get the most recently earned achievements across all players."""
-        results = db.query(PlayerAchievement, Achievement, Player).join(
-            Achievement, PlayerAchievement.achievement_id == Achievement.id
-        ).join(
-            Player, PlayerAchievement.player_id == Player.id
-        ).order_by(desc(PlayerAchievement.earned_at)).limit(limit).all()
+        results = (
+            db.query(PlayerAchievement, Achievement, Player)
+            .join(Achievement, PlayerAchievement.achievement_id == Achievement.id)
+            .join(Player, PlayerAchievement.player_id == Player.id)
+            .order_by(desc(PlayerAchievement.earned_at))
+            .limit(limit)
+            .all()
+        )
 
         return [
             {

@@ -1,7 +1,8 @@
 /**
- * Home Page - Friend Squad Edition
- * A cozy gaming clubhouse, not a sterile command center
- * Desktop-first design with personality
+ * Home Page - Clubhouse Edition
+ * Asymmetric editorial masthead: big headline + reigning champ card,
+ * then a battles feed and a top-five ladder strip. No centered hero,
+ * no three-equal-columns grid.
  */
 import {
   Box,
@@ -9,223 +10,149 @@ import {
   Heading,
   Text,
   Button,
-  SimpleGrid,
   VStack,
   HStack,
   Flex,
+  Grid,
+  GridItem,
   Avatar,
   AvatarGroup,
+  Icon,
   Badge,
-  Divider,
+  Progress,
 } from '@chakra-ui/react';
-import { FiUpload, FiUsers, FiZap, FiTrendingUp, FiCalendar, FiAward } from 'react-icons/fi';
+import { FiUpload, FiZap, FiTarget, FiArrowRight, FiAward } from 'react-icons/fi';
+import { LuCrown } from 'react-icons/lu';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { playersApi, replaysApi } from '../api/endpoints';
-import FriendlyStat from '../components/FriendlyStat';
-import { formatDateOnly, getInitials, getPlayerAvatarUrl, getPlayerRaces, getRaceColor } from '../utils/formatting';
+import { leaderboardApi } from '../api/leaderboard';
+import RankBadge from '../components/RankBadge';
+import { formatDateTimeShort, getPlayerAvatarUrl, getPlayerRaces, getRaceColor } from '../utils/formatting';
 import type { Player, MatchWithPlayers } from '../types/api';
 
-/**
- * Quick Action Card - Comic book style button
- */
-interface QuickActionProps {
-  emoji: string;
-  title: string;
-  subtitle: string;
-  color: string;
-  onClick: () => void;
-  isPrimary?: boolean;
-}
+/** Compact match row for the battles feed */
+const MatchRow: React.FC<{ match: MatchWithPlayers; onClick: () => void }> = ({ match, onClick }) => {
+  const allPlayers = match.players || [];
+  const winners = allPlayers.filter((p) => p.won);
+  const losers = allPlayers.filter((p) => !p.won);
+  const winnerNames = winners.map((p) => p.player_name).join(', ');
+  const teamColor = match.winner_team === 2 ? 'accent' : 'brand';
+  // Winners first so the emphasized avatars lead the stack
+  const orderedPlayers = [...winners, ...losers];
 
-const QuickAction: React.FC<QuickActionProps> = ({ 
-  emoji, title, subtitle, color, onClick, isPrimary 
-}) => (
-  <Box
-    as="button"
-    onClick={onClick}
-    bg={isPrimary ? color : 'space.800'}
-    borderRadius="xl"
-    border="3px solid"
-    borderColor="space.900"
-    boxShadow="4px 4px 0 var(--chakra-colors-space-900)"
-    p={5}
-    textAlign="left"
-    transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
-    _hover={{
-      transform: 'translateY(-4px) rotate(1deg)',
-      boxShadow: '6px 6px 0 var(--chakra-colors-space-900)',
-    }}
-    _active={{
-      transform: 'translateY(-2px)',
-      boxShadow: '3px 3px 0 var(--chakra-colors-space-900)',
-    }}
-    width="100%"
-  >
-    <HStack spacing={4}>
-      <Text fontSize="3xl" className="emoji-font">
-        {emoji}
-      </Text>
-      <VStack align="start" spacing={0}>
-        <Text
-          fontWeight="bold"
-          fontSize="lg"
-          fontFamily="heading"
-          color={isPrimary ? 'space.900' : 'gray.100'}
-        >
-          {title}
+  return (
+    <Flex
+      as="button"
+      onClick={onClick}
+      w="100%"
+      textAlign="left"
+      align="center"
+      gap={4}
+      px={4}
+      py={3}
+      bg="space.800"
+      borderRadius="xl"
+      border="1px solid"
+      borderColor="whiteAlpha.100"
+      transition="all 0.18s ease"
+      _hover={{ borderColor: 'brand.500', bg: 'space.700', transform: 'translateX(4px)' }}
+    >
+      <Flex
+        flexShrink={0}
+        w="34px"
+        h="34px"
+        align="center"
+        justify="center"
+        borderRadius="md"
+        bg={match.winner_team === 2 ? 'rgba(78, 205, 196, 0.12)' : 'rgba(255, 107, 53, 0.15)'}
+        border="1px solid"
+        borderColor={`${teamColor}.500`}
+      >
+        <Icon as={FiAward} color={`${teamColor}.400`} boxSize="16px" />
+      </Flex>
+      <Box flex={1} minW={0}>
+        <Text fontWeight="800" fontFamily="heading" color="gray.100" noOfLines={1}>
+          {match.map_name}
         </Text>
-        <Text 
-          fontSize="sm" 
-          color={isPrimary ? 'space.700' : 'gray.500'}
-        >
-          {subtitle}
+        <Text fontSize="xs" color="gray.500" noOfLines={1}>
+          {winnerNames ? `Won by ${winnerNames}` : `Team ${match.winner_team} won`} · {formatDateTimeShort(match.played_at)}
         </Text>
-      </VStack>
-    </HStack>
-  </Box>
-);
-
-/**
- * Recent Match Card - Friendly style
- */
-interface MatchCardProps {
-  match: MatchWithPlayers;
-  onClick: () => void;
-}
-
-const MatchCard: React.FC<MatchCardProps> = ({ match, onClick }) => (
-  <Box
-    as="button"
-    onClick={onClick}
-    bg="space.800"
-    borderRadius="xl"
-    border="3px solid"
-    borderColor="space.900"
-    boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
-    p={4}
-    width="100%"
-    textAlign="left"
-    transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
-    _hover={{
-      transform: 'translateY(-2px)',
-      boxShadow: '5px 5px 0 var(--chakra-colors-space-900)',
-      borderColor: 'brand.500',
-    }}
-  >
-    <Flex justify="space-between" align="center">
-      <HStack spacing={3}>
-        <Text fontSize="xl" className="emoji-font">
-          🎮
-        </Text>
-        <VStack align="start" spacing={0}>
-          <Text fontWeight="bold" fontFamily="heading" color="gray.100">
-            {match.map_name}
-          </Text>
-          <Text fontSize="xs" color="gray.500">
-            {match.game_mode} • {formatDateOnly(match.played_at)}
-          </Text>
-        </VStack>
-      </HStack>
-      <AvatarGroup size="sm" max={4}>
-        {(match.players || []).slice(0, 4).map((player, idx) => (
+      </Box>
+      <AvatarGroup size="xs" max={5} flexShrink={0}>
+        {orderedPlayers.slice(0, 5).map((player, idx) => (
           <Avatar
             key={player.player_id || idx}
             src={getPlayerAvatarUrl(player.player_name, player.race)}
             name={player.player_name}
-            size="sm"
+            size="xs"
             bg={`${getRaceColor(player.race)}.500`}
-            color="white"
-            border="2px solid"
-            borderColor="space.900"
+            opacity={player.won ? 1 : 0.4}
+            borderColor={player.won ? `${teamColor}.400` : 'space.800'}
           />
         ))}
       </AvatarGroup>
     </Flex>
-  </Box>
-);
+  );
+};
 
-/**
- * Player Spotlight - Shows top players
- */
-interface PlayerSpotlightProps {
-  players: Player[];
-  onClick: (id: number) => void;
-}
-
-const PlayerSpotlight: React.FC<PlayerSpotlightProps> = ({ players, onClick }) => {
-  const topPlayers = [...players]
-    .filter(p => p.total_games >= 5) // Minimum 5 games to be featured on Home
-    .sort((a, b) => (b.recency_weighted_mmr || b.mmr) - (a.recency_weighted_mmr || a.mmr))
-    .slice(0, 5);
+/** Ladder strip row with oversized rank numeral */
+const LadderRow: React.FC<{ player: Player; rank: number; onClick: () => void }> = ({
+  player,
+  rank,
+  onClick,
+}) => {
+  const races = getPlayerRaces(player);
+  const primaryRace = races.length > 0 ? races[0].name : 'Random';
+  const isFirst = rank === 1;
 
   return (
-    <VStack spacing={2} align="stretch">
-      {topPlayers.map((player, idx) => {
-        const playerRaces = getPlayerRaces(player);
-        const primaryRace = playerRaces.length > 0 ? playerRaces[0].name : 'Random';
-
-        return (
-          <HStack
-            key={player.id}
-            as="button"
-            onClick={() => onClick(player.id)}
-            bg="space.800"
-            borderRadius="lg"
-            border="2px solid"
-            borderColor="space.900"
-            p={3}
-            justify="space-between"
-            transition="all 0.2s"
-            _hover={{
-              bg: 'space.700',
-              borderColor: 'brand.500',
-            }}
-          >
-            <HStack spacing={3}>
-              <Text
-                fontSize="lg"
-                fontWeight="bold"
-                color="gray.500"
-                width="24px"
-                className="emoji-font"
-              >
-                {idx === 0 ? '👑' : `#${idx + 1}`}
-              </Text>
-              <Avatar
-                size="sm"
-                src={getPlayerAvatarUrl(player.name, primaryRace, player.is_ai)}
-                name={player.name}
-                bg={`${getRaceColor(primaryRace)}.500`}
-                color="white"
-                border="2px solid"
-                borderColor="space.900"
-              />
-              <Text fontWeight="bold" fontFamily="heading" color="gray.100">
-                {player.name}
-              </Text>
-            </HStack>
-            <Badge
-              bg="space.700"
-              color="brand.400"
-              fontSize="sm"
-              fontFamily="mono"
-              px={2}
-              borderRadius="md"
-            >
-              {Math.round(player.recency_weighted_mmr || player.mmr)}
-            </Badge>
-          </HStack>
-        );
-      })}
-    </VStack>
+    <Flex
+      as="button"
+      onClick={onClick}
+      w="100%"
+      textAlign="left"
+      align="center"
+      gap={3}
+      px={4}
+      py={2.5}
+      bg={isFirst ? 'rgba(255, 107, 53, 0.08)' : 'transparent'}
+      borderRadius="lg"
+      border="1px solid"
+      borderColor={isFirst ? 'rgba(255, 107, 53, 0.35)' : 'transparent'}
+      transition="all 0.18s ease"
+      _hover={{ bg: 'whiteAlpha.100' }}
+    >
+      <Text
+        fontFamily="heading"
+        fontWeight="800"
+        fontSize="2xl"
+        w="34px"
+        textAlign="center"
+        color={isFirst ? 'brand.500' : 'whiteAlpha.300'}
+        flexShrink={0}
+      >
+        {rank}
+      </Text>
+      <Avatar
+        size="sm"
+        src={getPlayerAvatarUrl(player.name, primaryRace, player.is_ai)}
+        name={player.name}
+        bg={`${getRaceColor(primaryRace)}.500`}
+      />
+      <Text fontWeight="700" fontFamily="heading" color="gray.100" flex={1} noOfLines={1}>
+        {player.name}
+      </Text>
+      <Text fontFamily="mono" fontWeight="700" color={isFirst ? 'brand.400' : 'gray.400'}>
+        {Math.round(player.mmr).toLocaleString()}
+      </Text>
+    </Flex>
   );
 };
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
 
-  // Fetch stats
   const { data: playersData, isLoading: loadingPlayers } = useQuery<Player[]>({
     queryKey: ['players'],
     queryFn: async () => {
@@ -234,7 +161,10 @@ const Home: React.FC = () => {
     },
   });
 
-  const { data: matchesData, isLoading: loadingMatches } = useQuery<{matches: MatchWithPlayers[], total_count: number}>({
+  const { data: matchesData, isLoading: loadingMatches } = useQuery<{
+    matches: MatchWithPlayers[];
+    total_count: number;
+  }>({
     queryKey: ['matches-with-players-home'],
     queryFn: async () => {
       const response = await replaysApi.getMatchesWithPlayers(10);
@@ -242,247 +172,311 @@ const Home: React.FC = () => {
     },
   });
 
+  const { data: metaData } = useQuery({
+    queryKey: ['squad-meta'],
+    queryFn: async () => (await leaderboardApi.getMetaReport()).data,
+  });
+  const raceWR: Record<string, number> = metaData?.squad_win_rate_by_race || {};
+  const sortedRaces = Object.entries(raceWR).sort(([, a], [, b]) => b - a);
+
   const players = playersData || [];
   const matches = matchesData?.matches || [];
-  const totalMatches = matchesData?.total_count || 0; // Use actual match count from API
+  const totalMatches = matchesData?.total_count || 0;
 
-  // Calculate stats
-  const totalPlayers = players.length;
-  const avgMMR = players.length > 0
-    ? Math.round(players.reduce((sum, p) => sum + (p.recency_weighted_mmr || p.mmr), 0) / players.length)
-    : 0;
+  const rankedPlayers = [...players]
+    .filter((p) => p.total_games >= 15 && !p.is_ai && p.is_core_player)
+    .sort((a, b) => b.mmr - a.mmr);
+  const champion = rankedPlayers[0];
+  const championRaces = champion ? getPlayerRaces(champion) : [];
+  const championRace = championRaces.length > 0 ? championRaces[0].name : 'Random';
 
+  const totalPlayers = players.filter((p) => p.total_games > 0).length;
   const isLoading = loadingPlayers || loadingMatches;
 
   return (
-    <Box minH="100vh" py={8}>
+    <Box minH="100vh" pb={16}>
       <Container maxW="container.xl">
-        {/* Hero Section - Welcome message */}
-        <Box textAlign="center" mb={10}>
-          <Heading
-            size="2xl"
-            fontFamily="heading"
-            fontWeight="bold"
-            mb={3}
-            color="gray.100"
-          >
-            Welcome to the{' '}
-            <Text as="span" color="brand.500">
-              Squad
-            </Text>{' '}
-            🎮
-          </Heading>
-          <Text fontSize="lg" color="gray.500" maxW="600px" mx="auto">
-            Track your friend group's StarCraft matches, generate balanced teams, 
-            and settle the debate of who's actually the best.
-          </Text>
-        </Box>
-
-        {/* Main Layout - Desktop First: 3 columns */}
-        <SimpleGrid columns={{ base: 1, lg: 3 }} spacing={8}>
-          
-          {/* Left Column - Quick Actions */}
-          <VStack spacing={4} align="stretch">
-            <Heading size="md" fontFamily="heading" color="gray.300" mb={2}>
-              <Text className="emoji-font" as="span">⚡</Text> Quick Actions
+        {/* ===== Masthead: headline left, champion card right ===== */}
+        <Grid templateColumns="repeat(12, 1fr)" gap={{ base: 8, lg: 10 }} pt={{ base: 8, md: 14 }} pb={{ base: 8, md: 12 }}>
+          <GridItem colSpan={{ base: 12, lg: 7 }}>
+            <HStack spacing={2} mb={3}>
+              <Box w="18px" h="3px" bg="brand.500" borderRadius="full" />
+              <Text
+                fontFamily="mono"
+                fontSize="xs"
+                fontWeight="600"
+                letterSpacing="0.18em"
+                textTransform="uppercase"
+                color="accent.400"
+              >
+                The Clubhouse Ladder
+              </Text>
+            </HStack>
+            <Heading
+              as="h1"
+              fontSize={{ base: '4xl', md: '6xl' }}
+              lineHeight="1.02"
+              color="gray.50"
+              mb={4}
+            >
+              Who&apos;s{' '}
+              <Text as="span" color="brand.500">
+                actually
+              </Text>{' '}
+              the best?
             </Heading>
-            
-            <QuickAction
-              emoji="⚡"
-              title="Generate Teams"
-              subtitle="Fair and balanced matchups"
-              color="brand.500"
-              onClick={() => navigate('/balance')}
-              isPrimary
-            />
-            
-            <QuickAction
-              emoji="📤"
-              title="Upload Replays"
-              subtitle="Add new match data"
-              color="accent.500"
-              onClick={() => navigate('/upload')}
-            />
-            
-            <QuickAction
-              emoji="🎯"
-              title="Predict Match"
-              subtitle="Who will win?"
-              color="shield.500"
-              onClick={() => navigate('/predictor')}
-            />
-            
-            <QuickAction
-              emoji="👥"
-              title="View Squad"
-              subtitle="All player stats"
-              color="zerg.500"
-              onClick={() => navigate('/players')}
-            />
-          </VStack>
-
-          {/* Center Column - Stats & Recent Activity */}
-          <VStack spacing={6} align="stretch">
-            {/* Stats Row */}
-            <Box>
-              <Heading size="md" fontFamily="heading" color="gray.300" mb={4}>
-                <Text className="emoji-font" as="span">📊</Text> Squad Stats
-              </Heading>
-              <SimpleGrid columns={3} spacing={3}>
-                <FriendlyStat
-                  label="Players"
-                  value={isLoading ? '—' : totalPlayers}
-                  emoji="👥"
-                  color="brand.500"
-                  size="sm"
-                />
-                <FriendlyStat
-                  label="Matches"
-                  value={isLoading ? '—' : totalMatches}
-                  emoji="🎮"
-                  color="accent.500"
-                  size="sm"
-                />
-                <FriendlyStat
-                  label="Avg MMR"
-                  value={isLoading ? '—' : avgMMR}
-                  emoji="📈"
-                  color="shield.500"
-                  size="sm"
-                />
-              </SimpleGrid>
-            </Box>
-
-            <Divider borderColor="space.700" />
-
-            {/* Recent Matches */}
-            <Box>
-              <HStack justify="space-between" mb={4}>
-                <Heading size="md" fontFamily="heading" color="gray.300">
-                  <Text className="emoji-font" as="span">🕐</Text> Recent Matches
-                </Heading>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  color="brand.400"
-                  onClick={() => navigate('/history')}
-                  fontFamily="heading"
-                >
-                  View All →
-                </Button>
-              </HStack>
-              
-              {matches.length > 0 ? (
-                <VStack spacing={2} align="stretch">
-                  {matches.slice(0, 5).map((match) => (
-                    <MatchCard
-                      key={match.id}
-                      match={match}
-                      onClick={() => navigate(`/history/${match.id}`)}
-                    />
-                  ))}
-                </VStack>
-              ) : (
-                <Box
-                  bg="space.800"
-                  borderRadius="xl"
-                  border="3px solid"
-                  borderColor="space.900"
-                  p={6}
-                  textAlign="center"
-                >
-                  <Text fontSize="3xl" mb={2} className="emoji-font">
-                    🎮
+            <Text fontSize={{ base: 'md', md: 'lg' }} color="gray.400" maxW="480px" mb={7}>
+              Every replay counted, every excuse recorded. Track your friend group&apos;s
+              StarCraft II matches and settle the debate with math.
+            </Text>
+            <HStack spacing={3} mb={8} flexWrap="wrap">
+              <Button
+                size="lg"
+                variant="primary"
+                leftIcon={<FiZap />}
+                onClick={() => navigate('/balance')}
+                fontFamily="heading"
+              >
+                Generate Teams
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                leftIcon={<FiUpload />}
+                onClick={() => navigate('/upload')}
+                fontFamily="heading"
+                fontWeight="700"
+                color="gray.200"
+                borderColor="whiteAlpha.300"
+                borderRadius="lg"
+                _hover={{ bg: 'whiteAlpha.100', borderColor: 'gray.400' }}
+              >
+                Upload Replays
+              </Button>
+            </HStack>
+            <HStack spacing={7} flexWrap="wrap">
+              {[
+                { value: isLoading ? '—' : totalPlayers, label: 'Players' },
+                { value: isLoading ? '—' : totalMatches.toLocaleString(), label: 'Matches' },
+                {
+                  value:
+                    isLoading || players.length === 0
+                      ? '—'
+                      : Math.round(Math.max(...players.map((p) => p.mmr))).toLocaleString(),
+                  label: 'Top MMR',
+                },
+              ].map((stat) => (
+                <Box key={stat.label}>
+                  <Text fontFamily="mono" fontWeight="700" fontSize="2xl" color="gray.100" lineHeight="1.1">
+                    {stat.value}
                   </Text>
-                  <Text color="gray.500">
-                    No matches yet. Upload some replays to get started!
+                  <Text fontSize="xs" color="gray.500" textTransform="uppercase" letterSpacing="0.1em">
+                    {stat.label}
                   </Text>
                 </Box>
-              )}
-            </Box>
-          </VStack>
+              ))}
+            </HStack>
+          </GridItem>
 
-          {/* Right Column - Leaderboard */}
-          <VStack spacing={4} align="stretch">
-            <HStack justify="space-between">
-              <Heading size="md" fontFamily="heading" color="gray.300">
-                <Text className="emoji-font" as="span">🏆</Text> Leaderboard
+          {/* Champion card - tilted, spotlighted */}
+          <GridItem colSpan={{ base: 12, lg: 5 }} display="flex" alignItems="center">
+            {champion && (
+              <Box
+                w="100%"
+                maxW="360px"
+                mx={{ base: 'auto', lg: 'unset' }}
+                ml={{ lg: 'auto' }}
+                position="relative"
+                bg="space.800"
+                borderRadius="2xl"
+                border="1px solid"
+                borderColor="rgba(255, 107, 53, 0.4)"
+                boxShadow="0 0 60px rgba(255, 107, 53, 0.12), 8px 8px 0 rgba(0,0,0,0.35)"
+                transform="rotate(1.5deg)"
+                transition="transform 0.25s ease"
+                _hover={{ transform: 'rotate(0deg) translateY(-4px)' }}
+                cursor="pointer"
+                onClick={() => navigate(`/players/${champion.id}`)}
+                p={6}
+              >
+                <HStack spacing={2} mb={4}>
+                  <Icon as={LuCrown} color="shield.400" boxSize="18px" />
+                  <Text
+                    fontFamily="mono"
+                    fontSize="xs"
+                    fontWeight="600"
+                    letterSpacing="0.18em"
+                    textTransform="uppercase"
+                    color="shield.400"
+                  >
+                    Reigning Champ
+                  </Text>
+                </HStack>
+                <HStack spacing={4} mb={5}>
+                  <Avatar
+                    size="xl"
+                    src={getPlayerAvatarUrl(champion.name, championRace, champion.is_ai)}
+                    name={champion.name}
+                    bg={`${getRaceColor(championRace)}.500`}
+                    border="3px solid"
+                    borderColor="shield.400"
+                  />
+                  <Box>
+                    <Heading fontSize="2xl" color="gray.50" mb={1}>
+                      {champion.name}
+                    </Heading>
+                    <RankBadge mmr={champion.mmr} size="sm" showMMR />
+                  </Box>
+                </HStack>
+                <Flex justify="space-between" borderTop="1px solid" borderColor="whiteAlpha.100" pt={4}>
+                  {[
+                    { value: champion.total_games, label: 'Games' },
+                    { value: `${(champion.win_rate * 100).toFixed(1)}%`, label: 'Win rate' },
+                    { value: `${champion.wins}W ${champion.losses}L`, label: 'Record' },
+                  ].map((stat) => (
+                    <Box key={stat.label}>
+                      <Text fontFamily="mono" fontWeight="700" color="gray.100">
+                        {stat.value}
+                      </Text>
+                      <Text fontSize="10px" color="gray.500" textTransform="uppercase" letterSpacing="0.1em">
+                        {stat.label}
+                      </Text>
+                    </Box>
+                  ))}
+                </Flex>
+              </Box>
+            )}
+          </GridItem>
+        </Grid>
+
+        {/* ===== Feed + ladder strip ===== */}
+        <Grid templateColumns="repeat(12, 1fr)" gap={{ base: 8, lg: 6 }}>
+          <GridItem colSpan={{ base: 12, lg: 7 }}>
+            <Flex justify="space-between" align="center" mb={4}>
+              <Heading fontSize="xl" color="gray.100">
+                Latest battles
               </Heading>
               <Button
                 size="sm"
                 variant="ghost"
+                rightIcon={<FiArrowRight />}
                 color="brand.400"
-                onClick={() => navigate('/leaderboard')}
                 fontFamily="heading"
+                onClick={() => navigate('/history')}
               >
-                View Rankings →
+                View all
               </Button>
-            </HStack>
-            
-            {players.length > 0 ? (
-              <PlayerSpotlight 
-                players={players} 
-                onClick={(id) => navigate(`/players/${id}`)}
-              />
+            </Flex>
+            {matches.length > 0 ? (
+              <VStack spacing={2} align="stretch">
+                {matches.slice(0, 7).map((match) => (
+                  <MatchRow key={match.id} match={match} onClick={() => navigate(`/history/${match.id}`)} />
+                ))}
+              </VStack>
             ) : (
               <Box
                 bg="space.800"
                 borderRadius="xl"
-                border="3px solid"
-                borderColor="space.900"
-                p={6}
+                border="1px dashed"
+                borderColor="whiteAlpha.300"
+                p={10}
                 textAlign="center"
               >
-                <Text fontSize="3xl" mb={2} className="emoji-font">
-                  👥
+                <Text color="gray.500">No matches yet — upload some replays to get started.</Text>
+              </Box>
+            )}
+          </GridItem>
+
+          <GridItem colSpan={{ base: 12, lg: 5 }}>
+            <Flex justify="space-between" align="center" mb={4}>
+              <Heading fontSize="xl" color="gray.100">
+                Top five
+              </Heading>
+              <Button
+                size="sm"
+                variant="ghost"
+                rightIcon={<FiArrowRight />}
+                color="brand.400"
+                fontFamily="heading"
+                onClick={() => navigate('/leaderboard')}
+              >
+                Full ladder
+              </Button>
+            </Flex>
+            <Box bg="space.800" borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100" p={2}>
+              {rankedPlayers.slice(0, 5).map((player, idx) => (
+                <LadderRow
+                  key={player.id}
+                  player={player}
+                  rank={idx + 1}
+                  onClick={() => navigate(`/players/${player.id}`)}
+                />
+              ))}
+            </Box>
+
+            {/* Win rate by race - folded in from the old standalone Squad Meta
+                page, which was down to just this one real, non-redundant stat */}
+            {sortedRaces.length > 0 && (
+              <Box bg="space.800" borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100" p={5} mt={6}>
+                <Text fontSize="xs" color="gray.500" textTransform="uppercase" letterSpacing="0.1em" mb={4} fontWeight="700">
+                  Win Rate by Race
                 </Text>
-                <Text color="gray.500">
-                  No players yet. Upload replays to add players!
-                </Text>
+                <VStack spacing={4} align="stretch">
+                  {sortedRaces.map(([race, wr]) => (
+                    <Box key={race}>
+                      <HStack justify="space-between" mb={1.5}>
+                        <Badge colorScheme={getRaceColor(race)} variant="solid" px={2.5} fontSize="10px">
+                          {race.toUpperCase()}
+                        </Badge>
+                        <Text fontWeight="700" color="gray.200" fontFamily="mono" fontSize="sm">
+                          {wr}%
+                        </Text>
+                      </HStack>
+                      <Progress
+                        value={wr}
+                        colorScheme={getRaceColor(race)}
+                        bg="blackAlpha.400"
+                        borderRadius="full"
+                        height="6px"
+                        sx={{ '& > div': { bg: `${getRaceColor(race)}.500` } }}
+                      />
+                    </Box>
+                  ))}
+                </VStack>
               </Box>
             )}
 
-            <Divider borderColor="space.700" my={2} />
-
-            {/* Fun Stats / Achievements teaser */}
-            <Box
-              bg="space.800"
-              borderRadius="xl"
-              border="3px solid"
-              borderColor="space.900"
-              boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
-              p={4}
-            >
-              <HStack spacing={3} mb={3}>
-                <Text fontSize="xl" className="emoji-font">
-                  🎖️
-                </Text>
-                <Text fontWeight="bold" fontFamily="heading" color="gray.100">
-                  Quick Stats
-                </Text>
-              </HStack>
-              <VStack spacing={2} align="stretch" fontSize="sm" color="gray.400">
-                <HStack justify="space-between">
-                  <Text>Total Games Played</Text>
-                  <Text fontWeight="bold" color="brand.400">{totalMatches}</Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text>Active Players</Text>
-                  <Text fontWeight="bold" color="accent.400">{totalPlayers}</Text>
-                </HStack>
-                 <HStack justify="space-between">
-                   <Text>Highest MMR</Text>
-                   <Text fontWeight="bold" color="shield.400">
-                     {players.length > 0 
-                       ? Math.round(Math.max(...players.map(p => p.recency_weighted_mmr || p.mmr)))
-                       : '—'
-                     }
-                   </Text>
-                 </HStack>
-              </VStack>
-            </Box>
-          </VStack>
-        </SimpleGrid>
+            {/* Quick links */}
+            <VStack spacing={2} align="stretch" mt={6}>
+              {[
+                { label: 'Predict a match', icon: FiTarget, path: '/predictor' },
+                { label: 'Achievements', icon: FiAward, path: '/achievements' },
+              ].map((link) => (
+                <Flex
+                  key={link.path}
+                  as="button"
+                  onClick={() => navigate(link.path)}
+                  align="center"
+                  gap={3}
+                  px={4}
+                  py={3}
+                  borderRadius="lg"
+                  border="1px solid"
+                  borderColor="whiteAlpha.100"
+                  color="gray.300"
+                  transition="all 0.18s ease"
+                  _hover={{ borderColor: 'accent.500', color: 'accent.400', transform: 'translateX(4px)' }}
+                >
+                  <Icon as={link.icon} boxSize="16px" />
+                  <Text fontFamily="heading" fontWeight="700" fontSize="sm" flex={1} textAlign="left">
+                    {link.label}
+                  </Text>
+                  <Icon as={FiArrowRight} boxSize="14px" />
+                </Flex>
+              ))}
+            </VStack>
+          </GridItem>
+        </Grid>
       </Container>
     </Box>
   );

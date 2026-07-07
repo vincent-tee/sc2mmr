@@ -8,8 +8,10 @@ import {
   Text,
   Tooltip,
   VStack,
+  Icon,
   useColorModeValue,
 } from '@chakra-ui/react';
+import { FiLock } from 'react-icons/fi';
 import { keyframes } from '@emotion/react';
 import {
   type AchievementRarity,
@@ -19,6 +21,7 @@ import {
 } from '@/types/achievements';
 import { layout, transitions } from '@/theme/tokens';
 import { formatDateTime } from '@/utils/formatting';
+import { getAchievementIcon } from '@/utils/achievementIcons';
 
 // =============================================================================
 // Types
@@ -33,8 +36,12 @@ export interface AchievementBadgeProps {
   description: string;
   /** Flavor text (lore/fun text) */
   flavor_text?: string;
-  /** Icon emoji */
-  icon: string;
+  /**
+   * Backend emoji string. Retained for API compatibility but no longer
+   * rendered - the icon is resolved from `code`/`category` via
+   * getAchievementIcon (emoji render as tofu cross-platform).
+   */
+  icon?: string;
   /** Achievement rarity */
   rarity: AchievementRarity;
   /** Achievement category */
@@ -190,13 +197,13 @@ const TooltipContent: React.FC<TooltipContentProps> = ({
 // =============================================================================
 
 const AchievementBadge: React.FC<AchievementBadgeProps> = ({
-  code: _code,
+  code,
   name,
   description,
   flavor_text,
-  icon,
+  icon: _icon,
   rarity,
-  category: _category,
+  category,
   points,
   earned = false,
   earned_at,
@@ -204,12 +211,12 @@ const AchievementBadge: React.FC<AchievementBadgeProps> = ({
   size = 'md',
   onClick,
 }) => {
-  // Props prefixed with _ are intentionally unused but kept for API consistency
-  void _code;
-  void _category;
+  // `icon` (backend emoji) is intentionally unused - see prop doc.
+  void _icon;
   const sizeConfig = SIZE_CONFIG[size];
   const rarityColors = RARITY_COLORS[rarity];
   const bgColor = useColorModeValue('gray.700', 'space.800');
+  const AchievementIcon = getAchievementIcon(code, category);
 
   const badge = (
     <Box
@@ -300,14 +307,18 @@ const AchievementBadge: React.FC<AchievementBadgeProps> = ({
         top="50%"
         left="50%"
         transform="translate(-50%, -50%)"
-        fontSize={sizeConfig.iconSize}
         filter={!earned ? 'grayscale(100%)' : 'none'}
         opacity={!earned ? 0.4 : 1}
         transition={`all ${transitions.base} ${transitions.easing.easeInOut}`}
         zIndex={2}
         userSelect="none"
+        display="flex"
       >
-        {earned ? icon : '🔒'}
+        <Icon
+          as={earned ? AchievementIcon : FiLock}
+          boxSize={sizeConfig.iconSize}
+          color={earned ? rarityColors.text : 'gray.500'}
+        />
       </Box>
 
       {/* Lock overlay for unearned */}

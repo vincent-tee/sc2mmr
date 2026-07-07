@@ -14,7 +14,8 @@ export interface Player {
   name: string;
   mu: number;
   sigma: number;
-  mmr: number;
+  mmr: number;  // Display MMR — the rating of record (1000 + 100*mu - 200*sigma)
+  unified_mmr: number | null;  // Legacy rating, queued for retirement (Phase 6); do not use for display/sort
   hybrid_mmr: number | null;
   avg_pim: number | null;
   recency_weighted_mmr: number | null;
@@ -38,6 +39,10 @@ export interface Player {
   avg_aggression_score: number;
   created_at: string;
   last_played: string | null;
+  recent_form: number | null;  // Win rate from last 5 games (0.0-1.0)
+  is_new: boolean;  // fewer than 15 games — provisional rating
+  is_active: boolean;  // played within the last ~2 years
+  days_since_played: number | null;
 }
 
 export interface PlayerCreate {
@@ -97,6 +102,7 @@ export interface MatchPlayerSummary {
   race: string;
   won: boolean;
   mmr_change: number;
+  mmr_before?: number;
   damage_dealt: number | null;
   damage_ratio: number | null;
   impact_score: number | null;
@@ -121,7 +127,10 @@ export interface MatchWithPlayers {
 
 export interface MatchListWithPlayersResponse {
   matches: MatchWithPlayers[];
+  /** Count for the active filters — drives pagination */
   total_count: number;
+  /** Unfiltered archive size — drives header stats */
+  grand_total: number;
   limit: number;
   offset: number;
 }
@@ -144,6 +153,38 @@ export interface MatchPlayer {
   mmr_change: number;
   /** Computed MMR property for display (uses mmr_before) */
   mmr?: number;
+  // Score-screen stats (null if this match was never advanced-parsed, or voided)
+  apm: number | null;
+  minerals_collected: number | null;
+  vespene_collected: number | null;
+  total_resources_collected: number | null;
+  resources_spent: number | null;
+  spending_efficiency: number | null;
+  workers_created: number | null;
+  army_value_built: number | null;
+  army_value_killed: number | null;
+  army_value_lost: number | null;
+  units_killed: number | null;
+  units_lost: number | null;
+  damage_dealt: number | null;
+  damage_taken: number | null;
+  kill_death_ratio: number | null;
+  supply_block_seconds: number | null;
+}
+
+export interface PlayerHistoryEntry {
+  match_id: number;
+  map_name: string;
+  played_at: string;
+  mmr: number;
+  mmr_change?: number;
+  won?: boolean;
+}
+
+export interface PlayerHistoryResponse {
+  player_id: number;
+  player_name?: string;
+  history: PlayerHistoryEntry[];
 }
 
 export interface MatchDetail {
@@ -213,6 +254,7 @@ export interface TeamPlayer {
   id: number;
   name: string;
   mmr: number;
+  unified_mmr: number | null;
   recency_weighted_mmr: number | null;
   win_rate: number;
   total_games: number;
@@ -229,8 +271,11 @@ export interface TeamSuggestion {
   win_probability_team_2: number;
   fairness_rating: string;
   mmr_difference: number;
+  match_quality: number;
   impact_balance_score?: number;
   impact_difference?: number;
+  total_synergy?: number;
+  tactical_forecast?: any;
 }
 
 export interface TeamBalanceRequest {
@@ -400,6 +445,7 @@ export interface TeamSuggestionWithImpact extends TeamSuggestion {
 }
 
 export type GameMode =
+  | '1v1'
   | '2v2'
   | '3v3'
   | '4v4'
@@ -414,6 +460,27 @@ export type GameMode =
   | '5v2'
   | '5v3'
   | '5v4';
+
+// Single frontend source for the mode list (mirrors backend GameMode enum,
+// which 422s on anything outside it). Keep in the same file as the type so
+// the two can't drift apart.
+export const GAME_MODES: GameMode[] = [
+  '1v1',
+  '2v2',
+  '3v3',
+  '4v4',
+  '5v5',
+  '2v1',
+  '3v1',
+  '3v2',
+  '4v1',
+  '4v2',
+  '4v3',
+  '5v1',
+  '5v2',
+  '5v3',
+  '5v4',
+];
 
 export type FairnessRating =
   | 'Perfect'

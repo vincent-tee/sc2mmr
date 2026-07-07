@@ -1,0 +1,8 @@
+# Litestream replication config for Cloud Run (see entrypoint.sh).
+# Credentials come from the Cloud Run service account (application-default).
+dbs:
+  - path: /srv/backend/data/sc2mmr.db
+    replicas:
+      - type: gcs
+        bucket: ${LITESTREAM_GCS_BUCKET}
+        path: ${LITESTREAM_GCS_PATH}

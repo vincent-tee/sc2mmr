@@ -3,7 +3,7 @@
  * A reusable wrapper for Recharts that provides a consistent Tactical design
  * and ensures ResponsiveContainer has a parent with explicit dimensions.
  */
-import React, { ReactNode } from 'react';
+import React from 'react';
 import {
   Box,
   Heading,

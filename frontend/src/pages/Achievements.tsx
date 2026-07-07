@@ -13,12 +13,12 @@ import {
   SimpleGrid,
   Badge,
   Flex,
+  Icon,
   Select,
   Input,
   InputGroup,
   InputLeftElement,
   Skeleton,
-  Tooltip,
   Tabs,
   TabList,
   TabPanels,
@@ -27,8 +27,10 @@ import {
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
-import { FiSearch, FiClock, FiAward, FiStar, FiActivity } from 'react-icons/fi';
+import { FiSearch, FiClock } from 'react-icons/fi';
 import { achievementsApi } from '../api/achievements';
+import PageHeader from '../components/PageHeader';
+import AchievementBadge from '../components/AchievementBadge';
 import {
   Achievement,
   AchievementRarity,
@@ -36,23 +38,13 @@ import {
   RARITY_COLORS,
   CATEGORY_INFO,
   getRarityLabel,
-  getCategoryInfo,
   RecentAchievementEntry,
 } from '../types/achievements';
-
-// Design tokens
-const cardBg = 'space.800';
-const borderColor = 'space.900';
-const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
+import { getAchievementIcon, getCategoryIcon } from '../utils/achievementIcons';
 
 // =============================================================================
 // Animations
 // =============================================================================
-
-const rarityGlow = keyframes`
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-`;
 
 const slideIn = keyframes`
   from { opacity: 0; transform: translateY(10px); }
@@ -68,86 +60,44 @@ interface AchievementCardProps {
   index: number;
 }
 
-const AchievementCard: React.FC<AchievementCardProps> = React.memo(({ achievement, index }) => {
-  const rarityColors = RARITY_COLORS[achievement.rarity];
-  const categoryInfo = getCategoryInfo(achievement.category);
-
-  return (
-    <Tooltip
-      label={
-        <Box p={2}>
-          <Text fontWeight="bold" fontFamily="heading">{achievement.name}</Text>
-          <Text fontSize="sm" color="gray.300">{achievement.description}</Text>
-          {achievement.flavor_text && (
-            <Text fontSize="xs" color="gray.400" fontStyle="italic" mt={1}>
-              "{achievement.flavor_text}"
-            </Text>
-          )}
-          <HStack mt={2} spacing={2}>
-            <Badge colorScheme="purple">{getRarityLabel(achievement.rarity)}</Badge>
-            <Badge colorScheme="blue">{achievement.points} pts</Badge>
-          </HStack>
-        </Box>
-      }
-      placement="top"
-      hasArrow
-      bg="space.700"
-      borderRadius="md"
-    >
-      <Box
-        bg="space.800"
-        borderRadius="xl"
-        border="3px solid"
-        borderColor={rarityColors.border}
-        p={4}
-        position="relative"
-        overflow="hidden"
-        cursor="pointer"
-        transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
-        animation={`${slideIn} 0.3s ease-out ${index * 0.05}s both`}
-        _hover={{
-          transform: 'translateY(-4px)',
-          boxShadow: brandShadow,
-        }}
+// Thin wrapper around the shared AchievementBadge component (single source of
+// truth for achievement badge rendering - see also PlayerDetail.tsx). This
+// catalog view has no per-player earned/unearned state, so every badge is
+// rendered in its "earned" (full color) form; the staggered entrance
+// animation is kept by applying it to the wrapping Box.
+const AchievementCard: React.FC<AchievementCardProps> = React.memo(({ achievement, index }) => (
+  <VStack
+    spacing={2}
+    animation={`${slideIn} 0.3s ease-out ${index * 0.05}s both`}
+  >
+    <AchievementBadge
+      code={achievement.code}
+      name={achievement.name}
+      description={achievement.description}
+      flavor_text={achievement.flavor_text}
+      icon={achievement.icon}
+      rarity={achievement.rarity}
+      category={achievement.category}
+      points={achievement.points}
+      earned
+      size="md"
+    />
+    <VStack spacing={0}>
+      <Text
+        fontSize="sm"
+        fontWeight="bold"
+        color="gray.200"
+        textAlign="center"
+        noOfLines={1}
       >
-        {/* Icon */}
-        <Flex
-          justify="center"
-          align="center"
-          w="60px"
-          h="60px"
-          mx="auto"
-          mb={3}
-          bg={rarityColors.bg}
-          borderRadius="xl"
-          boxShadow={rarityColors.glow}
-        >
-          <Text fontSize="2xl">{achievement.icon || '🎖️'}</Text>
-        </Flex>
-
-        {/* Name */}
-        <Text
-          fontWeight="bold"
-          fontSize="sm"
-          color={rarityColors.text}
-          textAlign="center"
-          noOfLines={2}
-          fontFamily="heading"
-        >
-          {achievement.name}
-        </Text>
-
-        {/* Category & Points */}
-        <HStack justify="center" mt={2} spacing={1}>
-          <Text fontSize="xs">{categoryInfo.icon}</Text>
-          <Text fontSize="xs" color="gray.500">
-            {achievement.points} pts
-          </Text>
-        </HStack>
-      </Box>
-    </Tooltip>
-  );
-});
+        {achievement.name}
+      </Text>
+      <Text fontSize="xs" fontFamily="mono" color="gray.500">
+        {achievement.points} pts
+      </Text>
+    </VStack>
+  </VStack>
+));
 
 AchievementCard.displayName = 'AchievementCard';
 
@@ -193,7 +143,11 @@ const RecentAchievementItem: React.FC<RecentAchievementItemProps> = React.memo((
         justifyContent="center"
         boxShadow={rarityColors.glow}
       >
-        <Text fontSize="lg">{entry.achievement_icon || '🎖️'}</Text>
+        <Icon
+          as={getAchievementIcon(entry.achievement_code)}
+          boxSize="20px"
+          color={rarityColors.text}
+        />
       </Box>
       <VStack align="start" spacing={0} flex={1}>
         <Text fontWeight="bold" color="gray.100" fontSize="sm">
@@ -220,9 +174,6 @@ const Achievements: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<AchievementCategory | 'all'>('all');
   const [selectedRarity, setSelectedRarity] = useState<AchievementRarity | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-
-  const bgColor = useColorModeValue('gray.900', 'space.900');
-  const cardBg = useColorModeValue('gray.800', 'space.800');
 
   // Fetch all achievements
   const { data: achievements, isLoading: achievementsLoading } = useQuery({
@@ -274,23 +225,15 @@ const Achievements: React.FC = () => {
   const rarities: AchievementRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 
   return (
-    <Box bg="space.900" minH="100vh" py={8}>
-      <Container maxW="container.xl">
+    <Box minH="100vh" pb={16}>
+      <PageHeader
+        kicker="Trophy Case"
+        title="[Achievements]"
+        description="Badges of honor, shame, and everything in between."
+        stats={[{ label: 'achievements to earn', value: achievements?.length || 0 }]}
+      />
+      <Container maxW="container.xl" pt={8}>
         <VStack spacing={8} align="stretch">
-          {/* Header */}
-          <Box textAlign="center">
-            <Heading
-              size="2xl"
-              fontFamily="heading"
-              color="brand.400"
-              letterSpacing="wider"
-            >
-              🎖️ Achievements
-            </Heading>
-            <Text color="gray.500" mt={2}>
-              {achievements?.length || 0} achievements to earn
-            </Text>
-          </Box>
 
           <Tabs variant="soft-rounded" colorScheme="brand">
             <TabList justifyContent="center">
@@ -338,7 +281,7 @@ const Achievements: React.FC = () => {
                     <option value="all">All Categories</option>
                     {categories.map((cat) => (
                       <option key={cat} value={cat}>
-                        {CATEGORY_INFO[cat].icon} {CATEGORY_INFO[cat].name}
+                        {CATEGORY_INFO[cat].name}
                       </option>
                     ))}
                   </Select>
@@ -362,6 +305,41 @@ const Achievements: React.FC = () => {
                   </Select>
                 </Flex>
 
+                {/* Rarity legend - border color is the only rarity cue on the
+                    badges, so spell it out here */}
+                <Flex
+                  wrap="wrap"
+                  gap={{ base: 3, md: 4 }}
+                  rowGap={2}
+                  mb={6}
+                  align="center"
+                >
+                  <Text
+                    fontSize="xs"
+                    color="gray.500"
+                    textTransform="uppercase"
+                    letterSpacing="wide"
+                    fontFamily="mono"
+                  >
+                    Rarity
+                  </Text>
+                  {rarities.map((rarity) => (
+                    <HStack key={rarity} spacing={1.5}>
+                      <Box
+                        w="10px"
+                        h="10px"
+                        borderRadius="sm"
+                        bg={RARITY_COLORS[rarity].bg}
+                        border="1px solid"
+                        borderColor={RARITY_COLORS[rarity].border}
+                      />
+                      <Text fontSize="xs" color="gray.400">
+                        {getRarityLabel(rarity)}
+                      </Text>
+                    </HStack>
+                  ))}
+                </Flex>
+
                 {/* Achievement Grid */}
                 {achievementsLoading ? (
                   <SimpleGrid columns={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing={4}>
@@ -376,9 +354,11 @@ const Achievements: React.FC = () => {
                       {Object.entries(groupedAchievements).map(([category, achievements]) => (
                         <Box key={category}>
                           <HStack mb={4}>
-                            <Text fontSize="xl">
-                              {CATEGORY_INFO[category as AchievementCategory]?.icon || '📦'}
-                            </Text>
+                            <Icon
+                              as={getCategoryIcon(category as AchievementCategory)}
+                              boxSize={5}
+                              color="brand.500"
+                            />
                             <Heading size="md" color="gray.200" fontFamily="heading">
                               {CATEGORY_INFO[category as AchievementCategory]?.name || category}
                             </Heading>

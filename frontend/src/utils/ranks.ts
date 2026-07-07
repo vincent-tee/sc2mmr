@@ -1,22 +1,22 @@
 /**
  * Rank Badge Utility Functions
  * StarCraft 2 rank thresholds - ADJUSTED for friend group play
- * Based on typical 1500-2500 MMR range for casual/semi-competitive players
  */
 
 /**
  * SC2 rank name and their MMR thresholds
- * Adjusted for the new MMR scale (1000 + 100*mu)
- * Standard starting mu=25 results in 3500 MMR (Platinum)
+ * Tuned for display MMR, the rating of record (1000 + 100*mu - 200*sigma).
+ * New players start around 1833 (Silver) and climb as uncertainty drops;
+ * the current player pool spans roughly 1800-3900.
  */
 export const RANK_THRESHOLDS = {
-  Bronze: { min: 0, max: 2500 },
-  Silver: { min: 2500, max: 3000 },
-  Gold: { min: 3000, max: 3400 },
-  Platinum: { min: 3400, max: 3800 },
-  Diamond: { min: 3800, max: 4100 },
-  Master: { min: 4100, max: 4350 },
-  Grandmaster: { min: 4350, max: Infinity },
+  Bronze: { min: 0, max: 1500 },
+  Silver: { min: 1500, max: 1900 },
+  Gold: { min: 1900, max: 2300 },
+  Platinum: { min: 2300, max: 2800 },
+  Diamond: { min: 2800, max: 3300 },
+  Master: { min: 3300, max: 3800 },
+  Grandmaster: { min: 3800, max: Infinity },
 } as const;
 
 export type RankName = keyof typeof RANK_THRESHOLDS;
@@ -54,12 +54,12 @@ export const RANK_COLORS: Record<RankName, { bg: string; color: string; icon: st
   Master: {
     bg: 'purple.500',
     color: 'white',
-    icon: '👑',
+    icon: '',
   },
   Grandmaster: {
     bg: 'red.500',
     color: 'white',
-    icon: '👑⭐',
+    icon: '',
     border: 'gold',
   },
 } as const;

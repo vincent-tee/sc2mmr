@@ -10,28 +10,36 @@ import os
 
 from .models import Base
 
-# Database configuration
+# Database configuration. The historical default is a module-anchored path
+# (immune to cwd mistakes); an explicit DATABASE_URL env var overrides it for
+# deployments (e.g. Cloud Run, where the Litestream-restored DB lives at a
+# container path). Note this deliberately reads os.environ, not
+# settings.database_url - the settings field's relative-path default would
+# reintroduce the cwd trap for everyone who doesn't set the env var.
 DATABASE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 DATABASE_PATH = os.path.join(DATABASE_DIR, "sc2mmr.db")
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{DATABASE_PATH}"
 
 # Create database directory if it doesn't exist
 os.makedirs(DATABASE_DIR, exist_ok=True)
 
 # Create engine
+_is_sqlite = DATABASE_URL.startswith("sqlite")
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Needed for SQLite
+    connect_args={"check_same_thread": False} if _is_sqlite else {},
     echo=False,  # Set to True for SQL query logging
 )
 
 
 # Enable foreign key constraints for SQLite
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+if _is_sqlite:
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 # Create session factory

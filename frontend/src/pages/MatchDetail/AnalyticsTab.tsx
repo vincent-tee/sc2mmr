@@ -9,7 +9,6 @@ import {
   GridItem,
   Alert,
   AlertIcon,
-  Divider,
 } from '@chakra-ui/react';
 import DamageTimelineChart from '@/components/charts/DamageTimelineChart';
 import ImpactScoreRadar from '@/components/charts/ImpactScoreRadar';
@@ -76,10 +75,10 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           mb={6}
           fontFamily="heading"
           letterSpacing="widest"
-          color="shield.400"
+          color="brand.400"
           textTransform="uppercase"
         >
-          <Text as="span" className="emoji-font">🛡️</Text> Squad Alpha Analytics
+          Team 1 Analytics
         </Heading>
         <VStack spacing={6} align="stretch">
           {team1Players.map((player) => {
@@ -145,7 +144,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           color="accent.400"
           textTransform="uppercase"
         >
-          <Text as="span" className="emoji-font">⚔️</Text> Squad Bravo Analytics
+          Team 2 Analytics
         </Heading>
         <VStack spacing={6} align="stretch">
           {team2Players.map((player) => {

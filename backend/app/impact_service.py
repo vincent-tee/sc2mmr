@@ -43,7 +43,12 @@ class ImpactService:
         # Convert damage timeline to JSON string
         damage_timeline_json = None
         if metrics.damage_timeline:
-            damage_timeline_json = metrics.damage_timeline.to_json()
+            if isinstance(metrics.damage_timeline, dict):
+                damage_timeline_json = json.dumps(metrics.damage_timeline)
+            elif hasattr(metrics.damage_timeline, 'to_json'):
+                damage_timeline_json = metrics.damage_timeline.to_json()
+            else:
+                damage_timeline_json = json.dumps(metrics.damage_timeline)
 
         # Determine archetype from metrics (handle both legacy PlayerMetrics and new PlayerMatchResult)
         archetype = None
@@ -76,6 +81,7 @@ class ImpactService:
         match_metrics.units_trained = metrics.units_trained
         match_metrics.units_lost = metrics.units_lost
         match_metrics.units_killed = metrics.units_killed
+        match_metrics.kill_death_ratio = metrics.kill_death_ratio
         match_metrics.army_value_built = metrics.army_value_built
         match_metrics.army_value_killed = metrics.army_value_killed
         match_metrics.army_value_lost = metrics.army_value_lost
@@ -93,6 +99,17 @@ class ImpactService:
         match_metrics.bases_created = metrics.bases_created
         match_metrics.apm = metrics.apm
         match_metrics.unit_composition = unit_comp_json
+
+        # New Mechanics Fields
+        match_metrics.workers_killed = metrics.workers_killed
+        match_metrics.early_workers_killed = metrics.early_workers_killed
+        match_metrics.mid_workers_killed = metrics.mid_workers_killed
+        match_metrics.workers_lost = metrics.workers_lost
+        match_metrics.early_workers_lost = metrics.early_workers_lost
+        match_metrics.kill_death_ratio = metrics.kill_death_ratio
+        match_metrics.supply_block_seconds = metrics.supply_block_seconds
+        match_metrics.lethality_score = metrics.lethality_score
+
         match_metrics.economic_score = metrics.economic_score
         match_metrics.combat_score = metrics.combat_score
         match_metrics.efficiency_score = metrics.efficiency_score

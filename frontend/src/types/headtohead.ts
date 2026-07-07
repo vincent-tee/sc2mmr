@@ -14,6 +14,7 @@ export interface H2HPlayerSummary {
   id: number;
   name: string;
   mmr: number;
+  unified_mmr?: number | null;
   wins: number;
   favorite_race: string;
 }

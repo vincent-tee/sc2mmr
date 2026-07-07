@@ -6,7 +6,7 @@
 # Set absolute base path
 BASE_DIR="/home/vtee/projects/sc2mmr"
 BACKEND_PORT=8000
-FRONTEND_PORT=3000
+FRONTEND_PORT=5175
 
 echo "🚀 Starting SC2MMR - Friend Squad Edition..."
 
@@ -39,7 +39,6 @@ if [ ! -d "dist" ]; then
     npm run build
 fi
 
-# Use dev server on port 3002
 npm run dev -- --port $FRONTEND_PORT &
 FRONTEND_PID=$!
 

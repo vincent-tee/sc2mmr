@@ -26,15 +26,18 @@ import {
 import LoadingState from '@/components/LoadingState';
 import MatchSHAPExplainer from '@/components/MatchSHAPExplainer';
 import type { MatchCommentary } from './types';
+import type { MatchDetail as MatchDetailType } from '@/types/api';
 
 interface CommentaryTabProps {
   commentary: MatchCommentary | undefined;
   isLoading: boolean;
+  matchData?: MatchDetailType;
 }
 
 const CommentaryTab: React.FC<CommentaryTabProps> = ({
   commentary,
   isLoading,
+  matchData,
 }) => {
   const cardBg = useColorModeValue('white', 'rgba(17, 25, 40, 0.8)');
   const teamBg = useColorModeValue('gray.50', 'rgba(30, 41, 59, 0.5)');
@@ -170,16 +173,39 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
           </HStack>
           <VStack align="stretch" spacing={4}>
             {Object.entries(commentary.player_performances ?? {}).map(
-              ([name, analysis]) => (
-                <Box key={name} p={4} bg={teamBg} borderRadius="md">
-                  <Heading size="sm" mb={2} fontFamily="heading">
-                    {name}
-                  </Heading>
-                  <Text fontSize="sm" lineHeight="tall">
-                    {analysis}
-                  </Text>
-                </Box>
-              )
+              ([name, analysis]) => {
+                const playerInfo = matchData?.players.find(p => p.player_name === name);
+                const race = playerInfo?.race || 'Random';
+                const won = playerInfo?.won || false;
+                
+                return (
+                  <Box 
+                    key={name} 
+                    p={4} 
+                    bg={teamBg} 
+                    borderRadius="md"
+                    borderLeft="4px solid"
+                    borderLeftColor={won ? 'green.400' : 'red.400'}
+                  >
+                    <HStack mb={2} justify="space-between">
+                      <HStack>
+                        <Heading size="sm" fontFamily="heading">
+                          {name}
+                        </Heading>
+                        <Badge colorScheme={won ? 'green' : 'red'} variant="outline" fontSize="2xs">
+                          {won ? 'Winner' : 'Defeat'}
+                        </Badge>
+                        <Badge variant={`race-${race.toLowerCase()}`} fontSize="2xs">
+                          {race}
+                        </Badge>
+                      </HStack>
+                    </HStack>
+                    <Text fontSize="sm" lineHeight="tall" color="gray.300">
+                      {analysis}
+                    </Text>
+                  </Box>
+                );
+              }
             )}
           </VStack>
         </CardBody>
@@ -196,6 +222,7 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                   mb={3}
                   fontFamily="heading"
                   letterSpacing="wider"
+                  color="brand.400"
                 >
                   Team 1 Analysis
                 </Heading>
@@ -213,6 +240,7 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                   mb={3}
                   fontFamily="heading"
                   letterSpacing="wider"
+                  color="accent.400"
                 >
                   Team 2 Analysis
                 </Heading>

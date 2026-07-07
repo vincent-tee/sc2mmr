@@ -1,7 +1,7 @@
 /**
  * Navigation Component
- * Friend Squad Edition - Warm, icon-focused, less noisy
- * Groups features into logical sections with larger touch targets
+ * Clubhouse scoreboard bar: labeled links (no mystery icon buttons),
+ * orange active pill, Upload as a distinct CTA, overflow in a "More" menu.
  */
 import React from 'react';
 import {
@@ -18,30 +18,29 @@ import {
   DrawerCloseButton,
   VStack,
   useDisclosure,
-  useColorModeValue,
   Text,
-  Tooltip,
   Menu,
   MenuButton,
   MenuList,
   MenuItem,
-  MenuDivider,
   Button,
+  Icon,
 } from '@chakra-ui/react';
-import { 
-  FiMenu, 
-  FiZap, 
-  FiUpload, 
-  FiUsers, 
-  FiHome, 
-  FiMoreHorizontal,
+import {
+  FiMenu,
+  FiZap,
+  FiUpload,
+  FiUsers,
+  FiHome,
+  FiChevronDown,
   FiTarget,
   FiBarChart2,
   FiInfo,
-  FiCpu,
-  FiTrendingUp,
+  FiAward,
   FiAlertCircle,
+  FiCrosshair,
 } from 'react-icons/fi';
+import { LuTrophy, LuSwords } from 'react-icons/lu';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { IconType } from 'react-icons';
 
@@ -49,270 +48,237 @@ interface NavItem {
   path: string;
   label: string;
   icon: IconType;
-  emoji?: string;
 }
+
+// Always-visible links, left to right in priority order
+const primaryItems: NavItem[] = [
+  { path: '/', label: 'Home', icon: FiHome },
+  { path: '/balance', label: 'Teams', icon: FiZap },
+  { path: '/players', label: 'Roster', icon: FiUsers },
+  { path: '/leaderboard', label: 'Ladder', icon: LuTrophy },
+  { path: '/history', label: 'Matches', icon: FiBarChart2 },
+];
+
+// Overflow links in the "More" menu (labels match their page titles)
+const secondaryItems: NavItem[] = [
+  { path: '/predictor', label: 'Match Predictor', icon: FiTarget },
+  { path: '/rating-system', label: 'How the Rating Works', icon: FiInfo },
+  { path: '/achievements', label: 'Achievements', icon: FiAward },
+  { path: '/h2h', label: 'Head to Head', icon: LuSwords },
+  { path: '/failed-uploads', label: 'Failed Uploads', icon: FiAlertCircle },
+];
 
 const Navigation: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isOpen, onOpen, onClose } = useDisclosure();
 
-  const bgColor = useColorModeValue('white', 'space.800');
-  const borderColor = useColorModeValue('gray.200', 'space.900');
-
-  // Primary nav items - most used, always visible
-  const primaryItems: NavItem[] = [
-    { path: '/', label: 'Home', icon: FiHome, emoji: '🏠' },
-    { path: '/balance', label: 'Teams', icon: FiZap, emoji: '⚡' },
-    { path: '/players', label: 'Squad', icon: FiUsers, emoji: '👥' },
-    { path: '/upload', label: 'Upload', icon: FiUpload, emoji: '📤' },
-  ];
-
-  // Secondary items - in "More" menu
-  const secondaryItems: NavItem[] = [
-    { path: '/leaderboard', label: 'Leaderboard', icon: FiTrendingUp, emoji: '🏆' },
-    { path: '/predictor', label: 'Predict Match', icon: FiTarget, emoji: '🎯' },
-    { path: '/history', label: 'Match History', icon: FiBarChart2, emoji: '📊' },
-    { path: '/ml-intelligence', label: 'ML Insights', icon: FiCpu, emoji: '🧠' },
-    { path: '/rating-system', label: 'How It Works', icon: FiInfo, emoji: 'ℹ️' },
-    { path: '/failed-uploads', label: 'Failed Uploads', icon: FiAlertCircle, emoji: '⚠️' },
-  ];
-
-  // Alpha features - moved to bottom
-  const alphaItems: NavItem[] = [
-    { path: '/achievements', label: 'Achievements', icon: FiZap, emoji: '🏅' },
-    { path: '/h2h', label: 'Head to Head', icon: FiUsers, emoji: '⚔️' },
-  ];
-
   const isActive = (path: string): boolean => {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);
   };
 
-  // Check if any secondary or alpha item is active
-  const secondaryActive = [...secondaryItems, ...alphaItems].some(item => isActive(item.path));
+  const secondaryActive = secondaryItems.some((item) => isActive(item.path));
 
   return (
     <Box
       as="nav"
       role="navigation"
       aria-label="Main navigation"
-      bg={bgColor}
-      borderBottom="3px solid"
-      borderColor={borderColor}
+      bg="rgba(26, 22, 37, 0.85)"
+      backdropFilter="blur(12px)"
+      borderBottom="1px solid"
+      borderColor="whiteAlpha.100"
       position="sticky"
       top={0}
       zIndex={10}
-      boxShadow="0 4px 0 var(--chakra-colors-space-900)"
     >
       <Container maxW="container.xl">
-        <Flex h={16} alignItems="center" justifyContent="space-between">
-          {/* Logo - Friend Squad Style */}
-          <HStack 
-            spacing={2} 
-            cursor="pointer" 
+        <Flex h={16} alignItems="center" gap={6}>
+          {/* Logo */}
+          <HStack
+            spacing={2.5}
+            cursor="pointer"
             onClick={() => navigate('/')}
+            flexShrink={0}
             transition="transform 0.2s"
-            _hover={{ transform: 'scale(1.02)' }}
+            _hover={{ transform: 'scale(1.03)' }}
           >
             <Box
               bg="brand.500"
               color="white"
-              px={3}
-              py={1.5}
-              fontWeight="black"
-              fontSize="lg"
+              px={2.5}
+              py={1}
+              fontWeight="800"
+              fontSize="md"
               fontFamily="heading"
-              borderRadius="lg"
-              border="3px solid"
-              borderColor="space.900"
-              boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
+              borderRadius="md"
+              transform="rotate(-3deg)"
+              boxShadow="2px 2px 0 rgba(0,0,0,0.45)"
             >
               SC2
             </Box>
-            <VStack spacing={0} align="start" display={{ base: 'none', sm: 'flex' }}>
-              <Text
-                fontSize="md"
-                fontWeight="bold"
-                fontFamily="heading"
-                color="brand.500"
-                lineHeight="1.2"
-              >
+            <VStack spacing={0} align="start" display={{ base: 'none', lg: 'flex' }}>
+              <Text fontSize="sm" fontWeight="800" fontFamily="heading" color="gray.100" lineHeight="1.1">
                 Squad Tracker
               </Text>
-              <Text fontSize="xs" color="gray.500">
-                Track • Balance • Compete
+              <Text fontSize="10px" color="gray.500" letterSpacing="0.12em" textTransform="uppercase">
+                Track · Balance · Compete
               </Text>
             </VStack>
           </HStack>
 
-          {/* Desktop Navigation - Icon-focused with tooltips */}
-          <HStack spacing={2} display={{ base: 'none', md: 'flex' }}>
+          {/* Desktop links */}
+          <HStack spacing={1} display={{ base: 'none', md: 'flex' }} flex={1}>
             {primaryItems.map((item) => {
               const active = isActive(item.path);
               return (
-                <Tooltip 
-                  key={item.path} 
-                  label={item.label} 
-                  hasArrow 
-                  placement="bottom"
-                  bg="space.700"
-                  color="white"
+                <Button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  variant="unstyled"
+                  display="flex"
+                  alignItems="center"
+                  gap={2}
+                  px={3.5}
+                  h="38px"
+                  fontFamily="heading"
+                  fontWeight={active ? '800' : '600'}
+                  fontSize="sm"
+                  borderRadius="full"
+                  bg={active ? 'brand.500' : 'transparent'}
+                  color={active ? 'white' : 'gray.400'}
+                  transition="all 0.18s ease"
+                  _hover={{
+                    bg: active ? 'brand.400' : 'whiteAlpha.100',
+                    color: active ? 'white' : 'gray.100',
+                  }}
                 >
-                  <IconButton
-                    aria-label={item.label}
-                    icon={
-                      <Box fontSize="xl">
-                        {active ? item.emoji : <item.icon />}
-                      </Box>
-                    }
-                    variant="ghost"
-                    size="lg"
-                    borderRadius="xl"
-                    bg={active ? 'brand.500' : 'transparent'}
-                    color={active ? 'white' : 'gray.400'}
-                    border={active ? '3px solid' : '3px solid transparent'}
-                    borderColor={active ? 'space.900' : 'transparent'}
-                    boxShadow={active ? '3px 3px 0 var(--chakra-colors-space-900)' : 'none'}
-                    onClick={() => navigate(item.path)}
-                    transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
-                    _hover={{
-                      bg: active ? 'brand.400' : 'space.700',
-                      color: active ? 'white' : 'brand.400',
-                      transform: 'translateY(-2px)',
-                    }}
-                  />
-                </Tooltip>
+                  <Icon as={item.icon} boxSize="15px" />
+                  {item.label}
+                </Button>
               );
             })}
 
-            {/* More Menu */}
+            {/* More menu */}
             <Menu>
-              <Tooltip label="More" hasArrow placement="bottom" bg="space.700" color="white">
-                <MenuButton
-                  as={IconButton}
-                  aria-label="More options"
-                  icon={<FiMoreHorizontal size={20} />}
-                  variant="ghost"
-                  size="lg"
-                  borderRadius="xl"
-                  bg={secondaryActive ? 'accent.500' : 'transparent'}
-                  color={secondaryActive ? 'space.900' : 'gray.400'}
-                  border={secondaryActive ? '3px solid' : '3px solid transparent'}
-                  borderColor={secondaryActive ? 'space.900' : 'transparent'}
-                  boxShadow={secondaryActive ? '3px 3px 0 var(--chakra-colors-space-900)' : 'none'}
-                  _hover={{
-                    bg: secondaryActive ? 'accent.400' : 'space.700',
-                    color: secondaryActive ? 'space.900' : 'accent.400',
-                  }}
-                />
-              </Tooltip>
+              <MenuButton
+                as={Button}
+                variant="unstyled"
+                display="flex"
+                alignItems="center"
+                px={3.5}
+                h="38px"
+                fontFamily="heading"
+                fontWeight={secondaryActive ? '800' : '600'}
+                fontSize="sm"
+                borderRadius="full"
+                bg={secondaryActive ? 'brand.500' : 'transparent'}
+                color={secondaryActive ? 'white' : 'gray.400'}
+                _hover={{
+                  bg: secondaryActive ? 'brand.400' : 'whiteAlpha.100',
+                  color: secondaryActive ? 'white' : 'gray.100',
+                }}
+              >
+                <HStack spacing={1}>
+                  <Text>More</Text>
+                  <Icon as={FiChevronDown} boxSize="14px" />
+                </HStack>
+              </MenuButton>
               <MenuList
                 bg="space.800"
-                borderColor="space.700"
-                border="3px solid"
-                boxShadow="4px 4px 0 var(--chakra-colors-space-900)"
+                borderColor="whiteAlpha.200"
+                boxShadow="0 16px 40px rgba(0, 0, 0, 0.5)"
                 borderRadius="xl"
                 py={2}
                 px={2}
-                overflow="hidden"
+                minW="220px"
               >
                 {secondaryItems.map((item) => (
                   <MenuItem
                     key={item.path}
-                    icon={<Text fontSize="lg" className="emoji-font">{item.emoji}</Text>}
+                    icon={<Icon as={item.icon} boxSize="16px" />}
                     onClick={() => navigate(item.path)}
                     bg={isActive(item.path) ? 'brand.500' : 'transparent'}
                     color={isActive(item.path) ? 'white' : 'gray.300'}
                     fontFamily="heading"
-                    fontWeight="medium"
+                    fontWeight="600"
+                    fontSize="sm"
                     borderRadius="lg"
                     my={0.5}
-                    _hover={{
-                      bg: isActive(item.path) ? 'brand.400' : 'space.700',
-                    }}
+                    _hover={{ bg: isActive(item.path) ? 'brand.400' : 'whiteAlpha.100' }}
                   >
                     {item.label}
                   </MenuItem>
                 ))}
-
-                {alphaItems.length > 0 && (
-                  <>
-                    <MenuDivider borderColor="space.700" mx={-2} my={2} />
-                    <Text fontSize="10px" fontWeight="bold" color="gray.600" px={3} py={1} letterSpacing="widest">ALPHA FEATURES</Text>
-                    {alphaItems.map((item) => (
-                      <MenuItem
-                        key={item.path}
-                        icon={<Text fontSize="lg" className="emoji-font" opacity={0.4}>{item.emoji}</Text>}
-                        onClick={() => navigate(item.path)}
-                        bg={isActive(item.path) ? 'brand.500' : 'transparent'}
-                        color={isActive(item.path) ? 'white' : 'gray.500'}
-                        fontFamily="heading"
-                        fontWeight="medium"
-                        borderRadius="lg"
-                        opacity={0.7}
-                        my={0.5}
-                        _hover={{
-                          bg: isActive(item.path) ? 'brand.400' : 'space.700',
-                          opacity: 1,
-                        }}
-                      >
-                        {item.label}
-                      </MenuItem>
-                    ))}
-                  </>
-                )}
               </MenuList>
             </Menu>
           </HStack>
 
-          {/* Mobile Menu Button */}
+          {/* Upload CTA */}
+          <Button
+            display={{ base: 'none', md: 'inline-flex' }}
+            onClick={() => navigate('/upload')}
+            leftIcon={<FiUpload />}
+            size="sm"
+            h="38px"
+            px={4}
+            fontFamily="heading"
+            fontWeight="800"
+            fontSize="sm"
+            borderRadius="full"
+            bg={isActive('/upload') ? 'brand.400' : 'transparent'}
+            color={isActive('/upload') ? 'white' : 'brand.400'}
+            border="2px solid"
+            borderColor="brand.500"
+            transition="all 0.18s ease"
+            _hover={{ bg: 'brand.500', color: 'white', transform: 'translateY(-1px)' }}
+            _active={{ transform: 'translateY(0)' }}
+          >
+            Upload
+          </Button>
+
+          {/* Mobile menu button */}
           <IconButton
-            icon={<FiMenu size={24} />}
+            icon={<FiMenu size={22} />}
             variant="ghost"
             onClick={onOpen}
             display={{ base: 'flex', md: 'none' }}
             aria-label="Open menu"
-            size="lg"
-            color="brand.500"
-            _hover={{
-              bg: 'space.700',
-            }}
+            ml="auto"
+            color="gray.300"
+            _hover={{ bg: 'whiteAlpha.100' }}
           />
         </Flex>
       </Container>
 
-      {/* Mobile Drawer - Friend Squad Style */}
+      {/* Mobile Drawer */}
       <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="xs">
         <DrawerOverlay backdropFilter="blur(4px)" />
-        <DrawerContent 
-          bg="space.800" 
-          borderLeft="3px solid" 
-          borderColor="space.900"
-        >
+        <DrawerContent bg="space.800" borderLeft="1px solid" borderColor="whiteAlpha.200">
           <DrawerCloseButton color="gray.400" size="lg" />
           <DrawerHeader
-            borderBottom="3px solid"
-            borderColor="space.900"
+            borderBottom="1px solid"
+            borderColor="whiteAlpha.200"
             fontFamily="heading"
-            fontSize="xl"
-            color="brand.500"
+            fontWeight="800"
+            fontSize="lg"
+            color="gray.100"
           >
-            🎮 Menu
+            <HStack spacing={2}>
+              <Icon as={FiCrosshair} color="brand.500" />
+              <Text>Menu</Text>
+            </HStack>
           </DrawerHeader>
 
           <DrawerBody pt={4}>
-            <VStack spacing={2} align="stretch">
-              {/* Primary Items */}
-              <Text fontSize="xs" color="gray.500" fontWeight="bold" px={2} pt={2}>
-                QUICK ACCESS
-              </Text>
-              {primaryItems.map((item) => {
+            <VStack spacing={1} align="stretch">
+              {[...primaryItems, { path: '/upload', label: 'Upload Replays', icon: FiUpload }].map((item) => {
                 const active = isActive(item.path);
                 return (
                   <Button
                     key={item.path}
-                    leftIcon={<Text fontSize="xl">{item.emoji}</Text>}
+                    leftIcon={<Icon as={item.icon} boxSize="18px" />}
                     variant="ghost"
                     onClick={() => {
                       navigate(item.path);
@@ -321,32 +287,26 @@ const Navigation: React.FC = () => {
                     justifyContent="start"
                     size="lg"
                     fontFamily="heading"
-                    fontWeight="medium"
+                    fontWeight={active ? '800' : '600'}
                     bg={active ? 'brand.500' : 'transparent'}
                     color={active ? 'white' : 'gray.300'}
-                    border={active ? '3px solid' : '3px solid transparent'}
-                    borderColor={active ? 'space.900' : 'transparent'}
-                    boxShadow={active ? '3px 3px 0 var(--chakra-colors-space-900)' : 'none'}
                     borderRadius="xl"
-                    _hover={{
-                      bg: active ? 'brand.400' : 'space.700',
-                    }}
+                    _hover={{ bg: active ? 'brand.400' : 'whiteAlpha.100' }}
                   >
                     {item.label}
                   </Button>
                 );
               })}
 
-              {/* Secondary Items */}
-              <Text fontSize="xs" color="gray.500" fontWeight="bold" px={2} pt={4}>
-                MORE FEATURES
+              <Text fontSize="xs" color="gray.500" fontWeight="bold" px={2} pt={4} letterSpacing="widest">
+                MORE
               </Text>
               {secondaryItems.map((item) => {
                 const active = isActive(item.path);
                 return (
                   <Button
                     key={item.path}
-                    leftIcon={<Text fontSize="lg">{item.emoji}</Text>}
+                    leftIcon={<Icon as={item.icon} boxSize="16px" />}
                     variant="ghost"
                     onClick={() => {
                       navigate(item.path);
@@ -355,55 +315,16 @@ const Navigation: React.FC = () => {
                     justifyContent="start"
                     size="md"
                     fontFamily="heading"
-                    fontWeight="medium"
-                    bg={active ? 'accent.500' : 'transparent'}
-                    color={active ? 'space.900' : 'gray.400'}
+                    fontWeight="600"
+                    bg={active ? 'brand.500' : 'transparent'}
+                    color={active ? 'white' : 'gray.400'}
                     borderRadius="lg"
-                    _hover={{
-                      bg: active ? 'accent.400' : 'space.700',
-                      color: active ? 'space.900' : 'gray.300',
-                    }}
+                    _hover={{ bg: active ? 'brand.400' : 'whiteAlpha.100', color: active ? 'white' : 'gray.200' }}
                   >
                     {item.label}
                   </Button>
                 );
               })}
-
-              {/* Alpha Items */}
-              {alphaItems.length > 0 && (
-                <>
-                  <Text fontSize="10px" color="gray.600" fontWeight="bold" px={2} pt={4} letterSpacing="widest">
-                    ALPHA FEATURES
-                  </Text>
-                  {alphaItems.map((item) => {
-                    const active = isActive(item.path);
-                    return (
-                      <Button
-                        key={item.path}
-                        leftIcon={<Text fontSize="lg" opacity={0.4}>{item.emoji}</Text>}
-                        variant="ghost"
-                        onClick={() => {
-                          navigate(item.path);
-                          onClose();
-                        }}
-                        justifyContent="start"
-                        size="sm"
-                        fontFamily="heading"
-                        fontWeight="medium"
-                        opacity={0.7}
-                        color={active ? 'accent.500' : 'gray.500'}
-                        borderRadius="lg"
-                        _hover={{
-                          bg: 'space.700',
-                          opacity: 1,
-                        }}
-                      >
-                        {item.label}
-                      </Button>
-                    );
-                  })}
-                </>
-              )}
             </VStack>
           </DrawerBody>
         </DrawerContent>

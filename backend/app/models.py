@@ -36,7 +36,7 @@ class Player(Base):
     - sigma: uncertainty (default 8.333, decreases with more games)
 
     Hybrid MMR System:
-    - mmr: Display MMR based on TrueSkill (1000 + 100*mu)
+    - mmr: Display MMR based on TrueSkill (1000 + 100*mu - 200*sigma)
     - hybrid_mmr: Performance-adjusted MMR that accounts for in-game metrics
     - avg_pim: Average Performance Impact Modifier across all games
     """
@@ -96,6 +96,7 @@ class Player(Base):
     avg_combat_score: Mapped[float] = mapped_column(Float, default=0.0)
     avg_efficiency_score: Mapped[float] = mapped_column(Float, default=0.0)
     avg_overall_impact: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_harassment_score: Mapped[float] = mapped_column(Float, default=0.0)  # NEW
 
     # Timing profile (averaged across all games)
     avg_first_damage_timing: Mapped[Optional[int]] = mapped_column(
@@ -133,29 +134,24 @@ class Player(Base):
             return 0.0
         return float(self.wins) / float(self.total_games)
 
-    @property
-    def mmr(self) -> float:
-        """
-        Scaled MMR for display and balancing.
+    # Display MMR (Official) - Centralized source of truth
+    # Calculated as: 1000 + 100*mu - 200*sigma
+    mmr: Mapped[float] = mapped_column(Float, default=1833.0, nullable=False)
 
-        Uses the centralized display MMR formula from RatingSystem:
-        MMR = 1000 + 100*mu
+    # Handicap-Corrected MMR (intermediate calculation)
+    # Accounts for balancing bias where top players are put on weaker teams
+    # Formula: mmr + (outperformance * 3000)
+    # Where outperformance = actual_win_rate - expected_win_rate_given_handicap
+    handicap_corrected_mmr: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    avg_team_handicap: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    outperformance_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
-        Sigma (uncertainty) is kept internal for matchmaking quality but doesn't
-        affect displayed rating. This prevents inactive players from having their
-        displayed MMR penalized when only their uncertainty increases.
-
-        This gives approximately:
-        - New players: ~3500 MMR (mu=25)
-        - Experienced players: 1500-4500 MMR range
-        - Higher MMR = better skill
-
-        See RatingSystem.calculate_display_mmr() for the authoritative implementation.
-        """
-        # Import here to avoid circular imports
-        from .rating_system import RatingSystem
-
-        return RatingSystem.calculate_display_mmr(self.mu)
+    # Unified MMR (THE primary rating - SPEC-UNIFIED-MMR)
+    # Formula: handicap_corrected_mmr + (20 * avg_combat_score)
+    # Combines TrueSkill + handicap correction + combat contribution
+    unified_mmr: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     @property
     def favorite_race(self) -> str:
@@ -223,6 +219,9 @@ class Match(Base):
     replay_hash: Mapped[Optional[str]] = mapped_column(
         String, unique=True, nullable=True, index=True
     )  # To prevent duplicate uploads
+    game_fingerprint: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
+    )  # Identifies same game from different observers (map+time+players)
 
     # Win probability predictions (calculated before match from TrueSkill ratings)
     predicted_team1_win_prob: Mapped[Optional[float]] = mapped_column(
@@ -249,21 +248,13 @@ class Match(Base):
 
 class MatchPlayer(Base):
     """
-    Links players to matches with their performance details.
-    This is a many-to-many relationship table with additional attributes.
-
-    Note: Each player can only appear once per match (enforced by unique constraint).
+    Represents a player's participation in a specific match.
+    Stores a snapshot of the player's rating at the time of the match.
     """
 
     __tablename__ = "match_players"
-    __table_args__ = (
-        # Ensure a player can only have one entry per match
-        UniqueConstraint("match_id", "player_id", name="uq_match_player"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-
-    # Foreign keys - together form a unique constraint
     match_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("matches.id", ondelete="CASCADE"),
@@ -288,6 +279,17 @@ class MatchPlayer(Base):
     mu_after: Mapped[float] = mapped_column(Float, nullable=False)
     sigma_after: Mapped[float] = mapped_column(Float, nullable=False)
 
+    # Official MMR snapshot (calculated from mu/sigma)
+    mmr_before: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    mmr_after: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    @property
+    def mmr_change(self) -> float:
+        """Calculate the MMR change from this match."""
+        if self.mmr_after is not None and self.mmr_before is not None:
+            return self.mmr_after - self.mmr_before
+        return 0.0
+
     # Relationships
     match: Mapped["Match"] = relationship("Match", back_populates="participants")
     player: Mapped["Player"] = relationship(
@@ -305,31 +307,6 @@ class MatchPlayer(Base):
         uselist=False,
         passive_deletes=True,
     )
-
-    @property
-    def mmr_before(self) -> float:
-        """MMR before this match."""
-        from .rating_system import RatingSystem
-
-        return RatingSystem.calculate_display_mmr(self.mu_before)
-
-    @property
-    def mmr_after(self) -> float:
-        """MMR after this match."""
-        from .rating_system import RatingSystem
-
-        return RatingSystem.calculate_display_mmr(self.mu_after)
-
-    @property
-    def mmr_change(self) -> float:
-        """
-        Calculate the MMR change from this match.
-
-        Uses the display MMR formula from RatingSystem to match what users see
-        in Player.mmr. This ensures consistency between displayed ratings
-        and match history.
-        """
-        return self.mmr_after - self.mmr_before
 
 
 class PlayerMatchMetrics(Base):
@@ -358,11 +335,17 @@ class PlayerMatchMetrics(Base):
     resources_spent: Mapped[int] = mapped_column(Integer, default=0)
     spending_efficiency: Mapped[float] = mapped_column(Float, default=0.0)
     workers_created: Mapped[int] = mapped_column(Integer, default=0)
+    workers_killed: Mapped[int] = mapped_column(Integer, default=0)
+    early_workers_killed: Mapped[int] = mapped_column(Integer, default=0)
+    mid_workers_killed: Mapped[int] = mapped_column(Integer, default=0)
+    workers_lost: Mapped[int] = mapped_column(Integer, default=0)
+    early_workers_lost: Mapped[int] = mapped_column(Integer, default=0)
 
     # Army metrics
     units_trained: Mapped[int] = mapped_column(Integer, default=0)
     units_lost: Mapped[int] = mapped_column(Integer, default=0)
     units_killed: Mapped[int] = mapped_column(Integer, default=0)
+    kill_death_ratio: Mapped[float] = mapped_column(Float, default=1.0)
     army_value_built: Mapped[int] = mapped_column(Integer, default=0)
     army_value_killed: Mapped[int] = mapped_column(Integer, default=0)
     army_value_lost: Mapped[int] = mapped_column(Integer, default=0)
@@ -380,6 +363,8 @@ class PlayerMatchMetrics(Base):
 
     # Mechanics
     apm: Mapped[float] = mapped_column(Float, default=0.0)
+    supply_block_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    lethality_score: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Unit composition (stored as JSON string)
     unit_composition: Mapped[Optional[str]] = mapped_column(
@@ -689,11 +674,6 @@ class PerformanceFeatures(Base):
     )
 
 
-# ============================================================================
-# Achievement System Models (Phase 2)
-# ============================================================================
-
-
 class AchievementCategory(str, enum.Enum):
     """Categories for organizing achievements."""
 
@@ -866,11 +846,6 @@ class PlayerRivalry(Base):
     )
 
 
-# ============================================================================
-# Achievement Definitions - The Fun Part!
-# ============================================================================
-
-
 class FeatureSuggestion(Base):
     """
     Suggested new features for the ML model.
@@ -887,6 +862,32 @@ class FeatureSuggestion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class PlayerAlias(Base):
+    """
+    Canonical name mapping for players with multiple accounts/barcodes.
+    Allows conditional mapping (e.g., only for team games).
+    """
+
+    __tablename__ = "player_aliases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    source_name: Mapped[str] = mapped_column(
+        String, unique=True, nullable=False, index=True
+    )
+    target_player_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("players.id", ondelete="CASCADE"), nullable=False
+    )
+
+    min_players: Mapped[int] = mapped_column(Integer, default=4)
+    exclude_1v1: Mapped[int] = mapped_column(Integer, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+
+    target_player: Mapped["Player"] = relationship("Player", backref="aliases")
+
+
 class MetaFeedback(Base):
     """
     User feedback or "squad theories" about match dynamics.
@@ -900,11 +901,6 @@ class MetaFeedback(Base):
         Integer, default=1
     )  # 1 for active, 0 for inactive
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-# ============================================================================
-# ML Balancing System Models
-# ============================================================================
 
 
 class GroupSynergy(Base):
@@ -959,6 +955,67 @@ class MLConfig(Base):
     config_key: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     config_value: Mapped[str] = mapped_column(String, nullable=False)
     last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BalancePrediction(Base):
+    """
+    Captures a balancer suggestion at balance time so it can later be
+    resolved against the actual match outcome (calibration tracking).
+
+    players_key is the sorted comma-separated IDs of ALL players in the
+    suggestion; it is used to match a prediction to an uploaded replay.
+    """
+
+    __tablename__ = "balance_predictions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+
+    # Which objective produced this suggestion (e.g. "mmr_v1", "composite_v1")
+    method: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # Position of this suggestion in the returned list (1 = top pick)
+    rank: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    players_key: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    team1_ids_key: Mapped[str] = mapped_column(String, nullable=False)
+    team2_ids_key: Mapped[str] = mapped_column(String, nullable=False)
+
+    # Prediction snapshot at balance time
+    predicted_team1_win_prob: Mapped[float] = mapped_column(Float, nullable=False)
+    match_quality: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    balance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    mmr_difference: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # JSON blob of objective components (spread/component/synergy terms)
+    features_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Resolution against the actual match
+    resolved: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, index=True
+    )
+    match_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("matches.id", ondelete="SET NULL"), nullable=True
+    )
+    team1_won: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    brier_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class LiveMatchFeed(Base):
+    """
+    Feed for live match detection events.
+    Enables '10/10' Strategic Forecast feature.
+    """
+
+    __tablename__ = "live_match_feed"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    match_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    map_name: Mapped[str] = mapped_column(String, nullable=False)
+    forecast_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Integer, default=1)
 
 
 ACHIEVEMENT_DEFINITIONS = [

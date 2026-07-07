@@ -45,6 +45,7 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:3000",
         "http://localhost:3001",
+        "http://localhost:5175",
     ]
 
     # ==========================================================================
@@ -111,6 +112,34 @@ class Settings(BaseSettings):
     api_description: str = "StarCraft 2 MMR tracking system with TrueSkill rating"
 
     # ==========================================================================
+    # Access Control (for hosting the app online)
+    # ==========================================================================
+    # Master switch. False (default) = app behaves exactly as before: fully
+    # open, intended for localhost/LAN use only. True = every endpoint except
+    # /health and /auth/* requires the shared group password session cookie.
+    auth_enabled: bool = False
+    # The shared squad password. Must be set when auth_enabled is True or
+    # logins are rejected with a config error.
+    group_password: str = ""
+    # Secret for signing session cookies. If empty while auth is enabled, a
+    # random per-process secret is generated at startup (works, but everyone
+    # is logged out whenever the server restarts - set it in production).
+    auth_secret: str = ""
+    # Session cookie lifetime.
+    auth_session_days: int = 30
+    # Cookie attributes. The Vercel-frontend + Cloud-Run-backend split is
+    # cross-site, which requires SameSite=None + Secure (HTTPS only). For
+    # local testing with auth enabled over plain http, set
+    # AUTH_COOKIE_SECURE=false and AUTH_COOKIE_SAMESITE=lax.
+    auth_cookie_secure: bool = True
+    auth_cookie_samesite: str = "none"  # "none" | "lax" | "strict"
+    # Extra shared secret (X-Admin-Token header) required for destructive
+    # admin endpoints (rating recalc, player merge, ML retrain, bulk
+    # recalculations). Empty (default) = not enforced, preserving current
+    # local behavior.
+    admin_token: str = ""
+
+    # ==========================================================================
     # Replay Processing Configuration
     # ==========================================================================
     max_replay_size_mb: int = 50  # Maximum replay file size in MB
@@ -119,15 +148,20 @@ class Settings(BaseSettings):
     # Replay Storage Configuration
     replay_storage_enabled: bool = True  # Enable saving replay files
     replay_storage_dir: str = "replays"  # Directory for successful replay storage
+    # When set (e.g. "my-sc2mmr-replays"), replay files are stored in this
+    # GCS bucket instead of local directories - required on Cloud Run, whose
+    # filesystem is ephemeral. Needs the google-cloud-storage package and
+    # application-default credentials (automatic on Cloud Run).
+    replay_gcs_bucket: str = ""
 
-    # Replay Observer Configuration
-    observer_enabled: bool = True
-    watch_directory: str = "/mnt/c/Users/tru_n/Documents/StarCraft II/Accounts/396750040/1-S2-1-11883598/Replays/Multiplayer"
-    observer_debounce_seconds: float = 2.0  # Wait for file write to complete
-    observer_initial_scan: bool = True  # Scan directory on startup
-    # CommandCenter parser requires matching SC2 Linux version (only 4.10 available)
-    # Disabled by default - enable when Docker SC2 setup is complete
-    observer_use_cc_parser: bool = False  # Use high-fidelity CommandCenter parser
+    # Enrich manually-uploaded replays (POST /replays/upload) with true
+    # engine-derived damage/economy stats from CommandCenter, in the
+    # background after the response is sent (never blocks the upload
+    # request). Requires the Docker SC2 4.10 Linux setup; also confirmed
+    # 2026-07-03 that the SC2 engine can fail to start in headless/sandboxed
+    # environments, so this stays opt-in even when
+    # is_commandcenter_available() reports true.
+    upload_cc_enrichment_enabled: bool = False
 
     # ==========================================================================
     # Logging Configuration
@@ -138,7 +172,9 @@ class Settings(BaseSettings):
     # Hybrid MMR Configuration (SPEC-ML-001)
     # ==========================================================================
     # Enable/disable hybrid MMR system
-    hybrid_mmr_enabled: bool = True
+    # Soft-retired 2026-07-02 (rating consolidation campaign Phase 6):
+    # superseded by the display-MMR rating of record; column drop pending.
+    hybrid_mmr_enabled: bool = False
 
     # PIM (Performance Impact Modifier) bounds
     pim_min: float = -0.5  # Minimum PIM value (50% less MMR change)

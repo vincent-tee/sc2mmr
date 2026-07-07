@@ -1,7 +1,0 @@
-{
-  "branch": "claude/sc2-mmr-setup-011CUywcng3LWCgr2pELfcDF",
-  "last_commit": "eb60454 feat(api): restore lost routes and fix type safety in API layer",
-  "commit_time": "3 hours ago",
-  "changes": 36,
-  "last_check": "2025-12-27T13:48:30.850258"
-}

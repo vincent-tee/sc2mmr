@@ -56,6 +56,7 @@ class MatchMetricsResponse(BaseModel):
     # Combat
     units_killed: int
     units_lost: int
+    kill_death_ratio: float
     damage_dealt: int
     damage_taken: int
     damage_ratio: float
@@ -190,6 +191,7 @@ def get_player_match_metrics(
                     workers_created=metrics.workers_created,
                     units_killed=metrics.units_killed,
                     units_lost=metrics.units_lost,
+                    kill_death_ratio=metrics.kill_death_ratio,
                     damage_dealt=metrics.damage_dealt,
                     damage_taken=metrics.damage_taken,
                     damage_ratio=metrics.damage_ratio,
