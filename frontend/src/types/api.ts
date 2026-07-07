@@ -306,6 +306,8 @@ export interface PlayerSynergy {
 export interface ReplayUploadResponse {
   message: string;
   match_id: number;
+  /** False when the replay was already tracked and the existing match was refreshed. */
+  created?: boolean;
   players: UploadedMatchPlayer[];
   game_mode: string;
   map_name: string;

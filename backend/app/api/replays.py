@@ -276,6 +276,10 @@ class ReplayUploadResponse(BaseModel):
     played_at: datetime
     duration_seconds: int
     num_players: int
+    # False when the replay was already tracked (exact re-upload or the same
+    # game from another player) and the existing match was refreshed instead
+    # of a new one being created. Ratings only change when this is True.
+    created: bool = True
     message: str
     processing_stats: ProcessingStats
 
@@ -558,7 +562,12 @@ async def upload_replay(
             played_at=match.played_at,
             duration_seconds=int(match.duration_seconds),
             num_players=len(replay_data.players),
-            message="Replay processed successfully",
+            created=created,
+            message=(
+                "Replay processed successfully"
+                if created
+                else f"Already on the ladder - existing Match #{match.id} was refreshed"
+            ),
             processing_stats=ProcessingStats(
                 parse_time_ms=0.0,
                 validation_time_ms=0.0,
@@ -1332,6 +1341,7 @@ def set_manual_winner(
                 played_at=existing_match.played_at,
                 duration_seconds=int(existing_match.duration_seconds),
                 num_players=len(replay_data.players),
+                created=False,
                 message=f"Replay was already successfully processed as Match #{existing_match.id}",
                 processing_stats=ProcessingStats(
                     parse_time_ms=0,
@@ -1674,7 +1684,12 @@ async def upload_replay_advanced(
             played_at=match.played_at,
             duration_seconds=int(match.duration_seconds),
             num_players=len(replay_data.players),
-            message="Replay processed successfully with advanced metrics",
+            created=created,
+            message=(
+                "Replay processed successfully with advanced metrics"
+                if created
+                else f"Already on the ladder - existing Match #{match.id} was refreshed"
+            ),
             processing_stats=ProcessingStats(
                 parse_time_ms=round(step_times.get("parse", 0), 2),
                 validation_time_ms=round(step_times.get("validate", 0), 2),

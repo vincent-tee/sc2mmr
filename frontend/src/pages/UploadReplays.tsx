@@ -142,10 +142,15 @@ const UploadReplays: React.FC = () => {
         ? `Processed in ${stats.total_time_ms}ms`
         : response.data.message;
 
+      // The backend upserts duplicates (exact re-upload, or the same game
+      // from another player) and reports created=false instead of erroring.
+      const wasAlreadyTracked = responseData.created === false;
       updateFileStatus(
         file.id,
-        UPLOAD_STATUS.COMPLETE,
-        processingMessage,
+        wasAlreadyTracked ? UPLOAD_STATUS.DUPLICATE : UPLOAD_STATUS.COMPLETE,
+        wasAlreadyTracked
+          ? response.data.message || 'Already on the ladder - existing match refreshed'
+          : processingMessage,
         100,
         response.data
       );
