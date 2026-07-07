@@ -46,7 +46,6 @@ from app.services.commandcenter_parser import (
     is_commandcenter_available,
     CommandCenterParser,
 )
-from app.config import settings
 
 # Configure logging
 logging.basicConfig(
@@ -62,13 +61,21 @@ def get_database_url() -> str:
 
 
 def get_replay_storage_dirs() -> list[Path]:
-    """Get possible replay storage directories."""
-    return [
-        Path(settings.watch_directory),
+    """Get possible replay storage directories.
+
+    The old replay-observer watch directory (the local SC2 install's replay
+    folder) can still be searched by setting SC2_REPLAY_WATCH_DIR; the
+    observer feature itself was removed 2026-07-07.
+    """
+    dirs = [
         backend_path / "replays",
         backend_path / "data" / "replays",
         backend_path / "failed_replays",
     ]
+    extra = os.environ.get("SC2_REPLAY_WATCH_DIR")
+    if extra:
+        dirs.insert(0, Path(extra))
+    return dirs
 
 
 def find_replay_file(match: Match) -> Optional[Path]:
