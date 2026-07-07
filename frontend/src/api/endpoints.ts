@@ -7,6 +7,7 @@ import apiClient, { API_BASE_URL } from './client';
 import type {
   Player,
   PlayerDetail,
+  PlayerHistoryResponse,
   PlayerRanking,
   TeamSuggestion,
   MatchDetail,
@@ -32,7 +33,7 @@ export interface PlayersApi {
     recentMatchesLimit?: number,
     recentMatchesOffset?: number
   ) => Promise<AxiosResponse<PlayerDetail>>;
-  getHistory: (playerId: number, limit?: number) => Promise<AxiosResponse<any>>;
+  getHistory: (playerId: number, limit?: number) => Promise<AxiosResponse<PlayerHistoryResponse>>;
   getCoaching: (playerId: number) => Promise<AxiosResponse<any>>;
   create: (name: string, isCorePlayer?: boolean) => Promise<AxiosResponse<Player>>;
   calibrate: (name: string, similarToPlayerId: number) => Promise<AxiosResponse<Player>>;
@@ -61,7 +62,7 @@ export const playersApi: PlayersApi = {
   },
 
   getHistory: (playerId: number, limit = 50) => {
-    return apiClient.get(`/players/${playerId}/history`, {
+    return apiClient.get<PlayerHistoryResponse>(`/players/${playerId}/history`, {
       params: { limit }
     });
   },

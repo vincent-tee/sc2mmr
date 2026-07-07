@@ -578,16 +578,21 @@ def get_matches_with_players(
             )
 
     # Optional search across the map name OR any participating player's name.
+    # LIKE metacharacters in the term are escaped so "Data_Disruptor" or
+    # "100%" search literally instead of acting as wildcards.
     if search and search.strip():
-        pattern = f"%{search.strip()}%"
+        term = (
+            search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        pattern = f"%{term}%"
         player_match_ids = (
             db.query(MatchPlayer.match_id)
             .join(Player, MatchPlayer.player_id == Player.id)
-            .filter(Player.name.ilike(pattern))
+            .filter(Player.name.ilike(pattern, escape="\\"))
         )
         base_query = base_query.filter(
             or_(
-                Match.map_name.ilike(pattern),
+                Match.map_name.ilike(pattern, escape="\\"),
                 Match.id.in_(player_match_ids),
             )
         )

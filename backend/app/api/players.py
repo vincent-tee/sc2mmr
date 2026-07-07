@@ -172,6 +172,55 @@ def get_player_rankings(
     ]
 
 
+class PlayerHistoryEntry(BaseModel):
+    """One point on a player's MMR trajectory."""
+
+    match_id: int
+    map_name: str
+    played_at: datetime
+    mmr: float
+
+
+class PlayerHistoryResponse(BaseModel):
+    """Chronological MMR history for the trajectory chart."""
+
+    player_id: int
+    history: List[PlayerHistoryEntry]
+
+
+@router.get("/{player_id}/history", response_model=PlayerHistoryResponse)
+def get_player_history(player_id: int, limit: int = 50, db: Session = Depends(get_db)):
+    """
+    Get a player's MMR trajectory: display MMR after each of their most
+    recent `limit` matches, in chronological order.
+    """
+    player = db.query(Player).filter(Player.id == player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    rows = (
+        db.query(MatchPlayer, Match)
+        .join(Match, MatchPlayer.match_id == Match.id)
+        .filter(MatchPlayer.player_id == player_id)
+        .order_by(Match.played_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    history = [
+        PlayerHistoryEntry(
+            match_id=int(m.id),
+            map_name=str(m.map_name),
+            played_at=m.played_at,
+            # Rounded like every other display-MMR surface — raw floats leak
+            # 12-decimal tick labels into the trajectory chart's y-axis.
+            mmr=float(round(RatingSystem.calculate_display_mmr(mp.mu_after))),
+        )
+        for mp, m in reversed(rows)
+    ]
+    return PlayerHistoryResponse(player_id=player_id, history=history)
+
+
 @router.get("/{player_id}", response_model=PlayerDetailResponse)
 def get_player_details(
     player_id: int,

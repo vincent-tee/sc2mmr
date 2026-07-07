@@ -297,7 +297,9 @@ const Players: React.FC = () => {
                               NEW
                             </Badge>
                           )}
-                          {!player.is_active && (
+                          {/* Only brand LEGACY when the backend explicitly says
+                              inactive — a missing field must not mark everyone */}
+                          {player.is_active === false && (
                             <Badge colorScheme="gray" fontSize="9px">
                               LEGACY
                             </Badge>

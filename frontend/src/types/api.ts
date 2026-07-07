@@ -170,6 +170,18 @@ export interface MatchPlayer {
   kill_death_ratio: number | null;
 }
 
+export interface PlayerHistoryEntry {
+  match_id: number;
+  map_name: string;
+  played_at: string;
+  mmr: number;
+}
+
+export interface PlayerHistoryResponse {
+  player_id: number;
+  history: PlayerHistoryEntry[];
+}
+
 export interface MatchDetail {
   match: Match;
   players: MatchPlayer[];
@@ -428,6 +440,7 @@ export interface TeamSuggestionWithImpact extends TeamSuggestion {
 }
 
 export type GameMode =
+  | '1v1'
   | '2v2'
   | '3v3'
   | '4v4'
@@ -442,6 +455,27 @@ export type GameMode =
   | '5v2'
   | '5v3'
   | '5v4';
+
+// Single frontend source for the mode list (mirrors backend GameMode enum,
+// which 422s on anything outside it). Keep in the same file as the type so
+// the two can't drift apart.
+export const GAME_MODES: GameMode[] = [
+  '1v1',
+  '2v2',
+  '3v3',
+  '4v4',
+  '5v5',
+  '2v1',
+  '3v1',
+  '3v2',
+  '4v1',
+  '4v2',
+  '4v3',
+  '5v1',
+  '5v2',
+  '5v3',
+  '5v4',
+];
 
 export type FairnessRating =
   | 'Perfect'

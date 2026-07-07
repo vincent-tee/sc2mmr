@@ -194,6 +194,18 @@ def test_search_by_map_name(client, seeded):
     assert body["matches"][0]["map_name"] == "Frost LE"
 
 
+def test_search_escapes_like_metacharacters(client, seeded):
+    # "_" is a single-char LIKE wildcard; unescaped it would match every
+    # non-empty name. No seeded name contains a literal underscore.
+    resp = client.get("/replays/matches-with-players", params={"search": "_"})
+    assert resp.status_code == 200
+    assert resp.json()["total_count"] == 0
+
+    resp = client.get("/replays/matches-with-players", params={"search": "%"})
+    assert resp.status_code == 200
+    assert resp.json()["total_count"] == 0
+
+
 def test_search_and_mode_combined(client, seeded):
     resp = client.get(
         "/replays/matches-with-players",
@@ -223,3 +235,35 @@ def test_match_details_win_prob_fallback_when_null(client, seeded):
     assert t1 is not None and t2 is not None
     assert t1 + t2 == pytest.approx(1.0, abs=1e-6)
     assert t1 > t2
+
+
+# ---------------------------------------------------------------------------
+# Player MMR history (trajectory chart data)
+# ---------------------------------------------------------------------------
+
+
+def test_player_history_chronological_with_display_mmr(client, seeded):
+    alice = seeded["players"][0]  # played m1 (won, days_ago=2) and m3 (lost, days_ago=0)
+    resp = client.get(f"/players/{alice.id}/history")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["player_id"] == alice.id
+    assert len(body["history"]) == 2
+    played = [e["played_at"] for e in body["history"]]
+    assert played == sorted(played)  # chronological
+    # Winner rows seeded with mu_after=26.0, losers 19.0; assert via the same
+    # display function the endpoint uses so the test tracks formula changes.
+    from app.rating_system import RatingSystem
+
+    assert body["history"][0]["mmr"] == pytest.approx(
+        RatingSystem.calculate_display_mmr(26.0)
+    )
+    assert body["history"][1]["mmr"] == pytest.approx(
+        RatingSystem.calculate_display_mmr(19.0)
+    )
+    assert {"match_id", "map_name", "played_at", "mmr"} <= set(body["history"][0])
+
+
+def test_player_history_unknown_player_404(client, seeded):
+    resp = client.get("/players/999999/history")
+    assert resp.status_code == 404

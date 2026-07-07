@@ -53,8 +53,11 @@ import {
   formatDateTime,
   getRaceColor,
   getPlayerAvatarUrl,
+  parseErrorMessage,
+  type ErrorWithResponse,
 } from '../utils/formatting';
 import type { MatchWithPlayers, MatchPlayerSummary, MatchListWithPlayersResponse } from '../types/api';
+import { GAME_MODES } from '../types/api';
 
 // Player highlight card component (expanded per-player stats)
 const PlayerHighlightCard: React.FC<{
@@ -394,26 +397,6 @@ const MatchCard: React.FC<{
 
 const MATCHES_PER_PAGE = 15;
 
-// Game modes offered in the filter dropdown (mirrors the backend GameMode enum).
-// Static list keeps the dropdown stable without fetching the whole archive.
-const GAME_MODES = [
-  '1v1',
-  '2v2',
-  '3v3',
-  '4v4',
-  '5v5',
-  '2v1',
-  '3v1',
-  '3v2',
-  '4v1',
-  '4v2',
-  '4v3',
-  '5v1',
-  '5v2',
-  '5v3',
-  '5v4',
-];
-
 const MatchHistory: React.FC = () => {
   const navigate = useNavigate();
 
@@ -424,8 +407,12 @@ const MatchHistory: React.FC = () => {
   const modeFilter = searchParams.get('mode') ?? '';
   const currentPage = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
 
+  // Merge into the LIVE URL (window.location.search) so a queued call — e.g.
+  // the search debounce timer firing after a mode change — preserves params
+  // written in the meantime. Both a captured `searchParams` and react-router
+  // 7's functional updater proved to resolve against a stale snapshot here.
   const updateParams = (updates: Record<string, string>, replace = false): void => {
-    const next = new URLSearchParams(searchParams);
+    const next = new URLSearchParams(window.location.search);
     for (const [key, value] of Object.entries(updates)) {
       if (value) next.set(key, value);
       else next.delete(key);
@@ -450,11 +437,10 @@ const MatchHistory: React.FC = () => {
   }, [urlSearch]);
 
   const hasFilters = Boolean(urlSearch || modeFilter);
-  const availableModes = GAME_MODES;
 
   // Server-side pagination + filtering: fetch only the current page for the
   // active filters instead of pulling the whole archive down at once.
-  const { data: matchesData, isLoading } = useQuery<MatchListWithPlayersResponse>({
+  const { data: matchesData, isLoading, isError, error } = useQuery<MatchListWithPlayersResponse>({
     queryKey: ['matches-with-players', currentPage, urlSearch, modeFilter],
     queryFn: async () => {
       const response = await replaysApi.getMatchesWithPlayers(
@@ -475,6 +461,16 @@ const MatchHistory: React.FC = () => {
   const totalMatches = matchesData?.grand_total ?? filteredTotal;
   const totalPages = Math.ceil(filteredTotal / MATCHES_PER_PAGE) || 1;
   const safePage = Math.min(currentPage, totalPages);
+
+  // Self-correct out-of-range ?page= deep links: once the server tells us the
+  // real page count, rewrite the URL so the query refetches an in-range page
+  // instead of rendering a phantom-empty page that claims to be the last one.
+  useEffect(() => {
+    if (matchesData && currentPage > totalPages) {
+      updateParams({ page: totalPages > 1 ? String(totalPages) : '' }, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchesData, currentPage, totalPages]);
 
   const handlePageChange = (newPage: number): void => {
     updateParams({ page: newPage > 1 ? String(newPage) : '' });
@@ -579,7 +575,7 @@ const MatchHistory: React.FC = () => {
                     bg="space.900"
                     borderColor="whiteAlpha.200"
                   >
-                    {availableModes.map((mode) => (
+                    {GAME_MODES.map((mode) => (
                       <option key={mode} value={mode}>
                         {mode}
                       </option>
@@ -596,8 +592,18 @@ const MatchHistory: React.FC = () => {
             </HStack>
           </Box>
 
-          {/* Match List */}
-          {pageMatches.length === 0 ? (
+          {/* Match List. A failed request (e.g. the backend's 422 for an
+              unknown mode in the URL) must read as an error, not as an
+              empty archive. */}
+          {isError ? (
+            <EmptyState
+              variant="stats"
+              title="Couldn't Load Matches"
+              description={parseErrorMessage(error as ErrorWithResponse)}
+              actionLabel="Clear Filters"
+              onAction={clearFilters}
+            />
+          ) : pageMatches.length === 0 ? (
             <EmptyState
               variant="stats"
               title="No Matches Found"

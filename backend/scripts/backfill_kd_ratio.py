@@ -12,8 +12,8 @@ uses at upload time, so the two can never drift.
 Safety:
     * You MUST pass --db explicitly. There is no default DB path, so this can
       never silently mutate the production database.
-    * Unless --no-backup is given, the target DB is backed up to
-      "<db>.kd_backup" via SQLite's online backup API (sqlite3
+    * Unless --no-backup is given, the target DB is backed up to a
+      timestamped "<db>.kd_backup_<ts>" via SQLite's online backup API (sqlite3
       Connection.backup), which is WAL-safe - unlike a plain file copy, it
       captures committed transactions still living in the -wal sidecar.
     * If a non-empty -wal sidecar exists, a live writer (e.g. the running
@@ -29,6 +29,7 @@ import argparse
 import os
 import sqlite3
 import sys
+import time
 from collections import Counter
 
 # Make `app` importable when run as `python backend/scripts/backfill_kd_ratio.py`.
@@ -64,8 +65,12 @@ def db_distribution(conn: sqlite3.Connection) -> dict:
 
 
 def safe_backup(conn: sqlite3.Connection, db_path: str) -> str:
-    """Back up via SQLite's online backup API (WAL-safe, consistent)."""
-    backup_path = f"{db_path}.kd_backup"
+    """Back up via SQLite's online backup API (WAL-safe, consistent).
+
+    Timestamped so a second run can never clobber the first run's
+    rollback point (house rule: timestamped backups).
+    """
+    backup_path = f"{db_path}.kd_backup_{time.strftime('%Y%m%d_%H%M%S')}"
     dest = sqlite3.connect(backup_path)
     try:
         conn.backup(dest)

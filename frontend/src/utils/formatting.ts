@@ -400,7 +400,7 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
 // Error Parsing
 // =============================================================================
 
-interface ErrorWithResponse {
+export interface ErrorWithResponse {
   userMessage?: string;
   response?: {
     data?: {
