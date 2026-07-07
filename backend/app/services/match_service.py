@@ -488,8 +488,10 @@ class MatchService:
         )
         result = []
         for mp, player in match_players_with_player:
-            mmr_before = RatingSystem.calculate_display_mmr(mp.mu_before)
-            mmr_after = RatingSystem.calculate_display_mmr(mp.mu_after)
+            mmr_before = RatingSystem.calculate_display_mmr(
+                mp.mu_before, mp.sigma_before
+            )
+            mmr_after = RatingSystem.calculate_display_mmr(mp.mu_after, mp.sigma_after)
             result.append(
                 MatchPlayerData(
                     player_id=player.id,

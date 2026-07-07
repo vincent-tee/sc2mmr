@@ -100,7 +100,7 @@ def update_metrics(db, match_player: MatchPlayer, player_result, duration_second
     metrics.early_game_damage = player_result.early_game_damage
     metrics.mid_game_damage = player_result.mid_game_damage
     metrics.late_game_damage = player_result.late_game_damage
-    metrics.player_archetype = player_result.detected_build_type
+    metrics.player_archetype = player_result.player_archetype
     metrics.aggression_score = player_result.aggression_score
 
     # Damage timeline

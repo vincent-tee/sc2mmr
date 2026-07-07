@@ -12,39 +12,39 @@ Services:
 - AchievementService: Achievement tracking and awarding (Phase 2)
 """
 
-from app.services.pi_calculator import PICalculator, MatchAverages, PIMBreakdown  # type: ignore
-from app.services.match_orchestrator import (  # type: ignore
+from .pi_calculator import PICalculator, MatchAverages, PIMBreakdown  # type: ignore
+from .match_orchestrator import (  # type: ignore
     MatchOrchestrator,
     MatchOrchestrationResult,
     OrchestrationStats,
 )
-from app.services.replay_service import (  # type: ignore
+from .replay_service import (  # type: ignore
     ReplayService,
     ReplayProcessingResult,
     ProcessingStats,
     FailedUploadData,
 )
-from app.services.rating_service import (  # type: ignore
+from .rating_service import (  # type: ignore
     RatingService,
     RecalculationStats,
     MatchProcessingContext,
 )
-from app.services.match_service import (  # type: ignore
+from .match_service import (  # type: ignore
     MatchService,
     MatchDetails,
     MatchPlayerData,
     MatchStatistics,
     ManualWinnerResult,
 )
-from app.services.achievement_service import AchievementService  # type: ignore
-from app.services.adaptive_balancer import (  # type: ignore
+from .achievement_service import AchievementService  # type: ignore
+from .adaptive_balancer import (  # type: ignore
     MLMetricsBalancer,
     MLPlayerRating,
     MLTeamSuggestion,
     SynergyCalculator,
     ComponentAccuracyTracker,
 )
-from app.services.session_weighted_ratings import SessionWeightedRatings  # type: ignore
+from .session_weighted_ratings import SessionWeightedRatings  # type: ignore
 
 __all__ = [
     # PI Calculator

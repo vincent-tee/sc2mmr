@@ -45,6 +45,7 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:3000",
         "http://localhost:3001",
+        "http://localhost:5175",
     ]
 
     # ==========================================================================
@@ -129,6 +130,15 @@ class Settings(BaseSettings):
     # Disabled by default - enable when Docker SC2 setup is complete
     observer_use_cc_parser: bool = False  # Use high-fidelity CommandCenter parser
 
+    # Enrich manually-uploaded replays (POST /replays/upload) with true
+    # engine-derived damage/economy stats from CommandCenter, in the
+    # background after the response is sent (never blocks the upload
+    # request). Same SC2-version caveat as observer_use_cc_parser above;
+    # also confirmed 2026-07-03 that the SC2 engine can fail to start in
+    # headless/sandboxed environments, so this stays opt-in even when
+    # is_commandcenter_available() reports true.
+    upload_cc_enrichment_enabled: bool = False
+
     # ==========================================================================
     # Logging Configuration
     # ==========================================================================
@@ -138,7 +148,9 @@ class Settings(BaseSettings):
     # Hybrid MMR Configuration (SPEC-ML-001)
     # ==========================================================================
     # Enable/disable hybrid MMR system
-    hybrid_mmr_enabled: bool = True
+    # Soft-retired 2026-07-02 (rating consolidation campaign Phase 6):
+    # superseded by the display-MMR rating of record; column drop pending.
+    hybrid_mmr_enabled: bool = False
 
     # PIM (Performance Impact Modifier) bounds
     pim_min: float = -0.5  # Minimum PIM value (50% less MMR change)

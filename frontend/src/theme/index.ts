@@ -96,8 +96,8 @@ const theme = extendTheme({
     },
   },
   fonts: {
-    heading: `'Quicksand', 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`,
-    body: `'Nunito', 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`,
+    heading: `'Bricolage Grotesque', 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`,
+    body: `'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`,
     mono: `'JetBrains Mono', 'Fira Code', monospace`,
   },
   styles: {
@@ -129,12 +129,19 @@ const theme = extendTheme({
       body: {
         bg: props.colorMode === 'dark' ? 'space.900' : 'gray.50',
         color: props.colorMode === 'dark' ? 'gray.100' : 'gray.900',
-        // Subtle warm gradient background (not noisy starfield)
-        backgroundImage: props.colorMode === 'dark' 
-          ? 'linear-gradient(135deg, #1A1625 0%, #252136 50%, #1F1A2E 100%)'
+        // Unified clubhouse backdrop: warm glow top-left, teal wash bottom-right,
+        // faint dot grid for texture. Every page sits on this — no per-page tints.
+        backgroundImage: props.colorMode === 'dark'
+          ? `radial-gradient(ellipse 900px 500px at 12% -8%, rgba(255, 107, 53, 0.10), transparent),
+             radial-gradient(ellipse 800px 500px at 95% 105%, rgba(78, 205, 196, 0.06), transparent),
+             radial-gradient(circle, rgba(255, 255, 255, 0.025) 1px, transparent 1px)`
           : 'none',
+        backgroundSize: props.colorMode === 'dark' ? '100% 100%, 100% 100%, 28px 28px' : 'auto',
         backgroundAttachment: 'fixed',
         minHeight: '100vh',
+      },
+      '::selection': {
+        bg: 'rgba(255, 107, 53, 0.4)',
       },
     }),
   },
@@ -281,7 +288,8 @@ const theme = extendTheme({
     Heading: {
       baseStyle: {
         fontFamily: 'heading',
-        fontWeight: 'bold',
+        fontWeight: '800',
+        letterSpacing: '-0.02em',
       },
     },
     Text: {

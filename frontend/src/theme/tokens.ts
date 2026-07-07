@@ -225,8 +225,8 @@ export const typography = {
     black: 900,
   },
   fontFamily: {
-    heading: "'Quicksand', 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif",
-    body: "'Nunito', 'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif",
+    heading: "'Bricolage Grotesque', 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif",
+    body: "'Nunito', -apple-system, BlinkMacSystemFont, sans-serif",
     mono: "'JetBrains Mono', 'Fira Code', monospace",
   },
   lineHeight: {

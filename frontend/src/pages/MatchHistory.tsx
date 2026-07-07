@@ -40,8 +40,18 @@ import {
   FiChevronUp,
   FiAward,
   FiUsers,
+  FiClock,
 } from 'react-icons/fi';
+import { LuCrown } from 'react-icons/lu';
+import { keyframes } from '@emotion/react';
+
+// Animation keyframes
+const pulseGlow = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+`;
 import { replaysApi } from '../api/endpoints';
+import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import { MatchCardSkeleton } from '../components/LoadingState';
 import { formatDuration, formatDateTime, getRaceColor } from '../utils/formatting';
@@ -169,8 +179,8 @@ const MatchCard: React.FC<{
 }> = ({ match, onNavigate }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const cardBg = 'space.800';
-  const borderColor = 'space.900';
-  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
+  const borderColor = 'whiteAlpha.100';
+  const brandShadow = 'none';
 
   const team1Players = match.players.filter((p) => p.team_number === 1);
   const team2Players = match.players.filter((p) => p.team_number === 2);
@@ -200,7 +210,7 @@ const MatchCard: React.FC<{
     <Box
       bg={cardBg}
       borderRadius="xl"
-      border="3px solid"
+      border="1px solid"
       borderColor={borderColor}
       boxShadow={brandShadow}
       position="relative"
@@ -265,7 +275,10 @@ const MatchCard: React.FC<{
                 </Badge>
                 {upsetCommentary && (
                   <Badge variant="solid" colorScheme="purple" fontSize="xs" px={2} py={1} borderRadius="md" animation={`${pulseGlow} 2s infinite`}>
-                    🤯 UPSET
+                    <HStack spacing={1}>
+                      <Icon as={FiZap} boxSize="10px" />
+                      <Text as="span">UPSET</Text>
+                    </HStack>
                   </Badge>
                 )}
               </HStack>
@@ -372,8 +385,9 @@ const MatchCard: React.FC<{
                   textTransform="uppercase"
                   color={match.winner_team === 1 ? 'shield.400' : 'gray.500'}
                 >
-                  Squad Alpha {match.winner_team === 1 && '🏆'}
+                  Squad Alpha
                 </Text>
+                {match.winner_team === 1 && <Icon as={LuCrown} color="shield.400" boxSize="14px" />}
               </HStack>
               <VStack spacing={3} align="stretch">
                 {team1Players.map((player) => (
@@ -399,8 +413,9 @@ const MatchCard: React.FC<{
                   textTransform="uppercase"
                   color={match.winner_team === 2 ? 'accent.400' : 'gray.500'}
                 >
-                  Squad Bravo {match.winner_team === 2 && '🏆'}
+                  Squad Bravo
                 </Text>
+                {match.winner_team === 2 && <Icon as={LuCrown} color="accent.400" boxSize="14px" />}
               </HStack>
               <VStack spacing={3} align="stretch">
                 {team2Players.map((player) => (
@@ -419,8 +434,6 @@ const MatchCard: React.FC<{
     </Box>
   );
 };
-  );
-};
 
 const MatchHistory: React.FC = () => {
   const navigate = useNavigate();
@@ -429,12 +442,8 @@ const MatchHistory: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const matchesPerPage = 15;
 
-  // Design tokens
-  const borderColor = 'space.900';
-  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
-
   // Fetch matches with player data using keepPreviousData for smooth pagination
-  const { data: matchesData, isLoading, isFetching } = useQuery<MatchListWithPlayersResponse>({
+  const { data: matchesData, isLoading } = useQuery<MatchListWithPlayersResponse>({
     queryKey: ['matches-with-players', currentPage],
     queryFn: async () => {
       const offset = (currentPage - 1) * matchesPerPage;
@@ -457,17 +466,27 @@ const MatchHistory: React.FC = () => {
     navigate(`/history/${matchId}`);
   };
 
+  const header = (
+    <PageHeader
+      kicker="Battle Log"
+      title="Match [Archive]"
+      description="Every game the squad has played, with the receipts to prove it."
+      stats={[
+        { label: 'Battles recorded', value: totalMatches },
+        { label: `of ${totalPages || 1} pages`, value: currentPage },
+      ]}
+    />
+  );
+
   if (isLoading) {
     return (
-      <Box bg="space.900">
-        <Container maxW="container.xl" py={8}>
-          <VStack spacing={8} align="stretch">
-            <Heading>Match History</Heading>
-            <VStack spacing={4}>
-              {Array.from({ length: 10 }).map((_, idx) => (
-                <MatchCardSkeleton key={idx} />
-              ))}
-            </VStack>
+      <Box minH="100vh" pb={16}>
+        {header}
+        <Container maxW="container.xl" pt={8}>
+          <VStack spacing={4}>
+            {Array.from({ length: 10 }).map((_, idx) => (
+              <MatchCardSkeleton key={idx} />
+            ))}
           </VStack>
         </Container>
       </Box>
@@ -476,49 +495,25 @@ const MatchHistory: React.FC = () => {
 
   if (matches.length === 0) {
     return (
-      <Box bg="space.900">
-        <Container maxW="container.xl" py={8}>
-          <VStack spacing={8} align="stretch">
-            <Heading>Match History</Heading>
-            <EmptyState
-              variant="stats"
-              title="No Matches Yet"
-              description="Upload some replay files to start tracking your game history."
-              onAction={() => navigate('/upload')}
-            />
-          </VStack>
+      <Box minH="100vh" pb={16}>
+        {header}
+        <Container maxW="container.xl" pt={8}>
+          <EmptyState
+            variant="stats"
+            title="No Matches Yet"
+            description="Upload some replay files to start tracking your game history."
+            onAction={() => navigate('/upload')}
+          />
         </Container>
       </Box>
     );
   }
 
   return (
-    <Box position="relative" bg="space.900">
-      <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
+    <Box position="relative" minH="100vh" pb={16}>
+      {header}
+      <Container maxW="container.xl" pt={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
-          {/* Header Section */}
-          <Box textAlign="center">
-            <Heading
-              size="2xl"
-              fontFamily="heading"
-              fontWeight="black"
-              letterSpacing="wider"
-              color="brand.400"
-              mb={2}
-            >
-              <Text as="span" className="emoji-font">📊</Text> Match Archive
-            </Heading>
-            <Text
-              color="gray.400"
-              fontFamily="heading"
-              letterSpacing="wide"
-              fontSize="lg"
-            >
-              {totalMatches} battles recorded • Page {currentPage} of {totalPages}
-              {isFetching && !isLoading && ' • Updating...'}
-            </Text>
-          </Box>
-
           {/* Match List */}
           <VStack spacing={4} align="stretch">
             {matches.map((match) => (

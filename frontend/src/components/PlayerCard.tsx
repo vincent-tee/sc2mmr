@@ -10,14 +10,16 @@ import {
   Badge,
   VStack,
   HStack,
-  Wrap,
   Tooltip,
+  Icon,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { 
-  getRaceColor, 
-  getPlayerRaces, 
-  getPlayerAvatarUrl 
+import type { IconType } from 'react-icons';
+import { LuFlame, LuSnowflake } from 'react-icons/lu';
+import {
+  getRaceColor,
+  getPlayerRaces,
+  getPlayerAvatarUrl,
 } from '../utils/formatting';
 import RankBadge from './RankBadge';
 
@@ -41,6 +43,7 @@ export interface PlayerCardData {
   id?: number;
   name: string;
   mmr: number;
+  unified_mmr?: number | null;
   hybrid_mmr?: number | null;
   avg_pim?: number | null;
   win_rate?: number;
@@ -51,7 +54,16 @@ export interface PlayerCardData {
   random_games?: number;
   favorite_race?: string;
   is_ai?: boolean;
+  recent_form?: number | null;  // Win rate from last 5 games
 }
+
+// Helper to get form badge based on recent form
+const getFormBadge = (recentForm: number | null | undefined): { icon: IconType; color: string; label: string } | null => {
+  if (recentForm === null || recentForm === undefined) return null;
+  if (recentForm >= 0.7) return { icon: LuFlame, color: 'orange.400', label: 'Hot' };
+  if (recentForm <= 0.3) return { icon: LuSnowflake, color: 'blue.400', label: 'Cold' };
+  return null; // Stable form, no badge
+};
 
 interface PlayerCardProps {
   player: PlayerCardData;
@@ -109,8 +121,8 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
       borderRadius="xl"
       border="3px solid"
       borderColor={isSelected ? 'brand.500' : borderColorDefault}
-      boxShadow={isSelected 
-        ? '6px 6px 0 var(--chakra-colors-brand-500)' 
+      boxShadow={isSelected
+        ? '6px 6px 0 var(--chakra-colors-brand-500)'
         : '4px 4px 0 var(--chakra-colors-space-900)'}
       p={sizeConfig.padding}
       cursor={onClick ? 'pointer' : 'default'}
@@ -134,17 +146,6 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
       position="relative"
       overflow="hidden"
     >
-      {/* Top accent bar showing primary race color */}
-      <Box
-        position="absolute"
-        top={0}
-        left={0}
-        right={0}
-        height="4px"
-        bg={`${getRaceColor(primaryRace)}.500`}
-        borderTopRadius="lg"
-      />
-
       {/* Selection checkmark */}
       {isSelected && (
         <Box
@@ -169,40 +170,30 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
       )}
 
       <VStack spacing={3} align="center" pt={2}>
-        {/* Avatar - circular with thick comic border */}
-        <Box position="relative">
-          <Avatar
-            size={sizeConfig.avatarSize}
-            src={getPlayerAvatarUrl(player.name, primaryRace, player.is_ai)}
-            name={player.name}
-            bg={`${getRaceColor(primaryRace)}.500`}
-            border="3px solid"
-            borderColor={avatarBorderColor}
-            boxShadow="2px 2px 0 var(--chakra-colors-space-900)"
-            position="relative"
-            zIndex={1}
-          />
-          
-          {/* Race emoji indicator */}
-          {playerRaces.length > 0 && (
-            <Box
-              position="absolute"
-              bottom={-1}
-              right={-1}
-              bg="space.800"
-              border="2px solid"
-              borderColor="space.900"
-              borderRadius="full"
-              px={1}
-              fontSize="xs"
-            >
-              {playerRaces[0].emoji}
-            </Box>
-          )}
-        </Box>
+        <Avatar
+          size={sizeConfig.avatarSize}
+          src={getPlayerAvatarUrl(player.name, primaryRace, player.is_ai)}
+          name={player.name}
+          bg={`${getRaceColor(primaryRace)}.500`}
+          border="3px solid"
+          borderColor={avatarBorderColor}
+          boxShadow="2px 2px 0 var(--chakra-colors-space-900)"
+        />
 
         <VStack spacing={1.5} align="center" width="100%">
           <HStack justify="center" width="100%">
+            {/* Form Badge - Hot/Cold indicator */}
+            {getFormBadge(player.recent_form) && (
+              <Tooltip
+                label={`${getFormBadge(player.recent_form)?.label}: ${Math.round((player.recent_form || 0) * 100)}% last 5 games`}
+                hasArrow
+                fontSize="xs"
+              >
+                <Box color={getFormBadge(player.recent_form)?.color} filter="drop-shadow(0 0 4px currentColor)">
+                  <Icon as={getFormBadge(player.recent_form)!.icon} boxSize="14px" display="block" />
+                </Box>
+              </Tooltip>
+            )}
             <Text
               fontSize={sizeConfig.nameSize}
               fontWeight="bold"
@@ -220,41 +211,13 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
             )}
           </HStack>
 
-          {/* Rank Badge - Shows SC2 rank based on MMR */}
+          {/* Rank Badge - Shows SC2 rank based on MMR (the rating of record) */}
           <RankBadge
-            mmr={player.hybrid_mmr || player.mmr}
+            mmr={player.mmr}
             size={sizeConfig.badgeSize}
             showMMR={true}
             showIcon={size !== 'sm'}
           />
-
-          {/* Multi-Race Display */}
-          {playerRaces.length > 0 && (
-            <Wrap spacing={1} justify="center" width="100%">
-              {playerRaces.map((race, index) => (
-                <Tooltip
-                  key={race.name}
-                  label={`${race.name}: ${race.games} games`}
-                  fontSize="xs"
-                  hasArrow
-                >
-                  <Badge
-                    variant={`race-${race.name.toLowerCase()}`}
-                    fontSize="xs"
-                    px={1.5}
-                    py={0.5}
-                    borderRadius="sm"
-                    opacity={index === 0 ? 1 : 0.7}
-                    border={index === 0 ? '1px solid' : 'none'}
-                    borderColor={index === 0 ? 'whiteAlpha.300' : 'transparent'}
-                  >
-                    {race.emoji} {race.name}
-                    {playerRaces.length > 1 && ` (${race.games})`}
-                  </Badge>
-                </Tooltip>
-              ))}
-            </Wrap>
-          )}
 
           {/* New Player Indicator */}
           {player.total_games !== undefined && player.total_games < 5 && (
@@ -270,33 +233,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
             </Badge>
           )}
 
-          {/* Win Rate Bar (optional, if available) */}
-          {player.win_rate !== undefined && player.total_games !== undefined && player.total_games >= 5 && (
-            <Box width="100%" mt={1}>
-              <HStack spacing={1} fontSize="xs" color="gray.500" mb={1}>
-                <Text>Win Rate</Text>
-                <Text fontWeight="bold" color={player.win_rate >= 0.5 ? 'shield.400' : 'gray.400'}>
-                  {(player.win_rate * 100).toFixed(0)}%
-                </Text>
-              </HStack>
-              <Box
-                width="100%"
-                height="3px"
-                bg="whiteAlpha.200"
-                borderRadius="full"
-                overflow="hidden"
-              >
-                <Box
-                  width={`${player.win_rate * 100}%`}
-                  height="100%"
-                  bg={player.win_rate >= 0.5 ? 'shield.500' : 'gray.500'}
-                  borderRadius="full"
-                  transition="width 0.3s"
-                  boxShadow={player.win_rate >= 0.5 ? '0 0 8px rgba(0, 255, 136, 0.5)' : 'none'}
-                />
-              </Box>
-            </Box>
-          )}
+
         </VStack>
       </VStack>
     </Box>

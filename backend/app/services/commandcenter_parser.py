@@ -846,6 +846,90 @@ class CommandCenterParser:
         return collector.results
 
 
+# The SC2 engine subprocess can hang indefinitely (observed directly:
+# "Waiting for connection..." after the engine itself printed a fatal
+# error and died) instead of returning from coordinator.update(). The
+# existing `timeout` kwarg on CommandCenterParser.parse_replay only checks
+# elapsed time *between* update() calls, so it never fires if a single
+# update() call blocks forever. Isolating the parse in a child process lets
+# us SIGKILL it from outside when that happens, instead of hanging whatever
+# thread called us (the replay-folder watcher, or a background upload task)
+# forever and leaking a zombie SC2 process every time.
+_ISOLATED_PARSE_HARD_TIMEOUT_SECONDS = 180
+
+
+def _isolated_parse_worker(
+    replay_path: str, num_players: int, timeout: int, result_queue: Any
+) -> None:
+    """Runs in a child process. Do not call directly."""
+    try:
+        parser = get_commandcenter_parser(auto_download=False)
+        if parser is None:
+            result_queue.put(("unavailable", None))
+            return
+        results = parser.parse_replay(replay_path, num_players=num_players, timeout=timeout)
+        result_queue.put(("ok", results))
+    except Exception as e:  # noqa: BLE001 - must not let the child crash silently
+        result_queue.put(("error", str(e)))
+
+
+def parse_replay_isolated(
+    replay_path: str,
+    num_players: int,
+    hard_timeout: int = _ISOLATED_PARSE_HARD_TIMEOUT_SECONDS,
+) -> Optional[Dict[int, Dict[str, Any]]]:
+    """
+    Parse a replay with PyCommandCenter in a child process with a hard
+    wall-clock timeout, so a hung or crashed SC2 engine can be killed from
+    outside instead of freezing the caller forever.
+
+    Returns None on any failure (unavailable, timeout, crash, exception) —
+    this is a best-effort high-fidelity enrichment, not a required step, so
+    callers should fall back to sc2reader-based metrics rather than raise.
+    """
+    import multiprocessing
+
+    if not HAS_CC:
+        return None
+
+    ctx = multiprocessing.get_context("spawn")
+    result_queue: Any = ctx.Queue()
+    proc = ctx.Process(
+        target=_isolated_parse_worker,
+        args=(replay_path, num_players, max(hard_timeout - 20, 10), result_queue),
+    )
+    proc.start()
+    proc.join(timeout=hard_timeout)
+
+    if proc.is_alive():
+        logger.warning(
+            f"CommandCenter parse of {os.path.basename(replay_path)} exceeded "
+            f"{hard_timeout}s hard timeout; killing subprocess"
+        )
+        proc.terminate()
+        proc.join(5)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(5)
+        return None
+
+    if result_queue.empty():
+        logger.warning(
+            f"CommandCenter parse of {os.path.basename(replay_path)} produced no result "
+            f"(subprocess exit code: {proc.exitcode})"
+        )
+        return None
+
+    status, payload = result_queue.get()
+    if status == "unavailable":
+        logger.debug("CommandCenter parser unavailable in child process")
+        return None
+    if status == "error":
+        logger.warning(f"CommandCenter parse failed: {payload}")
+        return None
+    return cast(Dict[int, Dict[str, Any]], payload)
+
+
 def get_commandcenter_parser(
     auto_download: bool = True,
 ) -> Optional[CommandCenterParser]:

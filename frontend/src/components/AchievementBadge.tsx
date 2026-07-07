@@ -8,8 +8,10 @@ import {
   Text,
   Tooltip,
   VStack,
+  Icon,
   useColorModeValue,
 } from '@chakra-ui/react';
+import { FiLock } from 'react-icons/fi';
 import { keyframes } from '@emotion/react';
 import {
   type AchievementRarity,
@@ -307,7 +309,7 @@ const AchievementBadge: React.FC<AchievementBadgeProps> = ({
         zIndex={2}
         userSelect="none"
       >
-        {earned ? icon : '🔒'}
+        {earned ? icon : <Icon as={FiLock} color="gray.500" />}
       </Box>
 
       {/* Lock overlay for unearned */}

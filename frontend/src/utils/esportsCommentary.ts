@@ -33,16 +33,16 @@ const pickRandom = <T>(arr: T[], seed: number): T => {
 // ============================================================================
 
 const DAMAGE_INTROS = [
-  '💥 DEVASTATING!',
-  '🔥 EXPLOSIVE!',
-  '⚡ ELECTRIFYING!',
-  '💀 BRUTAL!',
-  '🎯 SURGICAL!',
-  ' RELENTLESS!',
-  '🌋 ERUPTION!',
-  '🚀 OBLITERATION!',
-  '💣 CARNAGE!',
-  '⭐ DOMINANT!',
+  'DEVASTATING!',
+  'EXPLOSIVE!',
+  'ELECTRIFYING!',
+  'BRUTAL!',
+  'SURGICAL!',
+  'RELENTLESS!',
+  'ERUPTION!',
+  'OBLITERATION!',
+  'CARNAGE!',
+  'DOMINANT!',
 ];
 
 const DAMAGE_VERBS = [
@@ -77,7 +77,7 @@ const DAMAGE_OBJECTS = [
 ];
 
 const DAMAGE_HIGH_RATIO_PHRASES = [
-  'Trading like a BOSS! 🏆',
+  'Trading like a BOSS!',
   'Flawless army control!',
   'Absolutely SURGICAL efficiency!',
   "That's how you trade armies!",
@@ -142,7 +142,7 @@ export const generateDamageCommentary = (
   }
 
   const damageFormatted = damageDealt.toLocaleString();
-  const ratioFormatted = damageRatio >= 100 ? '∞' : damageRatio.toFixed(1);
+  const ratioFormatted = damageRatio >= 100 ? '∞': damageRatio.toFixed(1);
 
   return `${intro} ${playerName} ${verb} ${damageFormatted} ${object}! ${ratioFormatted}:1 ratio. ${ratioComment}`;
 };
@@ -152,16 +152,16 @@ export const generateDamageCommentary = (
 // ============================================================================
 
 const WIN_OPENERS = [
-  '🏆 VICTORY!',
-  '👑 CHAMPIONS!',
-  '🎉 WINNERS!',
-  '✨ TRIUMPHANT!',
-  '🥇 CONQUERED!',
-  '🔥 DOMINANT!',
-  '⚡ ELECTRIC WIN!',
-  '💪 CRUSHING IT!',
-  '🌟 STELLAR!',
-  '🚀 UNSTOPPABLE!',
+  'VICTORY!',
+  'CHAMPIONS!',
+  'WINNERS!',
+  'TRIUMPHANT!',
+  'CONQUERED!',
+  'DOMINANT!',
+  'ELECTRIC WIN!',
+  'CRUSHING IT!',
+  'STELLAR!',
+  'UNSTOPPABLE!',
 ];
 
 const WIN_PHRASES = [
@@ -183,11 +183,11 @@ const WIN_PHRASES = [
 ];
 
 const LOSS_OPENERS = [
-  '💔 DEFEAT...',
-  '😤 SO CLOSE!',
-  '🥊 BATTLED HARD!',
-  ' FOUGHT VALIANTLY!',
-  '🎯 ALMOST HAD IT!',
+  'DEFEAT...',
+  'SO CLOSE!',
+  'BATTLED HARD!',
+  'FOUGHT VALIANTLY!',
+  'ALMOST HAD IT!',
 ];
 
 const LOSS_PHRASES = [
@@ -226,32 +226,32 @@ export const generateWinLossCommentary = (
 // ============================================================================
 
 const ECONOMY_HIGH_PHRASES = [
-  '💰 BANK rolling! Economic POWERHOUSE!',
-  '📈 Money printer going BRRR!',
-  '🏦 The economy is BOOMING!',
-  '💎 Mining like there\'s no tomorrow!',
-  '🤑 Economic MASTERMIND at work!',
-  '💵 Showing how to MACRO like a pro!',
-  '🏭 Production facilities MAXED OUT!',
-  '⛏️ Resource collection ELITE tier!',
-  '💲 Making BANK every second!',
-  '🌟 Economic fundamentals ON POINT!',
+  'BANK rolling! Economic POWERHOUSE!',
+  'Money printer going BRRR!',
+  'The economy is BOOMING!',
+  'Mining like there\'s no tomorrow!',
+  'Economic MASTERMIND at work!',
+  'Showing how to MACRO like a pro!',
+  'Production facilities MAXED OUT!',
+  'Resource collection ELITE tier!',
+  'Making BANK every second!',
+  'Economic fundamentals ON POINT!',
 ];
 
 const ECONOMY_MEDIUM_PHRASES = [
-  '💰 Solid economic foundation!',
-  '📊 Steady resource flow!',
-  '🔧 Keeping the economy ticking!',
-  '⚙️ Production humming along nicely!',
-  '💵 Smart resource management!',
+  'Solid economic foundation!',
+  'Steady resource flow!',
+  'Keeping the economy ticking!',
+  'Production humming along nicely!',
+  'Smart resource management!',
 ];
 
 const ECONOMY_LOW_PHRASES = [
-  ' Prioritized aggression over economy!',
-  '🎯 All-in mentality!',
-  '💥 Fighting over farming!',
-  '🔥 Aggro style, low macro!',
-  '⚡ Speed over greed!',
+  'Prioritized aggression over economy!',
+  'All-in mentality!',
+  'Fighting over farming!',
+  'Aggro style, low macro!',
+  'Speed over greed!',
 ];
 
 export const generateEconomyCommentary = (
@@ -280,16 +280,16 @@ export const generateEconomyCommentary = (
 // ============================================================================
 
 const MVP_INTROS = [
-  '🌟 MVP ALERT!',
-  '👑 THE CARRY!',
-  '🏆 STAR PLAYER!',
-  '⭐ SPOTLIGHT ON:',
-  '🔥 MATCH HERO:',
-  '💎 DIAMOND PERFORMANCE!',
-  '🚀 GAME CHANGER:',
-  '⚡ ELECTRIC PLAYER:',
-  '🎯 CLUTCH PERFORMER:',
-  '💪 THE DIFFERENCE MAKER:',
+  'MVP ALERT!',
+  'THE CARRY!',
+  'STAR PLAYER!',
+  'SPOTLIGHT ON:',
+  'MATCH HERO:',
+  'DIAMOND PERFORMANCE!',
+  'GAME CHANGER:',
+  'ELECTRIC PLAYER:',
+  'CLUTCH PERFORMER:',
+  'THE DIFFERENCE MAKER:',
 ];
 
 const MVP_DESCRIPTIONS = [
@@ -328,27 +328,27 @@ export const generateMVPCommentary = (
 // ============================================================================
 
 const QUICK_MATCH_PHRASES = [
-  '⚡ LIGHTNING FAST! This one was over before it started!',
-  '🚀 SPEEDRUN! A decisive early victory!',
-  '💨 BLITZ! They came, they saw, they conquered!',
-  '⏱️ QUICK WORK! Efficiency at its finest!',
-  '🎯 SURGICAL STRIKE! Clean and fast!',
+  'LIGHTNING FAST! This one was over before it started!',
+  'SPEEDRUN! A decisive early victory!',
+  'BLITZ! They came, they saw, they conquered!',
+  '⏱ QUICK WORK! Efficiency at its finest!',
+  'SURGICAL STRIKE! Clean and fast!',
 ];
 
 const LONG_MATCH_PHRASES = [
-  ' EPIC BATTLE! An absolute war of attrition!',
-  '🏰 SIEGE WARFARE! Both teams dug in deep!',
-  '💪 MARATHON! A true test of endurance!',
-  '🔥 GRUELING! Every advantage was fought for!',
-  '⭐ LEGENDARY! One for the history books!',
+  'EPIC BATTLE! An absolute war of attrition!',
+  'SIEGE WARFARE! Both teams dug in deep!',
+  'MARATHON! A true test of endurance!',
+  'GRUELING! Every advantage was fought for!',
+  'LEGENDARY! One for the history books!',
 ];
 
 const NORMAL_MATCH_PHRASES = [
-  '🎮 SOLID MATCH! Good plays on both sides!',
-  ' COMPETITIVE! Teams went back and forth!',
-  '🎯 WELL PLAYED! Clean execution throughout!',
-  '💥 ACTION-PACKED! Plenty of excitement!',
-  '🔥 ENGAGING! A game worth watching!',
+  'SOLID MATCH! Good plays on both sides!',
+  'COMPETITIVE! Teams went back and forth!',
+  'WELL PLAYED! Clean execution throughout!',
+  'ACTION-PACKED! Plenty of excitement!',
+  'ENGAGING! A game worth watching!',
 ];
 
 export const generateMatchOverview = (
@@ -379,16 +379,16 @@ export const generateMatchOverview = (
 // ============================================================================
 
 const UPSET_PHRASES = [
-  '🤯 UPSET ALERT! The underdogs did it!',
-  '😱 WHAT A SHOCKER! Nobody saw this coming!',
-  '🔥 AGAINST ALL ODDS! Incredible upset!',
-  '💪 NEVER COUNT THEM OUT! Massive upset!',
-  '⚡ CINDERELLA STORY! They pulled it off!',
-  '🎯 CLUTCH FACTOR! When it mattered most!',
-  '👑 GIANT SLAYERS! They took down the favorites!',
-  '🚀 BRACKET BUSTERS! Predictions in shambles!',
-  '💎 BELIEF WINS! They wanted it more!',
-  '⭐ MAGIC HAPPENS! The underdog prevails!',
+  'UPSET ALERT! The underdogs did it!',
+  'WHAT A SHOCKER! Nobody saw this coming!',
+  'AGAINST ALL ODDS! Incredible upset!',
+  'NEVER COUNT THEM OUT! Massive upset!',
+  'CINDERELLA STORY! They pulled it off!',
+  'CLUTCH FACTOR! When it mattered most!',
+  'GIANT SLAYERS! They took down the favorites!',
+  'BRACKET BUSTERS! Predictions in shambles!',
+  'BELIEF WINS! They wanted it more!',
+  'MAGIC HAPPENS! The underdog prevails!',
 ];
 
 export const generateUpsetCommentary = (
@@ -438,14 +438,14 @@ export const generatePlayerHighlight = (
   if (highlights.length === 0) {
     // Fallback generic highlight
     const GENERIC_HIGHLIGHTS = [
-      ` ${stats.name} brought the heat this match!`,
-      `🎮 ${stats.name} showed up and showed out!`,
-      `💪 ${stats.name} put in WORK today!`,
-      `🔥 ${stats.name} was in the mix all game!`,
-      `⚡ ${stats.name} made their presence felt!`,
-      `🎯 ${stats.name} contributed to the cause!`,
-      `💥 ${stats.name} was active on the battlefield!`,
-      `⭐ ${stats.name} played their role well!`,
+      `${stats.name} brought the heat this match!`,
+      `${stats.name} showed up and showed out!`,
+      `${stats.name} put in WORK today!`,
+      `${stats.name} was in the mix all game!`,
+      `${stats.name} made their presence felt!`,
+      `${stats.name} contributed to the cause!`,
+      `${stats.name} was active on the battlefield!`,
+      `${stats.name} played their role well!`,
     ];
     return pickRandom(GENERIC_HIGHLIGHTS, seed);
   }

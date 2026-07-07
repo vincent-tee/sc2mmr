@@ -18,17 +18,19 @@ import {
   InputGroup,
   InputLeftElement,
   Skeleton,
-  Tooltip,
   Tabs,
   TabList,
   TabPanels,
   Tab,
   TabPanel,
+  useColorModeValue,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
 import { FiSearch, FiClock, FiAward, FiStar, FiActivity } from 'react-icons/fi';
 import { achievementsApi } from '../api/achievements';
+import PageHeader from '../components/PageHeader';
+import AchievementBadge from '../components/AchievementBadge';
 import {
   Achievement,
   AchievementRarity,
@@ -36,23 +38,16 @@ import {
   RARITY_COLORS,
   CATEGORY_INFO,
   getRarityLabel,
-  getCategoryInfo,
   RecentAchievementEntry,
 } from '../types/achievements';
 
 // Design tokens
 const cardBg = 'space.800';
 const borderColor = 'space.900';
-const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
 // =============================================================================
 // Animations
 // =============================================================================
-
-const rarityGlow = keyframes`
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-`;
 
 const slideIn = keyframes`
   from { opacity: 0; transform: translateY(10px); }
@@ -68,86 +63,31 @@ interface AchievementCardProps {
   index: number;
 }
 
-const AchievementCard: React.FC<AchievementCardProps> = React.memo(({ achievement, index }) => {
-  const rarityColors = RARITY_COLORS[achievement.rarity];
-  const categoryInfo = getCategoryInfo(achievement.category);
-
-  return (
-    <Tooltip
-      label={
-        <Box p={2}>
-          <Text fontWeight="bold" fontFamily="heading">{achievement.name}</Text>
-          <Text fontSize="sm" color="gray.300">{achievement.description}</Text>
-          {achievement.flavor_text && (
-            <Text fontSize="xs" color="gray.400" fontStyle="italic" mt={1}>
-              "{achievement.flavor_text}"
-            </Text>
-          )}
-          <HStack mt={2} spacing={2}>
-            <Badge colorScheme="purple">{getRarityLabel(achievement.rarity)}</Badge>
-            <Badge colorScheme="blue">{achievement.points} pts</Badge>
-          </HStack>
-        </Box>
-      }
-      placement="top"
-      hasArrow
-      bg="space.700"
-      borderRadius="md"
-    >
-      <Box
-        bg="space.800"
-        borderRadius="xl"
-        border="3px solid"
-        borderColor={rarityColors.border}
-        p={4}
-        position="relative"
-        overflow="hidden"
-        cursor="pointer"
-        transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
-        animation={`${slideIn} 0.3s ease-out ${index * 0.05}s both`}
-        _hover={{
-          transform: 'translateY(-4px)',
-          boxShadow: brandShadow,
-        }}
-      >
-        {/* Icon */}
-        <Flex
-          justify="center"
-          align="center"
-          w="60px"
-          h="60px"
-          mx="auto"
-          mb={3}
-          bg={rarityColors.bg}
-          borderRadius="xl"
-          boxShadow={rarityColors.glow}
-        >
-          <Text fontSize="2xl">{achievement.icon || '🎖️'}</Text>
-        </Flex>
-
-        {/* Name */}
-        <Text
-          fontWeight="bold"
-          fontSize="sm"
-          color={rarityColors.text}
-          textAlign="center"
-          noOfLines={2}
-          fontFamily="heading"
-        >
-          {achievement.name}
-        </Text>
-
-        {/* Category & Points */}
-        <HStack justify="center" mt={2} spacing={1}>
-          <Text fontSize="xs">{categoryInfo.icon}</Text>
-          <Text fontSize="xs" color="gray.500">
-            {achievement.points} pts
-          </Text>
-        </HStack>
-      </Box>
-    </Tooltip>
-  );
-});
+// Thin wrapper around the shared AchievementBadge component (single source of
+// truth for achievement badge rendering - see also PlayerDetail.tsx). This
+// catalog view has no per-player earned/unearned state, so every badge is
+// rendered in its "earned" (full color) form; the staggered entrance
+// animation is kept by applying it to the wrapping Box.
+const AchievementCard: React.FC<AchievementCardProps> = React.memo(({ achievement, index }) => (
+  <Box
+    display="flex"
+    justifyContent="center"
+    animation={`${slideIn} 0.3s ease-out ${index * 0.05}s both`}
+  >
+    <AchievementBadge
+      code={achievement.code}
+      name={achievement.name}
+      description={achievement.description}
+      flavor_text={achievement.flavor_text}
+      icon={achievement.icon || '🎖️'}
+      rarity={achievement.rarity}
+      category={achievement.category}
+      points={achievement.points}
+      earned
+      size="md"
+    />
+  </Box>
+));
 
 AchievementCard.displayName = 'AchievementCard';
 
@@ -274,23 +214,15 @@ const Achievements: React.FC = () => {
   const rarities: AchievementRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
 
   return (
-    <Box bg="space.900" minH="100vh" py={8}>
-      <Container maxW="container.xl">
+    <Box minH="100vh" pb={16}>
+      <PageHeader
+        kicker="Trophy Case"
+        title="[Achievements]"
+        description="Badges of honor, shame, and everything in between."
+        stats={[{ label: 'achievements to earn', value: achievements?.length || 0 }]}
+      />
+      <Container maxW="container.xl" pt={8}>
         <VStack spacing={8} align="stretch">
-          {/* Header */}
-          <Box textAlign="center">
-            <Heading
-              size="2xl"
-              fontFamily="heading"
-              color="brand.400"
-              letterSpacing="wider"
-            >
-              🎖️ Achievements
-            </Heading>
-            <Text color="gray.500" mt={2}>
-              {achievements?.length || 0} achievements to earn
-            </Text>
-          </Box>
 
           <Tabs variant="soft-rounded" colorScheme="brand">
             <TabList justifyContent="center">

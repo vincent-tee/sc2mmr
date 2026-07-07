@@ -31,6 +31,7 @@ import {
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import { useQueryClient } from '@tanstack/react-query';
 import { replaysApi } from '../api/endpoints';
+import PageHeader from '../components/PageHeader';
 import type { ApiClientError } from '../api/client';
 import { useToast } from '../hooks/useToast';
 import { parseErrorMessage } from '../utils/formatting';
@@ -270,25 +271,14 @@ const UploadReplays: React.FC = () => {
   const hasFiles = files.length > 0;
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Box minH="100vh" pb={16}>
+      <PageHeader
+        kicker="Fresh Data"
+        title="Upload [Replays]"
+        description="Drag and drop your StarCraft II replay files or folders — ratings update automatically."
+      />
+      <Container maxW="container.xl" pt={8}>
       <VStack spacing={8} align="stretch">
-        {/* Header */}
-        <Box textAlign="center">
-          <Heading
-            size="2xl"
-            fontFamily="heading"
-            fontWeight="bold"
-            letterSpacing="wider"
-            mb={3}
-            color="brand.400"
-          >
-            <Text as="span" className="emoji-font">📤</Text> Upload Replays
-          </Heading>
-          <Text fontSize="lg" color="gray.500">
-            Drag and drop your StarCraft 2 replay files or folders
-          </Text>
-        </Box>
-
         {/* Main Upload Area */}
         {(!hasFiles || !isUploading) && (
           <Box
@@ -448,7 +438,8 @@ const UploadReplays: React.FC = () => {
           </Box>
         )}
       </VStack>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 

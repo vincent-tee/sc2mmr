@@ -9,6 +9,10 @@ alembic==1.12.1
 
 # SC2 Replay parsing
 sc2reader==1.8.0
+# Patch-resilience fallback: s2protocol ships a new protocol module with
+# every game patch, so it can often decode a replay sc2reader can't yet.
+s2protocol>=5.0.16
+mpyq>=0.2.5
 
 # Rating system
 trueskill==0.4.5

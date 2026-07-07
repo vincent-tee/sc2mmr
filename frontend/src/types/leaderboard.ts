@@ -1,9 +1,14 @@
 /**
  * Leaderboard Type Definitions for SC2 MMR Tracker
  *
- * These types match the backend Pydantic models in:
- * - backend/app/api/leaderboard.py
+ * Streamlined to 5 core categories:
+ * - MMR (display MMR, the rating of record: 1000 + 100*mu - 200*sigma)
+ * - Combat (in-game contribution)
+ * - Win Rate (fundamental stat)
+ * - Win Streak (engagement/fun)
+ * - Duos (partnership rankings)
  */
+import { formatDuration } from '@/utils/formatting';
 
 // =============================================================================
 // Leaderboard Entry Types
@@ -17,6 +22,13 @@ export interface LeaderboardEntry {
   value: number;
   secondary_value?: number;
   extra_info?: string;
+  is_new?: boolean;
+  is_active?: boolean;
+  days_since_played?: number | null;
+  // recent-form only: real fields instead of parsing extra_info text.
+  // secondary_value doubles as win rate % for this category.
+  games_played?: number | null;
+  form_icon?: string | null;
 }
 
 /** Duo leaderboard entry for partnership rankings */
@@ -38,15 +50,23 @@ export interface DuoLeaderboardEntry {
 
 export type LeaderboardCategoryKey =
   | 'mmr'
-  | 'trueskill'
-  | 'hybrid'
+  | 'recent-form'
+  | 'combat'
   | 'winrate'
-  | 'games'
-  | 'achievements'
-  | 'damage'
-  | 'kills'
   | 'winstreak'
-  | 'duos';
+  | 'longest-matches'
+  | 'duos'
+  | 'trios';
+
+export interface TrioLeaderboardEntry {
+  rank: number;
+  player_ids: number[];
+  player_names: string[];
+  wins_together: number;
+  games_together: number;
+  win_rate: number;
+  synergy_score: number;
+}
 
 export interface LeaderboardCategory {
   key: LeaderboardCategoryKey;
@@ -56,21 +76,28 @@ export interface LeaderboardCategory {
   icon: string;
 }
 
-/** All available leaderboard categories */
+/** Streamlined leaderboard categories - 6 core boards */
 export const LEADERBOARD_CATEGORIES: LeaderboardCategory[] = [
   {
     key: 'mmr',
-    name: 'Squad MMR',
-    description: 'Recency-weighted skill rating (Primary)',
+    name: 'MMR',
+    description: 'Overall skill rating (TrueSkill-based MMR)',
     unit: 'MMR',
     icon: '🏆',
   },
   {
-    key: 'trueskill',
-    name: 'TrueSkill',
-    description: 'Pure mathematical skill rating (Stable)',
+    key: 'recent-form',
+    name: 'Recent Form',
+    description: "Performance weighted by the squad's last 30 matches - you only appear if you played in at least one",
     unit: 'MMR',
-    icon: '🔢',
+    icon: '📊',
+  },
+  {
+    key: 'combat',
+    name: 'Combat',
+    description: 'Damage dealers and unit killers',
+    unit: 'score',
+    icon: '⚔️',
   },
   {
     key: 'winrate',
@@ -80,53 +107,32 @@ export const LEADERBOARD_CATEGORIES: LeaderboardCategory[] = [
     icon: '📈',
   },
   {
-    key: 'games',
-    name: 'Most Games',
-    description: 'Total matches played',
-    unit: 'games',
-    icon: '🎮',
-  },
-  {
-    key: 'achievements',
-    name: 'Achievements',
-    description: 'Total achievement points earned',
-    unit: 'pts',
-    icon: '🎖️',
-  },
-  {
-    key: 'damage',
-    name: 'Damage',
-    description: 'Highest average damage per game',
-    unit: 'dmg',
-    icon: '💪',
-  },
-  {
-    key: 'kills',
-    name: 'Kills',
-    description: 'Most units killed on average',
-    unit: 'kills',
-    icon: '💀',
-  },
-  {
     key: 'winstreak',
-    name: 'Streaks',
-    description: 'Longest winning streak ever',
-    unit: 'games',
+    name: 'Hot Streak',
+    description: 'Longest winning streak',
+    unit: 'wins',
     icon: '🔥',
   },
   {
-    key: 'hybrid',
-    name: 'Hybrid (Alpha)',
-    description: 'Performance-adjusted skill rating',
-    unit: 'MMR',
-    icon: '🧪',
+    key: 'longest-matches',
+    name: 'Marathon Games',
+    description: "Each player's own longest single match",
+    unit: 'time',
+    icon: '⏱️',
   },
   {
     key: 'duos',
-    name: 'Duos (Alpha)',
-    description: 'Most successful partner combinations',
+    name: 'Best Duos',
+    description: 'Most successful partnerships',
     unit: 'wins',
-    icon: '🤝',
+    icon: '👥',
+  },
+  {
+    key: 'trios',
+    name: 'Best Trios',
+    description: 'Most successful trios',
+    unit: 'wins',
+    icon: '👨‍👩‍👦',
   },
 ];
 
@@ -143,24 +149,16 @@ export function getLeaderboardCategory(key: LeaderboardCategoryKey): Leaderboard
 export function formatLeaderboardValue(value: number, category: LeaderboardCategoryKey): string {
   switch (category) {
     case 'mmr':
-    case 'trueskill':
-    case 'hybrid':
+    case 'recent-form':
       return Math.round(value).toLocaleString();
     case 'winrate':
       return `${value.toFixed(1)}%`;
-    case 'games':
     case 'winstreak':
       return value.toLocaleString();
-    case 'achievements':
-      return `${value.toLocaleString()} pts`;
-    case 'damage':
-      return value >= 1000
-        ? `${(value / 1000).toFixed(1)}k`
-        : Math.round(value).toString();
-    case 'kills':
-      return Math.round(value).toLocaleString();
-    case 'duos':
-      return value.toLocaleString();
+    case 'longest-matches':
+      return formatDuration(value);
+    case 'combat':
+      return value.toFixed(1);
     default:
       return value.toString();
   }

@@ -98,7 +98,7 @@ class MLFeaturesService:
 
             # Step 4: Calculate and save ML predictions (Win Prob & SHAP)
             try:
-                MLFeaturesService._calculate_and_save_predictions(db, match_id)
+                MLFeaturesService.calculate_and_save_predictions(db, match_id)
             except Exception as e:
                 logger.warning(f"Failed to calculate ML predictions: {e}")
 
@@ -316,7 +316,7 @@ class MLFeaturesService:
         )
 
     @staticmethod
-    def _calculate_and_save_predictions(db: Session, match_id: int) -> None:
+    def calculate_and_save_predictions(db: Session, match_id: int) -> None:
         """Calculate and save ML win probability and SHAP values."""
         try:
             from .ml_predictor import get_ml_predictor

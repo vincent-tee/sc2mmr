@@ -13,10 +13,6 @@ from ..models import GameMode, Race
 class PlayerMatchResult:
     """
     Detailed performance metrics for a single player's participation in a match.
-
-    This dataclass standardizes the output from both basic and advanced parsers,
-    providing a consistent interface for rating calculations, ML feature extraction,
-    and database storage.
     """
 
     name: str
@@ -49,15 +45,26 @@ class PlayerMatchResult:
     first_damage_timing: Optional[int] = None
     bases_created: int = 1
 
-    # Mechanics
+    # Mechanics & Performance
     apm: float = 0.0
+    supply_block_seconds: int = 0
+    lethality_score: float = 0.0
+    workers_killed: int = 0
+    early_workers_killed: int = 0
+    mid_workers_killed: int = 0
+    workers_lost: int = 0
+    early_workers_lost: int = 0
+    early_worker_losses: int = 0
+    kill_death_ratio: float = 1.0
+    player_archetype: str = "Tactical Balanced"
+    harassment_response_score: float = 0.0
+    detected_build_type: str = "unknown"
 
     # Composition & Timeline
     unit_composition: Dict[str, int] = field(default_factory=dict)
-    # damage_timeline stores second -> damage_dealt mapping
     damage_timeline: Dict[int, int] = field(default_factory=dict)
 
-    # Impact Scores (often calculated post-parsing)
+    # Impact Scores
     economic_score: float = 0.0
     combat_score: float = 0.0
     efficiency_score: float = 0.0
@@ -68,21 +75,13 @@ class PlayerMatchResult:
     team_fight_damage: int = 0
     team_fight_damage_ratio: float = 0.0
 
-    # ML Features (Phase 2 & Phase 4)
-    # build_order stores list of {second, unit_type, supply, is_building, is_worker}
+    # ML Features
     build_order: List[Dict[str, Any]] = field(default_factory=list)
     build_order_hash: str = ""
-    # upgrades stores list of {second, upgrade_name, category}
     upgrades: List[Dict[str, Any]] = field(default_factory=list)
     ability_usage: Dict[str, int] = field(default_factory=dict)
 
-    # Macro/Harassment metrics
-    supply_block_seconds: int = 0
-    early_worker_losses: int = 0
-    harassment_response_score: float = 0.0
-    detected_build_type: str = "unknown"
-
-    # Timing analysis metrics (added for ImpactService compatibility)
+    # Timing analysis metrics
     early_game_damage: int = 0
     mid_game_damage: int = 0
     late_game_damage: int = 0
@@ -93,9 +92,6 @@ class PlayerMatchResult:
 class ProcessedMatchResult:
     """
     Standardized container for a fully parsed match.
-
-    This is the primary object passed from replay parsing services to
-    match orchestration and database services.
     """
 
     played_at: datetime
@@ -105,19 +101,17 @@ class ProcessedMatchResult:
     replay_hash: str
     players: List[PlayerMatchResult]
     replay_file_path: Optional[str] = None
+    game_fingerprint: Optional[str] = None  # Identifies same game from different observers
 
     @property
     def winners(self) -> List[PlayerMatchResult]:
-        """Return list of players who won."""
         return [p for p in self.players if p.won]
 
     @property
     def losers(self) -> List[PlayerMatchResult]:
-        """Return list of players who lost."""
         return [p for p in self.players if not p.won]
 
     def get_player(self, name: str) -> Optional[PlayerMatchResult]:
-        """Find a player by name."""
         for p in self.players:
             if p.name == name:
                 return p

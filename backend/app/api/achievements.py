@@ -49,7 +49,7 @@ class PlayerAchievementsResponse(BaseModel):
     player_name: str
     total_achievements: int
     total_points: int
-    achievements: List[AchievementResponse]
+    awarded: List[AchievementResponse]
     available_achievements: Optional[List[dict]] = None
 
 
@@ -118,7 +118,7 @@ async def get_player_achievements(
         "player_name": player.name,
         "total_achievements": len(achievements),
         "total_points": total_points,
-        "achievements": achievements,
+        "awarded": achievements,
     }
 
     if include_available:

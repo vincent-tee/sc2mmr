@@ -1,37 +1,38 @@
-"""
-Team balancing algorithm to create fair matches.
-
-The balancer uses TrueSkill ratings to create balanced teams by:
-1. Calculating all possible team combinations
-2. Predicting match quality for each combination
-3. Ranking by balance fairness
-"""
-
 from typing import List, Dict, Tuple, Optional, Any, cast
 from itertools import combinations
 from dataclasses import dataclass
-import trueskill  # type: ignore
+import trueskill
 from sqlalchemy.orm import Session
-
 from .models import Player
 
 
 @dataclass
 class PlayerInfo:
-    """Player information for balancing."""
-
     id: int
     name: str
     mu: float
     sigma: float
-    mmr: float  # Conservative rating: mu - 3*sigma
-    overall_impact: float  # Average overall impact score
+    mmr: float
+    overall_impact: float
     total_games: int
-    aggression_score: float = 50.0  # 0-100, higher = more aggressive playstyle
+    aggression_score: float = 50.0
+    avg_first_damage_timing: float = 300.0
+    avg_combat_score: float = 25.0
+    economic_score: float = 60.0
+    efficiency_score: float = 55.0
+    timing_adjusted_mmr: float = 0.0
+    handicap_corrected_mmr: float = 0.0
+    unified_mmr: float = 0.0
 
     @classmethod
     def from_player(cls, player: Player) -> "PlayerInfo":
-        """Create PlayerInfo from Player model."""
+        avg_fdt = player.avg_first_damage_timing or 300
+        avg_combat = player.avg_combat_score or 25
+        timing_bonus = (300 - avg_fdt) / 60 * 100
+        timing_adjusted = player.mmr + timing_bonus
+        handicap_corrected = player.handicap_corrected_mmr or player.mmr
+        unified = player.unified_mmr or handicap_corrected
+
         return cls(
             id=player.id,
             name=player.name,
@@ -41,37 +42,56 @@ class PlayerInfo:
             overall_impact=player.avg_overall_impact or 50.0,
             total_games=player.total_games,
             aggression_score=player.avg_aggression_score or 50.0,
+            avg_first_damage_timing=avg_fdt,
+            avg_combat_score=avg_combat,
+            economic_score=player.avg_economic_score or 60.0,
+            efficiency_score=player.avg_efficiency_score or 55.0,
+            timing_adjusted_mmr=timing_adjusted,
+            handicap_corrected_mmr=handicap_corrected,
+            unified_mmr=unified,
         )
 
 
 @dataclass
 class TeamSuggestion:
-    """Suggested team composition."""
-
     team_1: List[PlayerInfo]
     team_2: List[PlayerInfo]
     team_1_mmr: float
     team_2_mmr: float
     mmr_difference: float
-    win_probability: float  # Probability team 1 wins
-    match_quality: float  # 0-1, higher is better balanced
+    win_probability: float
+    match_quality: float
     ml_win_probability: Optional[float] = None
-    team_1_avg_impact: float = 0.0  # Average impact score for team 1
-    team_2_avg_impact: float = 0.0  # Average impact score for team 2
-    impact_balance_score: float = (
-        1.0  # How evenly high/low impact players are distributed
-    )
-    playstyle_balance_score: float = 1.0  # How evenly aggression styles are distributed
+    team_1_avg_impact: float = 0.0
+    team_2_avg_impact: float = 0.0
+    impact_balance_score: float = 1.0
+    playstyle_balance_score: float = 1.0
+    total_synergy: float = 0.0
+    # Composite-objective breakdown (populated by all objectives; drives the
+    # sort only when objective="composite")
+    team_1_synergy: float = 0.0
+    team_2_synergy: float = 0.0
+    skill_spread_diff: float = 0.0
+    component_imbalance: float = 0.0
+    synergy_imbalance: float = 0.0
+    composite_score: float = 0.0
+
+
+# Composite objective weights. Positive terms reward, penalty terms subtract.
+# Overridable at runtime via MLConfig key "composite_balance_weights".
+DEFAULT_COMPOSITE_WEIGHTS: Dict[str, float] = {
+    "closeness": 0.45,  # predicted win prob near 50% (TrueSkill)
+    "quality": 0.25,  # TrueSkill match quality (uncertainty-aware)
+    "ml_closeness": 0.10,  # XGBoost predicted win prob near 50% (when trained)
+    "spread": 0.10,  # within-team MMR std-dev mismatch penalty
+    "components": 0.05,  # per-metric team-profile imbalance penalty
+    "synergy": 0.05,  # synergy imbalance penalty
+}
 
 
 class TeamBalancer:
-    """
-    Creates balanced team compositions using TrueSkill.
-    """
-
     @staticmethod
     def get_team_rating(players: List[PlayerInfo]) -> Tuple[float, float]:
-        """Calculate combined team rating."""
         team_mu = sum(p.mu for p in players)
         team_sigma = (sum(p.sigma**2 for p in players)) ** 0.5
         return team_mu, team_sigma
@@ -80,7 +100,6 @@ class TeamBalancer:
     def calculate_match_quality(
         team_1: List[PlayerInfo], team_2: List[PlayerInfo]
     ) -> float:
-        """Calculate TrueSkill match quality (0-1)."""
         team_1_ratings = [trueskill.Rating(mu=p.mu, sigma=p.sigma) for p in team_1]
         team_2_ratings = [trueskill.Rating(mu=p.mu, sigma=p.sigma) for p in team_2]
         return trueskill.quality([team_1_ratings, team_2_ratings])
@@ -89,23 +108,135 @@ class TeamBalancer:
     def calculate_win_probability(
         team_1: List[PlayerInfo], team_2: List[PlayerInfo]
     ) -> float:
-        """Calculate probability that team 1 wins."""
         team_1_mu, team_1_sigma = TeamBalancer.get_team_rating(team_1)
         team_2_mu, team_2_sigma = TeamBalancer.get_team_rating(team_2)
-
         delta_mu = team_1_mu - team_2_mu
-        sum_sigma = (team_1_sigma**2 + team_2_sigma**2) ** 0.5
-
+        # Include per-player performance variance (beta) alongside rating
+        # uncertainty — omitting it makes probabilities overconfident
+        # (backtest 2026-07-03: Brier 0.272 -> 0.239 on 614 matches).
+        n_players = len(team_1) + len(team_2)
+        denom = (
+            n_players * trueskill.BETA**2
+            + team_1_sigma**2
+            + team_2_sigma**2
+        ) ** 0.5
         from math import erf, sqrt
 
-        win_prob = 0.5 * (1 + erf(delta_mu / (sum_sigma * sqrt(2))))
+        win_prob = 0.5 * (1 + erf(delta_mu / (denom * sqrt(2))))
         return win_prob
+
+    @staticmethod
+    def snake_draft(
+        players: List[PlayerInfo], num_teams: int = 2
+    ) -> Dict[str, Any]:
+        """
+        POC: captain's-draft team construction, a different paradigm from
+        generate_team_suggestions (which exhaustively searches for the
+        mathematically closest split by MMR/composite score). This is a
+        transparent, explainable procedure - valued for that transparency
+        and its familiar pickup-game framing, not validated as producing
+        better-balanced teams than the exhaustive method. Do not present
+        its output as a proven improvement without the same rigor as any
+        other balance/rating claim in this project.
+
+        Ranks all players by display MMR; the top `num_teams` become
+        captains (one per team, highest MMR each). Remaining players are
+        drafted in snake order (pick order reverses each round: e.g. for
+        2 teams, 0,1,1,0,0,1,1,0,... ) with each captain greedily taking
+        the highest-remaining-MMR player. The reversal is what keeps this
+        roughly fair despite team 0 picking "first" - summed pick-rank
+        across teams stays close (verified: first 10 picks split 27/28
+        for a 2-team draft over a 10-player pool).
+        """
+        if num_teams < 2:
+            raise ValueError("Need at least 2 teams")
+        if len(players) < num_teams:
+            raise ValueError(f"Need at least {num_teams} players, got {len(players)}")
+
+        ranked = sorted(players, key=lambda p: p.mmr, reverse=True)
+        captains = ranked[:num_teams]
+        pool = ranked[num_teams:]
+
+        teams: List[List[PlayerInfo]] = [[c] for c in captains]
+        draft_log: List[Dict[str, Any]] = [
+            {"pick_number": i + 1, "team_index": i, "player": c, "role": "captain"}
+            for i, c in enumerate(captains)
+        ]
+
+        pick_number = num_teams
+        round_num = 0
+        while pool:
+            order = list(range(num_teams))
+            if round_num % 2 == 1:
+                order.reverse()
+            for team_idx in order:
+                if not pool:
+                    break
+                pick = pool.pop(0)
+                teams[team_idx].append(pick)
+                pick_number += 1
+                draft_log.append(
+                    {
+                        "pick_number": pick_number,
+                        "team_index": team_idx,
+                        "player": pick,
+                        "role": "pick",
+                    }
+                )
+            round_num += 1
+
+        return {"teams": teams, "draft_log": draft_log}
+
+    @staticmethod
+    def suggest_swaps(
+        team_1: List[PlayerInfo], team_2: List[PlayerInfo], top_n: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Given a FIXED split (from a manual draft, hand-picked teams, etc.),
+        suggest the best single-player swaps to improve balance. Uses the
+        same proven TrueSkill match-quality/win-probability scoring as the
+        exhaustive-search balancer (calculate_match_quality,
+        calculate_win_probability) - not the unproven ML predictor.
+
+        Evaluates every single-player swap between the two teams (cheap:
+        len(team_1) * len(team_2) evaluations) and ranks by improvement in
+        match quality. This is a LOCAL search (one swap at a time) around a
+        fixed starting point, not a claim that the result is globally
+        optimal - for that, use generate_team_suggestions instead, which
+        enumerates every possible split from scratch.
+        """
+        current_quality = TeamBalancer.calculate_match_quality(team_1, team_2)
+        current_win_prob = TeamBalancer.calculate_win_probability(team_1, team_2)
+
+        candidates = []
+        for i, p1 in enumerate(team_1):
+            for j, p2 in enumerate(team_2):
+                new_team_1 = team_1[:i] + [p2] + team_1[i + 1 :]
+                new_team_2 = team_2[:j] + [p1] + team_2[j + 1 :]
+                new_quality = TeamBalancer.calculate_match_quality(new_team_1, new_team_2)
+                new_win_prob = TeamBalancer.calculate_win_probability(new_team_1, new_team_2)
+                candidates.append(
+                    {
+                        "player_out_of_team_1": p1,
+                        "player_out_of_team_2": p2,
+                        "new_match_quality": new_quality,
+                        "new_win_probability": new_win_prob,
+                        "quality_delta": new_quality - current_quality,
+                    }
+                )
+
+        candidates.sort(key=lambda c: -c["quality_delta"])
+
+        return {
+            "current_match_quality": current_quality,
+            "current_win_probability": current_win_prob,
+            "suggestions": candidates[:top_n],
+        }
 
     @staticmethod
     def calculate_impact_balance_score(
         team_1: List[PlayerInfo], team_2: List[PlayerInfo]
     ) -> Tuple[float, float, float]:
-        """Calculate how evenly high-impact and low-impact players are distributed."""
         team_1_avg = (
             sum(p.overall_impact for p in team_1) / len(team_1) if team_1 else 0
         )
@@ -126,7 +257,6 @@ class TeamBalancer:
     def calculate_playstyle_balance(
         team_1: List[PlayerInfo], team_2: List[PlayerInfo]
     ) -> float:
-        """Calculate playstyle balance score."""
         team_1_aggression = (
             sum(p.aggression_score for p in team_1) / len(team_1) if team_1 else 50
         )
@@ -137,8 +267,100 @@ class TeamBalancer:
         return 1.0 - (aggression_diff / 100.0)
 
     @staticmethod
+    def calculate_skill_spread_diff(
+        team_1: List[PlayerInfo], team_2: List[PlayerInfo]
+    ) -> float:
+        """
+        Difference in within-team MMR standard deviation.
+
+        Two teams can have equal MMR sums while one pairs a smurf with a
+        beginner and the other is uniformly mid — this penalizes that.
+        """
+
+        def std(values: List[float]) -> float:
+            if len(values) < 2:
+                return 0.0
+            mean = sum(values) / len(values)
+            return (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
+
+        return abs(std([p.mmr for p in team_1]) - std([p.mmr for p in team_2]))
+
+    # (attribute, normalization scale) pairs for team-profile comparison
+    COMPONENT_SCALES = [
+        ("avg_combat_score", 25.0),
+        ("economic_score", 25.0),
+        ("efficiency_score", 25.0),
+        ("overall_impact", 25.0),
+        ("aggression_score", 100.0),
+    ]
+
+    @staticmethod
+    def calculate_component_imbalance(
+        team_1: List[PlayerInfo], team_2: List[PlayerInfo]
+    ) -> float:
+        """
+        Mean normalized difference between team profiles across performance
+        components (combat/economic/efficiency/impact/aggression), 0..1.
+
+        Balancing the vector, not just the scalar sum: equal-MMR teams where
+        one side has all the macro players still score poorly here.
+        """
+        diffs = []
+        for attr, scale in TeamBalancer.COMPONENT_SCALES:
+            t1_avg = sum(getattr(p, attr) for p in team_1) / len(team_1)
+            t2_avg = sum(getattr(p, attr) for p in team_2) / len(team_2)
+            diffs.append(min(abs(t1_avg - t2_avg) / scale, 1.0))
+        return sum(diffs) / len(diffs)
+
+    @staticmethod
+    def compute_composite_score(
+        win_probability: float,
+        match_quality: float,
+        skill_spread_diff: float,
+        component_imbalance: float,
+        synergy_imbalance: float,
+        weights: Optional[Dict[str, float]] = None,
+        ml_win_probability: Optional[float] = None,
+    ) -> float:
+        """
+        Composite balance objective in [0, 1], higher = better matchup.
+
+        Rewards a predicted win probability near 50% and high TrueSkill
+        quality (which accounts for rating uncertainty); penalizes skill
+        spread mismatch, team-profile imbalance, and one-sided synergy.
+        """
+        w = weights or DEFAULT_COMPOSITE_WEIGHTS
+
+        closeness = 1.0 - 2.0 * abs(win_probability - 0.5)
+
+        if ml_win_probability is not None:
+            ml_term = w["ml_closeness"] * (1.0 - 2.0 * abs(ml_win_probability - 0.5))
+            closeness_weight = w["closeness"]
+        else:
+            # No trained model: fold the ML weight into TrueSkill closeness
+            ml_term = 0.0
+            closeness_weight = w["closeness"] + w["ml_closeness"]
+
+        spread_penalty = min(skill_spread_diff / 400.0, 1.0)
+        synergy_penalty = min(synergy_imbalance / 40.0, 1.0)
+
+        score = (
+            closeness_weight * closeness
+            + w["quality"] * match_quality
+            + ml_term
+            - w["spread"] * spread_penalty
+            - w["components"] * component_imbalance
+            - w["synergy"] * synergy_penalty
+        )
+        return max(0.0, min(1.0, score))
+
+    @staticmethod
     def generate_team_suggestions(
-        players: List[PlayerInfo], top_n: int = 10
+        players: List[PlayerInfo],
+        top_n: int = 10,
+        synergy_data: Optional[Dict[str, float]] = None,
+        objective: str = "mmr",
+        composite_weights: Optional[Dict[str, float]] = None,
     ) -> List[TeamSuggestion]:
         num_players = len(players)
         if num_players < 2:
@@ -154,9 +376,13 @@ class TeamBalancer:
             team_1 = [players[i] for i in team_1_indices]
             team_2 = [players[i] for i in range(num_players) if i not in team_1_indices]
 
-            team_1_mmr = sum(p.mmr for p in team_1)
-            team_2_mmr = sum(p.mmr for p in team_2)
-            mmr_difference = abs(team_1_mmr - team_2_mmr)
+            # Rating of record (display MMR) — owner decision 2026-07-02,
+            # rating consolidation campaign Phase 5: team sums and the sort
+            # key below use display MMR, the measured best predictor.
+            team_1_rating = sum(p.mmr for p in team_1)
+            team_2_rating = sum(p.mmr for p in team_2)
+            rating_diff = abs(team_1_rating - team_2_rating)
+
             match_quality = TeamBalancer.calculate_match_quality(team_1, team_2)
             win_probability = TeamBalancer.calculate_win_probability(team_1, team_2)
             t1_impact, t2_impact, impact_balance = (
@@ -164,97 +390,280 @@ class TeamBalancer:
             )
             playstyle_balance = TeamBalancer.calculate_playstyle_balance(team_1, team_2)
 
+            team1_synergy = 0.0
+            team2_synergy = 0.0
+            if synergy_data:
+
+                def get_syn(p_ids):
+                    key = ",".join(map(str, sorted(p_ids)))
+                    return synergy_data.get(key, 0.0)
+
+                for pair in combinations([p.id for p in team_1], 2):
+                    team1_synergy += get_syn(pair)
+                for pair in combinations([p.id for p in team_2], 2):
+                    team2_synergy += get_syn(pair)
+
+                if len(team_1) >= 3:
+                    for trio in combinations([p.id for p in team_1], 3):
+                        team1_synergy += get_syn(trio)
+                if len(team_2) >= 3:
+                    for trio in combinations([p.id for p in team_2], 3):
+                        team2_synergy += get_syn(trio)
+
+            total_synergy = team1_synergy + team2_synergy
+            synergy_imbalance = abs(team1_synergy - team2_synergy)
+            balanced_synergy_score = total_synergy - synergy_imbalance
+
+            skill_spread_diff = TeamBalancer.calculate_skill_spread_diff(
+                team_1, team_2
+            )
+            component_imbalance = TeamBalancer.calculate_component_imbalance(
+                team_1, team_2
+            )
+            composite_score = TeamBalancer.compute_composite_score(
+                win_probability=win_probability,
+                match_quality=match_quality,
+                skill_spread_diff=skill_spread_diff,
+                component_imbalance=component_imbalance,
+                synergy_imbalance=synergy_imbalance,
+                weights=composite_weights,
+            )
+
             suggestions.append(
                 TeamSuggestion(
                     team_1=team_1,
                     team_2=team_2,
-                    team_1_mmr=team_1_mmr,
-                    team_2_mmr=team_2_mmr,
-                    mmr_difference=mmr_difference,
+                    team_1_mmr=team_1_rating,
+                    team_2_mmr=team_2_rating,
+                    mmr_difference=rating_diff,
                     win_probability=win_probability,
                     match_quality=match_quality,
                     team_1_avg_impact=t1_impact,
                     team_2_avg_impact=t2_impact,
                     impact_balance_score=impact_balance,
                     playstyle_balance_score=playstyle_balance,
+                    total_synergy=balanced_synergy_score,
+                    team_1_synergy=team1_synergy,
+                    team_2_synergy=team2_synergy,
+                    skill_spread_diff=skill_spread_diff,
+                    component_imbalance=component_imbalance,
+                    synergy_imbalance=synergy_imbalance,
+                    composite_score=composite_score,
                 )
             )
 
-        PLAYSTYLE_WEIGHT = 0.20
-        suggestions.sort(
-            key=lambda x: (
-                -(
-                    x.match_quality * (1 - PLAYSTYLE_WEIGHT)
-                    + x.playstyle_balance_score * PLAYSTYLE_WEIGHT
-                ),
-                x.mmr_difference,
+        if objective == "composite":
+            suggestions.sort(key=lambda x: x.composite_score, reverse=True)
+        else:
+            suggestions.sort(
+                key=lambda x: (x.mmr_difference, abs(x.win_probability - 0.5))
             )
-        )
 
-        return suggestions[:top_n]
+        def get_canonical_key(s: TeamSuggestion) -> frozenset:
+            t1_ids = frozenset(p.id for p in s.team_1)
+            t2_ids = frozenset(p.id for p in s.team_2)
+            return frozenset([t1_ids, t2_ids])
+
+        seen_configurations: set = set()
+        unique_suggestions: List[TeamSuggestion] = []
+
+        for s in suggestions:
+            key = get_canonical_key(s)
+            if key not in seen_configurations:
+                seen_configurations.add(key)
+                unique_suggestions.append(s)
+            if len(unique_suggestions) >= top_n * 2:
+                break
+
+        if objective == "composite":
+            # Composite already encodes synergy; no showcase reordering
+            return unique_suggestions[:top_n]
+
+        if len(unique_suggestions) < 2:
+            return unique_suggestions[:top_n]
+
+        final = [unique_suggestions[0]]
+        synergy_sorted = sorted(
+            unique_suggestions[1:], key=lambda x: x.total_synergy, reverse=True
+        )
+        if synergy_sorted:
+            final.append(synergy_sorted[0])
+            remaining = [s for s in unique_suggestions if s not in final]
+            final.extend(remaining)
+
+        return final[:top_n]
 
     @staticmethod
-    def balance_teams(
-        db: Session, player_ids: List[int], top_n: int = 10
-    ) -> List[TeamSuggestion]:
+    def _load_balance_inputs(
+        db: Session,
+        player_ids: List[int],
+        map_name: Optional[str] = None,
+    ) -> Tuple[List[PlayerInfo], Dict[str, float]]:
+        """Load PlayerInfos (with map-specialist adjustment) and synergy map."""
         players = db.query(Player).filter(Player.id.in_(player_ids)).all()
         if len(players) != len(player_ids):
             found_ids = {p.id for p in players}
             missing_ids = set(player_ids) - found_ids
             raise ValueError(f"Players not found: {missing_ids}")
 
-        player_infos = [PlayerInfo.from_player(p) for p in players]
-        return TeamBalancer.generate_team_suggestions(player_infos, top_n)
+        from .models import GroupSynergy
+
+        synergies = (
+            db.query(GroupSynergy).filter(GroupSynergy.player_count.in_([2, 3])).all()
+        )
+        synergy_map = {s.player_ids_key: s.synergy_score for s in synergies}
+
+        player_infos = []
+        for p in players:
+            info = PlayerInfo.from_player(p)
+            if map_name:
+                from .models import Match, MatchPlayer
+                from sqlalchemy import func
+
+                stats = (
+                    db.query(
+                        func.count(Match.id).label("total"),
+                        func.sum(MatchPlayer.won).label("wins"),
+                    )
+                    .join(MatchPlayer, Match.id == MatchPlayer.match_id)
+                    .filter(MatchPlayer.player_id == p.id)
+                    .filter(Match.map_name == map_name)
+                    .first()
+                )
+                if stats and stats.total >= 3:
+                    win_rate = (stats.wins or 0) / stats.total
+                    if win_rate >= 0.6:
+                        info.unified_mmr += 100
+                        info.mmr += 100
+                    elif win_rate <= 0.4:
+                        info.unified_mmr -= 50
+                        info.mmr -= 50
+            player_infos.append(info)
+        return player_infos, synergy_map
+
+    @staticmethod
+    def balance_teams(
+        db: Session,
+        player_ids: List[int],
+        top_n: int = 10,
+        map_name: Optional[str] = None,
+    ) -> List[TeamSuggestion]:
+        player_infos, synergy_map = TeamBalancer._load_balance_inputs(
+            db, player_ids, map_name
+        )
+        return TeamBalancer.generate_team_suggestions(
+            player_infos, top_n, synergy_data=synergy_map
+        )
+
+    @staticmethod
+    def _load_composite_weights(db: Session) -> Dict[str, float]:
+        """Composite weights from MLConfig, falling back to defaults."""
+        import json
+
+        from .models import MLConfig
+
+        config = (
+            db.query(MLConfig)
+            .filter(MLConfig.config_key == "composite_balance_weights")
+            .first()
+        )
+        weights = DEFAULT_COMPOSITE_WEIGHTS.copy()
+        if config:
+            try:
+                saved = json.loads(config.config_value)
+                weights.update({k: float(v) for k, v in saved.items() if k in weights})
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+        return weights
+
+    @staticmethod
+    def balance_teams_composite(
+        db: Session,
+        player_ids: List[int],
+        top_n: int = 10,
+        map_name: Optional[str] = None,
+        use_ml: bool = False,
+        ml_rerank_top_k: int = 5,
+    ) -> List[TeamSuggestion]:
+        """
+        Balance using the composite objective: predicted win prob near 50%,
+        TrueSkill quality, and penalties for skill spread, team-profile
+        imbalance, and one-sided synergy.
+
+        use_ml defaults off: the ML re-rank has not been shown to beat plain
+        MMR/TrueSkill balancing at current data scale (see
+        .moai/docs/ml-model-findings.md and
+        docs/superpowers/campaign/rating-consolidation-log.md, 2026-07-06
+        entries) - it is an experimental option, not a proven improvement.
+        When enabled and the predictor is trained, the top candidates are
+        re-scored with its win probability included (only top-k, since
+        feature extraction per split is DB-heavy).
+        """
+        player_infos, synergy_map = TeamBalancer._load_balance_inputs(
+            db, player_ids, map_name
+        )
+        weights = TeamBalancer._load_composite_weights(db)
+        suggestions = TeamBalancer.generate_team_suggestions(
+            player_infos,
+            top_n=max(top_n, ml_rerank_top_k),
+            synergy_data=synergy_map,
+            objective="composite",
+            composite_weights=weights,
+        )
+
+        if use_ml:
+            try:
+                from .services.ml_predictor import get_ml_predictor
+
+                predictor = get_ml_predictor()
+                if predictor.is_trained:
+                    for s in suggestions[:ml_rerank_top_k]:
+                        result = predictor.predict(
+                            db,
+                            [p.id for p in s.team_1],
+                            [p.id for p in s.team_2],
+                        )
+                        s.ml_win_probability = (
+                            result["team_1_win_probability"] / 100.0
+                        )
+                        s.composite_score = TeamBalancer.compute_composite_score(
+                            win_probability=s.win_probability,
+                            match_quality=s.match_quality,
+                            skill_spread_diff=s.skill_spread_diff,
+                            component_imbalance=s.component_imbalance,
+                            synergy_imbalance=s.synergy_imbalance,
+                            weights=weights,
+                            ml_win_probability=s.ml_win_probability,
+                        )
+                    suggestions.sort(key=lambda x: x.composite_score, reverse=True)
+            except Exception:
+                # ML re-rank is best-effort; composite-without-ML still stands
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "ML re-rank failed; returning TrueSkill composite ranking",
+                    exc_info=True,
+                )
+
+        return suggestions[:top_n]
 
     @staticmethod
     def quick_balance(db: Session, player_ids: List[int]) -> Optional[TeamSuggestion]:
         suggestions = TeamBalancer.balance_teams(db, player_ids, top_n=1)
         return suggestions[0] if suggestions else None
 
-    @staticmethod
-    def balance_with_impact_priority(
-        db: Session, player_ids: List[int], top_n: int = 10, impact_weight: float = 0.5
-    ) -> List[TeamSuggestion]:
-        players = db.query(Player).filter(Player.id.in_(player_ids)).all()
-        if len(players) != len(player_ids):
-            found_ids = {p.id for p in players}
-            missing_ids = set(player_ids) - found_ids
-            raise ValueError(f"Players not found: {missing_ids}")
-
-        player_infos = [PlayerInfo.from_player(p) for p in players]
-        suggestions = TeamBalancer.generate_team_suggestions(player_infos, top_n=100)
-
-        for suggestion in suggestions:
-            combined_score = (
-                (1 - impact_weight) * suggestion.match_quality
-                + impact_weight * suggestion.impact_balance_score
-            )
-            suggestion.match_quality = combined_score
-
-        suggestions.sort(key=lambda x: -x.match_quality)
-        return suggestions[:top_n]
-
 
 class BalancerStats:
-    """
-    Utility to analyze and format team suggestions.
-    """
-
     @staticmethod
     def analyze_suggestion(suggestion: TeamSuggestion) -> Dict[str, Any]:
-        """
-        Analyze a team suggestion and return detailed statistics.
-        """
+        # Rating of record (display MMR) — consistent with generate_team_suggestions
         team_1_mmrs = [p.mmr for p in suggestion.team_1]
         team_2_mmrs = [p.mmr for p in suggestion.team_2]
-
         team_1_total = sum(team_1_mmrs)
         team_2_total = sum(team_2_mmrs)
-
         team_1_avg = team_1_total / len(team_1_mmrs) if team_1_mmrs else 0
         team_2_avg = team_2_total / len(team_2_mmrs) if team_2_mmrs else 0
 
-        # Calculate fairness rating string
         if suggestion.match_quality > 0.8:
             fairness = "Excellent"
         elif suggestion.match_quality > 0.6:
@@ -287,5 +696,6 @@ class BalancerStats:
                 "impact_difference": round(
                     abs(suggestion.team_1_avg_impact - suggestion.team_2_avg_impact), 2
                 ),
+                "total_synergy": round(suggestion.total_synergy, 1),
             },
         }

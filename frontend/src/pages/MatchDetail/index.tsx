@@ -6,6 +6,7 @@ import {
   Box,
   Container,
   VStack,
+  HStack,
   Button,
   Alert,
   AlertIcon,
@@ -19,13 +20,14 @@ import {
 } from '@chakra-ui/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { FiArrowLeft, FiUsers, FiZap, FiTarget } from 'react-icons/fi';
+import { FiArrowLeft, FiUsers, FiZap, FiTarget, FiDownload, FiMonitor } from 'react-icons/fi';
 import { replaysApi, impactApi } from '@/api/endpoints';
 import LoadingState from '@/components/LoadingState';
 import MatchHeader from './MatchHeader';
 import OperativesTab from './OperativesTab';
 import CommentaryTab from './CommentaryTab';
 import AnalyticsTab from './AnalyticsTab';
+import ScoreScreenTab from './ScoreScreenTab';
 import type {
   MatchCommentary,
   PlayerMetricsResponse,
@@ -175,22 +177,37 @@ const MatchDetail: React.FC = () => {
     <Box position="relative" bg="space.900">
       <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
         <VStack spacing={8} align="stretch">
-          {/* Back Button */}
-          <Button
-            leftIcon={<FiArrowLeft />}
-            variant="ghost"
-            alignSelf="flex-start"
-            onClick={() => navigate('/history')}
-            size="lg"
-            fontFamily="heading"
-            _hover={{
-              transform: 'translateX(-4px)',
-              color: 'brand.400',
-            }}
-            transition="all 0.2s"
-          >
-            Return to Archive
-          </Button>
+          {/* Back Button + Replay Download */}
+          <HStack justify="space-between" align="center" flexWrap="wrap" gap={3}>
+            <Button
+              leftIcon={<FiArrowLeft />}
+              variant="ghost"
+              alignSelf="flex-start"
+              onClick={() => navigate('/history')}
+              size="lg"
+              fontFamily="heading"
+              _hover={{
+                transform: 'translateX(-4px)',
+                color: 'brand.400',
+              }}
+              transition="all 0.2s"
+            >
+              Return to Archive
+            </Button>
+            {matchData.match.replay_hash && (
+              <Button
+                as="a"
+                href={replaysApi.getMatchDownloadUrl(matchId!)}
+                leftIcon={<FiDownload />}
+                variant="outline"
+                colorScheme="brand"
+                size="sm"
+                fontFamily="heading"
+              >
+                Download Replay
+              </Button>
+            )}
+          </HStack>
 
           {/* Match Header */}
           <MatchHeader matchData={matchData} team1Won={team1Won} />
@@ -214,6 +231,10 @@ const MatchDetail: React.FC = () => {
           >
             <TabList>
               <Tab>
+                <Icon as={FiMonitor} mr={2} />
+                Score Screen
+              </Tab>
+              <Tab>
                 <Icon as={FiUsers} mr={2} />
                 Players
               </Tab>
@@ -228,6 +249,11 @@ const MatchDetail: React.FC = () => {
             </TabList>
 
             <TabPanels>
+              {/* Score Screen Tab */}
+              <TabPanel px={0}>
+                <ScoreScreenTab matchData={matchData} team1Won={team1Won} />
+              </TabPanel>
+
               {/* Operatives Tab */}
               <TabPanel px={0}>
                 <OperativesTab matchData={matchData} team1Won={team1Won} />
@@ -238,6 +264,7 @@ const MatchDetail: React.FC = () => {
                 <CommentaryTab
                   commentary={commentary}
                   isLoading={commentaryLoading}
+                  matchData={matchData}
                 />
               </TabPanel>
 

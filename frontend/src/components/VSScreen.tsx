@@ -12,6 +12,7 @@ import {
   Badge,
   Button,
   useColorModeValue,
+  Tooltip,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { formatMMR, getRaceColor } from '../utils/formatting';
@@ -30,6 +31,8 @@ interface TeamData {
   players: TeamPlayerInfo[];
   totalMMR: number;
   winProbability?: number;
+  /** Historical pair/trio synergy bonus baked into this team's win probability (BalanceResults only). */
+  synergyBonus?: number;
 }
 
 interface MatchInfo {
@@ -43,6 +46,22 @@ export interface VSScreenProps {
   matchInfo?: MatchInfo;
   winner?: 1 | 2 | null;
   onViewDetails?: () => void;
+  /** True for a not-yet-played, model-predicted matchup (BalanceResults). Swaps the
+   * "WINNER" crown for a lower-key "Advantage" badge so a prediction isn't mistaken
+   * for a recorded result. */
+  isPrediction?: boolean;
+  /**
+   * Label for the per-team win-probability stat. Defaults to "Win Prob",
+   * which is only accurate when `winProbability` is a model/TrueSkill
+   * estimate (as in BalanceResults/MatchHeader). Callers passing a
+   * historical win RATE instead (e.g. head-to-head record) should override
+   * this - e.g. "Win Rate" - so the UI doesn't claim predictive precision
+   * a plain historical tally doesn't have.
+   */
+  probabilityLabel?: string;
+  /** Label for the odds bar's center caption. Defaults to "Pre-Match Odds" -
+   * override for the same reason as `probabilityLabel`. */
+  oddsBarLabel?: string;
 }
 
 // =============================================================================
@@ -210,9 +229,11 @@ interface TeamPanelProps {
   teamNumber: 1 | 2;
   isWinner: boolean;
   side: 'left' | 'right';
+  isPrediction?: boolean;
+  probabilityLabel?: string;
 }
 
-const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side }) => {
+const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side, isPrediction, probabilityLabel = 'Win Prob' }) => {
   const bgColor = useColorModeValue('gray.800', 'space.800');
   const borderColor = isWinner ? 'shield.500' : 'whiteAlpha.200';
 
@@ -247,7 +268,7 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
         },
       } : {}}
     >
-      {/* Winner Crown */}
+      {/* Winner/Favored Crown */}
       {isWinner && (
         <Box
           position="absolute"
@@ -259,14 +280,14 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
           fontFamily="heading"
           px={3}
           py={1}
-          bg="shield.500"
-          color="space.900"
+          bg={isPrediction ? 'whiteAlpha.300' : 'shield.500'}
+          color={isPrediction ? 'gray.200' : 'space.900'}
           borderRadius="md"
-          boxShadow="0 3px 12px rgba(245, 158, 11, 0.6)"
+          boxShadow={isPrediction ? 'none' : '0 3px 12px rgba(245, 158, 11, 0.6)'}
           zIndex={2}
           whiteSpace="nowrap"
         >
-          🏆 WINNER
+          {isPrediction ? 'ADVANTAGE' : '🏆 WINNER'}
         </Box>
       )}
 
@@ -323,16 +344,25 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side 
             {team.winProbability !== undefined && (
               <VStack spacing={0} align={side === 'left' ? 'flex-end' : 'flex-start'}>
                 <Text fontSize="xs" color="gray.500" letterSpacing="wider">
-                  Win Prob
+                  {probabilityLabel}
                 </Text>
-                <Text
-                  fontSize="lg"
-                  fontWeight="bold"
-                  fontFamily="mono"
-                  color={team.winProbability >= 50 ? 'shield.400' : 'gray.400'}
-                >
-                  {team.winProbability.toFixed(1)}%
-                </Text>
+                <HStack spacing={1}>
+                  <Text
+                    fontSize="lg"
+                    fontWeight="bold"
+                    fontFamily="mono"
+                    color={team.winProbability >= 50 ? 'shield.400' : 'gray.400'}
+                  >
+                    {team.winProbability.toFixed(1)}%
+                  </Text>
+                  {team.synergyBonus !== undefined && team.synergyBonus > 0 && (
+                    <Tooltip label={`Chemistry bonus: +${team.synergyBonus.toFixed(0)} synergy points from historical pairings`}>
+                      <Badge colorScheme="purple" variant="solid" fontSize="10px" px={1} borderRadius="full">
+                        +{team.synergyBonus.toFixed(0)}
+                      </Badge>
+                    </Tooltip>
+                  )}
+                </HStack>
               </VStack>
             )}
           </HStack>
@@ -350,9 +380,10 @@ interface WinProbabilityBarProps {
   team1Prob?: number;
   team2Prob?: number;
   winner?: 1 | 2 | null;
+  label?: string;
 }
 
-const WinProbabilityBar: React.FC<WinProbabilityBarProps> = ({ team1Prob, team2Prob, winner }) => {
+const WinProbabilityBar: React.FC<WinProbabilityBarProps> = ({ team1Prob, team2Prob, winner, label = 'Pre-Match Odds' }) => {
   if (team1Prob === undefined || team2Prob === undefined) return null;
 
   return (
@@ -362,7 +393,7 @@ const WinProbabilityBar: React.FC<WinProbabilityBarProps> = ({ team1Prob, team2P
           {team1Prob.toFixed(1)}%
         </Text>
         <Text fontSize="xs" color="gray.500" letterSpacing="wider">
-          Pre-Match Odds
+          {label}
         </Text>
         <Text fontSize="xs" color="gray.500" fontWeight="bold">
           {team2Prob.toFixed(1)}%
@@ -413,6 +444,9 @@ const VSScreen: React.FC<VSScreenProps> = ({
   matchInfo,
   winner = null,
   onViewDetails,
+  isPrediction = false,
+  probabilityLabel,
+  oddsBarLabel,
 }) => {
   const bgColor = useColorModeValue('gray.900', 'space.900');
 
@@ -462,6 +496,8 @@ const VSScreen: React.FC<VSScreenProps> = ({
           teamNumber={1}
           isWinner={winner === 1}
           side="left"
+          isPrediction={isPrediction}
+          probabilityLabel={probabilityLabel}
         />
 
         {/* VS Divider */}
@@ -510,6 +546,8 @@ const VSScreen: React.FC<VSScreenProps> = ({
           teamNumber={2}
           isWinner={winner === 2}
           side="right"
+          isPrediction={isPrediction}
+          probabilityLabel={probabilityLabel}
         />
       </Flex>
 
@@ -518,6 +556,7 @@ const VSScreen: React.FC<VSScreenProps> = ({
         team1Prob={team1.winProbability}
         team2Prob={team2.winProbability}
         winner={winner}
+        label={oddsBarLabel}
       />
 
       {/* View Details Button */}
