@@ -1,0 +1,30 @@
+# Runtime state - never bake into the image (comes from GCS/Litestream).
+# Exception: the trained ML model artifact ships with the image (tiny, and
+# retrainable via POST /adaptive/train-ml-model).
+data/
+!data/xgboost_model.pkl
+replays/
+failed_replays/
+*.log
+
+# PyCommandCenter native lib - only works with the Docker SC2 4.10 setup,
+# not available on Cloud Run
+app/lib/
+
+# Dev/test artifacts
+tests/
+scripts/
+docker/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.py[cod]
+.env
+
+# Local one-off tools at backend root
+analyze_ai.py
+upload_all_replays.py
+recalculate_ratings.py
+merge_players.py
+manage_aliases.py
+leaderboard_query.py

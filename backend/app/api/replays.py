@@ -3,7 +3,7 @@ API endpoints for replay upload and management.
 """
 
 from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, File, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional, Any, cast, Tuple
@@ -34,6 +34,7 @@ from ..rating_system import RatingSystem
 from ..advanced_parser import parse_replay_advanced
 from ..impact_service import ImpactService
 from ..performance_rating import PerformanceRatingAdjuster
+from ..services import replay_storage
 from ..services.rivalry_service import RivalryService
 from ..match_commentary import MatchCommentaryGenerator
 from ..auto_adaptive import trigger_auto_optimization
@@ -47,6 +48,19 @@ router = APIRouter(prefix="/replays", tags=["replays"])
 
 
 # Helper functions
+def _reject_oversized_upload(content: bytes) -> None:
+    """Enforce settings.max_replay_size_mb (real SC2 replays are ~1-5 MB)."""
+    limit_bytes = settings.max_replay_size_mb * 1024 * 1024
+    if len(content) > limit_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"File too large ({len(content) / (1024 * 1024):.1f} MB). "
+                f"Maximum replay size is {settings.max_replay_size_mb} MB."
+            ),
+        )
+
+
 def _log_failed_upload(
     db: Session,
     filename: str,
@@ -400,8 +414,10 @@ async def upload_replay(
             detail="Invalid file type. Only .SC2Replay files are accepted.",
         )
 
+    content = await file.read()
+    _reject_oversized_upload(content)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".SC2Replay") as tmp_file:
-        content = await file.read()
         tmp_file.write(content)
         tmp_file_path = tmp_file.name
 
@@ -877,18 +893,17 @@ def download_replay(match_id: int, db: Session = Depends(get_db)):
             status_code=404, detail="No replay file was recorded for this match"
         )
 
-    replays_dir = os.path.join(os.getcwd(), settings.replay_storage_dir)
-    file_path = os.path.join(replays_dir, f"{match.replay_hash}.SC2Replay")
-    if not os.path.exists(file_path):
+    replay_bytes = replay_storage.fetch_replay_by_hash(str(match.replay_hash))
+    if replay_bytes is None:
         raise HTTPException(
-            status_code=404, detail="Replay file is no longer available on disk"
+            status_code=404, detail="Replay file is no longer available"
         )
 
     download_name = f"{match.map_name}_{match.played_at.strftime('%Y-%m-%d')}.SC2Replay"
-    return FileResponse(
-        file_path,
+    return Response(
+        content=replay_bytes,
         media_type="application/octet-stream",
-        filename=download_name,
+        headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
     )
 
 
@@ -901,27 +916,11 @@ def get_match_commentary(match_id: int, db: Session = Depends(get_db)):
 
 
 def _save_failed_replay_file(content: bytes, filename: str, replay_hash: str) -> str:
-    failed_replays_dir = os.path.join(os.getcwd(), "failed_replays")
-    os.makedirs(failed_replays_dir, exist_ok=True)
-    file_path = os.path.join(failed_replays_dir, f"{replay_hash}_{filename}")
-    with open(file_path, "wb") as f:
-        f.write(content)
-    return file_path
+    return replay_storage.save_failed_replay(content, filename, replay_hash)
 
 
 def _save_replay_file(content: bytes, filename: str, replay_hash: str) -> Optional[str]:
-    from ..config import settings
-
-    if not settings.replay_storage_enabled:
-        return None
-    replays_dir = os.path.join(os.getcwd(), settings.replay_storage_dir)
-    os.makedirs(replays_dir, exist_ok=True)
-    file_path = os.path.join(replays_dir, f"{replay_hash}.SC2Replay")
-    if os.path.exists(file_path):
-        return file_path
-    with open(file_path, "wb") as f:
-        f.write(content)
-    return file_path
+    return replay_storage.save_replay(content, replay_hash)
 
 
 class BulkReprocessRequest(BaseModel):
@@ -967,8 +966,11 @@ def bulk_reprocess_replays(
     for m in matches:
         match: Any = m
         try:
-            # Check if replay file exists
-            if not match.replay_file_path or not os.path.exists(match.replay_file_path):
+            # Check if replay file exists (downloads a temp copy in GCS mode)
+            local_path = replay_storage.materialize_local_copy(
+                str(match.replay_file_path or "")
+            )
+            if not local_path:
                 skipped += 1
                 errors.append({"match_id": match.id, "error": "Replay file not found"})
                 continue
@@ -997,7 +999,7 @@ def bulk_reprocess_replays(
 
             # Extract and save ML features
             results = MLFeaturesService.extract_and_save_ml_features(
-                db, str(match.replay_file_path), int(match.id)
+                db, local_path, int(match.id)
             )
 
             if any(results.values()):
@@ -1051,12 +1053,14 @@ def retry_failed_upload(upload_id: int, db: Session = Depends(get_db)):
     if not failed_upload:
         raise HTTPException(status_code=404, detail="Failed upload not found")
 
-    file_path = failed_upload.replay_file_path
-    if not file_path or not os.path.exists(file_path):
+    file_path = replay_storage.materialize_local_copy(
+        str(failed_upload.replay_file_path or "")
+    )
+    if not file_path:
         return RetryFailedUploadResponse(
             upload_id=upload_id,
             status="file_missing",
-            detail="Original replay file is no longer on disk",
+            detail="Original replay file is no longer available",
         )
 
     try:
@@ -1285,10 +1289,12 @@ def set_manual_winner(
     if not failed_upload:
         raise HTTPException(status_code=404, detail="Failed upload not found")
 
-    # Check if replay file was saved
-    if not failed_upload.replay_file_path or not os.path.exists(
-        failed_upload.replay_file_path
-    ):
+    # Check if replay file was saved; parsers need a real local file, so a
+    # gs:// stored path is downloaded to a temp file first.
+    local_replay_path = replay_storage.materialize_local_copy(
+        str(failed_upload.replay_file_path or "")
+    )
+    if not local_replay_path:
         raise HTTPException(
             status_code=404,
             detail="Replay file not found. Original file may not have been saved.",
@@ -1300,7 +1306,7 @@ def set_manual_winner(
 
         # Parse the replay with advanced metrics
         advanced_data = parse_replay_advanced(
-            str(failed_upload.replay_file_path), manual_winner_team=request.winner_team
+            local_replay_path, manual_winner_team=request.winner_team
         )
         replay_data = advanced_data.basic_data
 
@@ -1434,8 +1440,10 @@ async def upload_replay_advanced(
             detail="Invalid file type. Only .SC2Replay files are accepted.",
         )
 
+    content = await file.read()
+    _reject_oversized_upload(content)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".SC2Replay") as tmp_file:
-        content = await file.read()
         tmp_file.write(content)
         tmp_file_path = tmp_file.name
         logger.info(f"[UPLOAD-ADV] {fn}: File saved to temp ({len(content)} bytes)")

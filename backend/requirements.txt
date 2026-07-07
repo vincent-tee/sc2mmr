@@ -29,9 +29,11 @@ shap>=0.43.0
 python-dateutil==2.8.2
 pydantic==2.5.0
 pydantic-settings==2.1.0
-watchdog==3.0.0
 
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
 httpx==0.25.2
+
+# Replay storage on Cloud Run (lazy-imported; only used when REPLAY_GCS_BUCKET is set)
+google-cloud-storage==2.18.2
