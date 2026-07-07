@@ -197,6 +197,25 @@ def get_unit_cost(unit_name: str) -> int:
     return UNIT_COSTS.get(unit_name, 100)  # Default 100 for unknown units
 
 
+# Single source of truth for K/D — also used by the backfill script and tests.
+KD_RATIO_CAP = 10.0
+
+
+def compute_kill_death_ratio(units_killed: int, units_lost: int) -> float:
+    """
+    Kill/death ratio from unit counts, capped at KD_RATIO_CAP for every value —
+    not just the zero-loss case — so a 50-kill/1-loss game can't overtake a
+    flawless one. Returns 1.0 (neutral) when no combat was recorded.
+    """
+    killed = units_killed or 0
+    lost = units_lost or 0
+    if lost > 0:
+        return min(killed / lost, KD_RATIO_CAP)
+    if killed > 0:
+        return KD_RATIO_CAP
+    return 1.0
+
+
 def parse_replay_advanced(
     file_path: str, manual_winner_team: Optional[int] = None
 ) -> AdvancedReplayData:
@@ -570,18 +589,10 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
             # No damage dealt or taken - neutral ratio
             metrics.damage_ratio = 1.0
 
-        # Kill/Death ratio - unit counts killed vs lost. Previously this was
-        # never computed, so every player in every match stored the default
-        # 1.0 even though units_killed/units_lost were parsed. Mirror the
-        # damage_ratio edge-case handling.
-        if metrics.units_lost > 0:
-            metrics.kill_death_ratio = metrics.units_killed / metrics.units_lost
-        elif metrics.units_killed > 0:
-            # Killed units but lost none - cap at 10 to prevent score inflation
-            metrics.kill_death_ratio = 10.0
-        else:
-            # No units killed or lost - neutral ratio
-            metrics.kill_death_ratio = 1.0
+        # Kill/Death ratio - unit counts killed vs lost, capped uniformly.
+        metrics.kill_death_ratio = compute_kill_death_ratio(
+            metrics.units_killed, metrics.units_lost
+        )
 
         # Spending efficiency (how much of collected resources were spent)
         # Approximate as: units built * avg cost

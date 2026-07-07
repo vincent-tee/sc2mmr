@@ -15,7 +15,7 @@ import {
   Tooltip,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
-import { formatMMR, getRaceColor } from '../utils/formatting';
+import { formatMMR } from '../utils/formatting';
 
 // =============================================================================
 // Types
@@ -64,16 +64,6 @@ export interface VSScreenProps {
 // =============================================================================
 // Race Icon Helper
 // =============================================================================
-
-const getRaceIcon = (race: string): string => {
-  const raceMap: Record<string, string> = {
-    Terran: 'T',
-    Protoss: 'P',
-    Zerg: 'Z',
-    Random: 'R',
-  };
-  return raceMap[race] || '?';
-};
 
 // getRaceIconColor available if needed for race-specific icon colors
 // const getRaceIconColor = (race: string): string => {

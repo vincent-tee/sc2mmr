@@ -9,7 +9,6 @@ import {
   GridItem,
   Alert,
   AlertIcon,
-  Divider,
 } from '@chakra-ui/react';
 import DamageTimelineChart from '@/components/charts/DamageTimelineChart';
 import ImpactScoreRadar from '@/components/charts/ImpactScoreRadar';

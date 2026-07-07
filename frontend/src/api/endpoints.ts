@@ -9,7 +9,6 @@ import type {
   PlayerDetail,
   PlayerRanking,
   TeamSuggestion,
-  Match,
   MatchDetail,
   MatchListResponse,
   MatchListWithPlayersResponse,
@@ -28,6 +27,12 @@ import type {
 export interface PlayersApi {
   getAll: (coreOnly?: boolean) => Promise<AxiosResponse<Player[]>>;
   getRankings: (minGames?: number, coreOnly?: boolean) => Promise<AxiosResponse<PlayerRanking[]>>;
+  getById: (
+    playerId: number,
+    recentMatchesLimit?: number,
+    recentMatchesOffset?: number
+  ) => Promise<AxiosResponse<PlayerDetail>>;
+  getHistory: (playerId: number, limit?: number) => Promise<AxiosResponse<any>>;
   getCoaching: (playerId: number) => Promise<AxiosResponse<any>>;
   create: (name: string, isCorePlayer?: boolean) => Promise<AxiosResponse<Player>>;
   calibrate: (name: string, similarToPlayerId: number) => Promise<AxiosResponse<Player>>;
@@ -166,7 +171,11 @@ export interface ReplaysApi {
   upload: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => Promise<AxiosResponse<ReplayUploadResponse>>;
   uploadAdvanced: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => Promise<AxiosResponse<ReplayUploadResponse>>;
   getMatches: (limit?: number, offset?: number) => Promise<AxiosResponse<MatchListResponse>>;
-  getMatchesWithPlayers: (limit?: number, offset?: number) => Promise<AxiosResponse<MatchListWithPlayersResponse>>;
+  getMatchesWithPlayers: (
+    limit?: number,
+    offset?: number,
+    filters?: { search?: string; game_mode?: string }
+  ) => Promise<AxiosResponse<MatchListWithPlayersResponse>>;
   getMatchById: (matchId: number | string) => Promise<AxiosResponse<MatchDetail>>;
   getMatchCommentary: (matchId: number | string) => Promise<AxiosResponse<{ commentary: string }>>;
   getMatchDownloadUrl: (matchId: number | string) => string;

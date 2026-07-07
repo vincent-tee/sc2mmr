@@ -2,7 +2,7 @@
  * Formatting Utilities
  * Helper functions for displaying data to users
  */
-import type { TeamSuggestion, TeamPlayer } from '@/types/api';
+import type { TeamSuggestion } from '@/types/api';
 import type { ApiClientError } from '@/api/client';
 
 // =============================================================================

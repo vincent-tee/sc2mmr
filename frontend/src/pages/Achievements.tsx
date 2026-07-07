@@ -24,11 +24,10 @@ import {
   TabPanels,
   Tab,
   TabPanel,
-  useColorModeValue,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
-import { FiSearch, FiClock, FiAward, FiStar, FiActivity } from 'react-icons/fi';
+import { FiSearch, FiClock } from 'react-icons/fi';
 import { achievementsApi } from '../api/achievements';
 import PageHeader from '../components/PageHeader';
 import AchievementBadge from '../components/AchievementBadge';
@@ -42,11 +41,6 @@ import {
   RecentAchievementEntry,
 } from '../types/achievements';
 import { getAchievementIcon, getCategoryIcon } from '../utils/achievementIcons';
-
-// Design tokens
-const cardBg = 'space.800';
-const borderColor = 'space.900';
-const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
 // =============================================================================
 // Animations
@@ -180,9 +174,6 @@ const Achievements: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<AchievementCategory | 'all'>('all');
   const [selectedRarity, setSelectedRarity] = useState<AchievementRarity | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-
-  const bgColor = useColorModeValue('gray.900', 'space.900');
-  const cardBg = useColorModeValue('gray.800', 'space.800');
 
   // Fetch all achievements
   const { data: achievements, isLoading: achievementsLoading } = useQuery({

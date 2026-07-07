@@ -12,7 +12,6 @@ import {
   Icon,
 } from '@chakra-ui/react';
 import { FiMap } from 'react-icons/fi';
-import TacticalCard from '@/components/TacticalCard';
 
 interface MapSelectorProps {
   selectedMap: string;

@@ -199,11 +199,6 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                           {race}
                         </Badge>
                       </HStack>
-                      {playerInfo?.impact_score && (
-                        <Badge colorScheme="purple" fontSize="xs">
-                          Impact: {playerInfo.impact_score.toFixed(0)}
-                        </Badge>
-                      )}
                     </HStack>
                     <Text fontSize="sm" lineHeight="tall" color="gray.300">
                       {analysis}

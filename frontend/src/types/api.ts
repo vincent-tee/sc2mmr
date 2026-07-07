@@ -126,7 +126,10 @@ export interface MatchWithPlayers {
 
 export interface MatchListWithPlayersResponse {
   matches: MatchWithPlayers[];
+  /** Count for the active filters — drives pagination */
   total_count: number;
+  /** Unfiltered archive size — drives header stats */
+  grand_total: number;
   limit: number;
   offset: number;
 }
@@ -165,7 +168,6 @@ export interface MatchPlayer {
   damage_dealt: number | null;
   damage_taken: number | null;
   kill_death_ratio: number | null;
-  supply_block_seconds: number | null;
 }
 
 export interface MatchDetail {

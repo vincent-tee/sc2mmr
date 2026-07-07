@@ -4,13 +4,15 @@ API endpoints for replay upload and management.
 
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, false
+from sqlalchemy import func, or_
 from typing import List, Optional, Any, cast, Tuple
 from datetime import datetime
 import os
 import tempfile
 import time
 import logging
+
+import trueskill
 
 from ..database import get_db
 from ..models import (
@@ -21,6 +23,7 @@ from ..models import (
     UploadErrorType,
     PerformanceFeatures,
     PlayerMatchMetrics,
+    GameMode,
 )
 from ..replay_parser import (
     parse_replay,
@@ -279,7 +282,10 @@ class MatchListWithPlayersResponse(BaseModel):
     """Response model for matches with players included."""
 
     matches: List[MatchWithPlayersResponse]
+    # total_count is the count for the ACTIVE filters (drives pagination);
+    # grand_total is the unfiltered archive size (drives header stats).
     total_count: int
+    grand_total: int
     limit: int
     offset: int
 
@@ -315,7 +321,6 @@ class MatchPlayerResponse(BaseModel):
     damage_dealt: Optional[int] = None
     damage_taken: Optional[int] = None
     kill_death_ratio: Optional[float] = None
-    supply_block_seconds: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -555,18 +560,22 @@ def get_matches_with_players(
     game_mode: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    from ..models import PlayerMatchMetrics, GameMode
-
     # Build a filtered base query. With no filters this is identical to
     # `db.query(Match)`, so behavior stays backward compatible.
     base_query = db.query(Match)
 
-    # Optional game-mode filter (e.g. "3v3", "4v4"). Unknown modes match nothing.
+    # Optional game-mode filter (e.g. "3v3", "4v4"). Unknown modes are a
+    # client bug (stale dropdown, typo'd URL) — fail loudly rather than
+    # silently returning an empty archive.
     if game_mode:
         try:
             base_query = base_query.filter(Match.game_mode == GameMode(game_mode))
         except ValueError:
-            base_query = base_query.filter(false())
+            valid = ", ".join(m.value for m in GameMode)
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown game_mode '{game_mode}'. Valid modes: {valid}",
+            )
 
     # Optional search across the map name OR any participating player's name.
     if search and search.strip():
@@ -583,8 +592,10 @@ def get_matches_with_players(
             )
         )
 
-    # total_count reflects the FILTERED total so the frontend paginates correctly.
-    total_count = base_query.count()
+    # total_count reflects the FILTERED total so the frontend paginates
+    # correctly; grand_total is the whole archive for header stats.
+    grand_total = db.query(func.count(Match.id)).scalar() or 0
+    total_count = base_query.count() if (game_mode or (search and search.strip())) else grand_total
     matches = (
         base_query.order_by(Match.played_at.desc())
         .limit(limit)
@@ -662,6 +673,7 @@ def get_matches_with_players(
     return MatchListWithPlayersResponse(
         matches=match_responses,
         total_count=int(total_count),
+        grand_total=int(grand_total),
         limit=limit,
         offset=offset,
     )
@@ -719,8 +731,6 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
                 damage_dealt=metrics.damage_dealt if metrics else None,
                 damage_taken=metrics.damage_taken if metrics else None,
                 kill_death_ratio=metrics.kill_death_ratio if metrics else None,
-                # supply_block_seconds omitted: this branch's PlayerMatchMetrics
-                # schema has no such column (added later on main). Defaults to None.
             )
         )
 
@@ -728,8 +738,6 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
     ml_win_prob = None
     first_mp = match_players[0][0] if match_players else None
     if first_mp:
-        from ..models import PerformanceFeatures
-
         perf = (
             db.query(PerformanceFeatures)
             .filter(PerformanceFeatures.match_player_id == first_mp.id)
@@ -747,12 +755,12 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
     # otherwise render as a meaningless 50/50. For those, recompute the odds
     # from each team's stored pre-match TrueSkill ratings (mu/sigma before the
     # game) using the same function the balancer/predictor uses - a pure
-    # function of the two teams' ratings, no ML model involved.
+    # function of the two teams' ratings, no ML model involved. The result is
+    # not persisted (read-only endpoint); it's recomputed per request for the
+    # few historical rows affected.
     team1_prob = match.predicted_team1_win_prob
     team2_prob = match.predicted_team2_win_prob
     if team1_prob is None or team2_prob is None:
-        import trueskill
-
         team1_ratings = [
             trueskill.Rating(mu=float(mp.mu_before), sigma=float(mp.sigma_before))
             for mp, _, _ in match_players

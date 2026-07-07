@@ -48,14 +48,9 @@ import {
   FiActivity, 
   FiAward, 
   FiTarget, 
-  FiStar,
-  FiZap,
-  FiClock,
-  FiTrendingDown
+  FiZap
 } from 'react-icons/fi';
 import { 
-  LineChart, 
-  Line, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -106,7 +101,7 @@ const PlayerDetail: React.FC = () => {
   const [matchesOffset, setMatchesOffset] = useState<number>(0);
 
   // Fetch player details
-  const { data: playerData, isLoading, isFetching } = useQuery<PlayerDetailWithRaceStats>({
+  const { data: playerData, isLoading } = useQuery<PlayerDetailWithRaceStats>({
     queryKey: ['player', playerId, matchesLimit, matchesOffset],
     queryFn: async () => {
       const response = await playersApi.getById(parseInt(playerId!, 10), matchesLimit, matchesOffset);

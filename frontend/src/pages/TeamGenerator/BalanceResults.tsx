@@ -34,7 +34,6 @@ import {
   FiStar,
   FiImage,
   FiChevronUp,
-  FiChevronDown,
   FiClipboard,
   FiUpload,
   FiSliders,
@@ -43,7 +42,7 @@ import TacticalCard from '@/components/TacticalCard';
 import VSScreen from '@/components/VSScreen';
 import { formatMMR } from '@/utils/formatting';
 import type { TeamSuggestionWithImpact } from '@/types/api';
-import { FiAlertTriangle, FiInfo } from 'react-icons/fi';
+import { FiAlertTriangle } from 'react-icons/fi';
 
 const TacticalForecastOverlay: React.FC<{ forecast: any }> = ({ forecast }) => {
   if (!forecast || (!forecast.map_specialists?.length && !forecast.playstyle_alerts?.length)) return null;

@@ -27,7 +27,6 @@ import PageHeader from '../../components/PageHeader';
 import AnimatedNumber from '../../components/AnimatedNumber';
 import TeamSelector from './TeamSelector';
 import MapSelector from './MapSelector';
-import GenerateButton from './GenerateButton';
 import BalanceResults from './BalanceResults';
 import LoadingState, { TeamResultSkeleton } from '../../components/LoadingState';
 import { 
@@ -271,55 +270,6 @@ const TeamGenerator: React.FC = () => {
     balanceTeamsMutation.mutate(playerIds);
   };
 
-  const handleAddAI = (difficulty: string, mmr: number) => {
-    if (teamSuggestions.length > 0) {
-      setTeamSuggestions([]);
-    }
-    const name = `Computer (${difficulty})`;
-    const existing = guestPlayers.find(p => p.name === name);
-    if (existing) {
-      if (!selectedPlayers.some(p => p.id === existing.id)) {
-        setSelectedPlayers(prev => [...prev, existing]);
-      }
-      return;
-    }
-
-    const newAI: Player = {
-      id: -(guestPlayers.length + 1) * 1000 - 1, // Unique negative ID
-      name: name,
-      mmr: mmr,
-      mu: (mmr - 1000 + 200 * 0.1) / 100, // invert display MMR: mmr = 1000 + 100*mu - 200*sigma
-      sigma: 0.1, // Very certain for AI
-      total_games: 0,
-      win_rate: 0,
-      favorite_race: 'Random',
-      unified_mmr: mmr,
-      hybrid_mmr: mmr,
-      avg_pim: 0,
-      recency_weighted_mmr: mmr,
-      wins: 0,
-      losses: 0,
-      terran_games: 0,
-      protoss_games: 0,
-      zerg_games: 0,
-      random_games: 0,
-      is_core_player: false,
-      is_ai: true,
-      avg_economic_score: 50,
-      avg_combat_score: 50,
-      avg_efficiency_score: 50,
-      avg_overall_impact: 50,
-      avg_first_damage_timing: null,
-      primary_archetype: null,
-      avg_aggression_score: 50,
-      created_at: new Date().toISOString(),
-      last_played: null
-    };
-    setGuestPlayers(prev => [...prev, newAI]);
-    setSelectedPlayers(prev => [...prev, newAI]);
-    toast({ title: `${name} added to balance teams`, status: 'info', duration: 2000 });
-  };
-
   // Validation flags
   const minPlayers = 2;
   const canGenerate = selectedPlayers.length >= minPlayers;
@@ -461,7 +411,11 @@ const TeamGenerator: React.FC = () => {
                 primary_archetype: null,
                 avg_aggression_score: 50,
                 created_at: new Date().toISOString(),
-                last_played: null
+                last_played: null,
+                recent_form: null,
+                is_new: false,
+                is_active: true,
+                days_since_played: null
               };
               setGuestPlayers(prev => [...prev, newAI]);
               setSelectedPlayers(prev => [...prev, newAI]);
@@ -497,7 +451,11 @@ const TeamGenerator: React.FC = () => {
                 primary_archetype: null,
                 avg_aggression_score: 50,
                 created_at: new Date().toISOString(),
-                last_played: null
+                last_played: null,
+                recent_form: null,
+                is_new: false,
+                is_active: true,
+                days_since_played: null
               };
               setGuestPlayers(prev => [...prev, newGuest]);
               setSelectedPlayers(prev => [...prev, newGuest]);

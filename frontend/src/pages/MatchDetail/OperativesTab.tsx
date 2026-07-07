@@ -3,8 +3,6 @@
  */
 import {
   Box,
-  Card,
-  CardBody,
   VStack,
   HStack,
   Heading,
@@ -18,7 +16,6 @@ import {
   Badge,
   Icon,
   Text,
-  useColorModeValue,
 } from '@chakra-ui/react';
 import { FiAward, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import type { MatchDetail as MatchDetailType } from '@/types/api';

@@ -22,7 +22,6 @@ import {
 } from '@chakra-ui/react';
 import { FiAward } from 'react-icons/fi';
 import { useState } from 'react';
-import { formatDuration } from '@/utils/formatting';
 import type { MatchDetail as MatchDetailType, MatchPlayer } from '@/types/api';
 
 interface ScoreScreenTabProps {
@@ -45,24 +44,25 @@ const fmtNum = (v: number | null | undefined): string =>
 const fmtPct = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
 
-const fmtSeconds = (v: number | null | undefined): string =>
-  v === null || v === undefined ? '—' : formatDuration(v);
-
-// K/D is derived from the parsed per-player unit kill/loss counts. The backend
-// now computes and stores a real kill_death_ratio, but we derive it here from
-// units_killed / units_lost so the column stays consistent with the Units
-// Killed / Units Lost columns shown in the Military tab.
+// The backend's stored kill_death_ratio is the source of truth (computed and
+// capped at 10 by the parser). One exception: rows uploaded before the K/D
+// fix all carry the old poisoned default of exactly 1.0 — when the unit
+// counts contradict a stored 1.0, trust the counts. Self-healing: once the
+// backfill runs, stored and derived agree and the exception never fires.
+const KD_CAP = 10;
 const fmtKD = (p: MatchPlayer): string => {
-  const killed = p.units_killed;
-  const lost = p.units_lost;
-  if (killed === null || killed === undefined || lost === null || lost === undefined) {
-    return '—';
-  }
-  if (lost > 0) return (killed / lost).toFixed(2);
-  // Killed units but lost none — cap at 10 to match backend, mirroring how a
-  // flawless engagement is scored without an infinite ratio.
-  if (killed > 0) return '10.00';
-  // No combat recorded either way.
+  if (!p.units_killed && !p.units_lost) return '—';
+  const derived =
+    p.units_killed != null && p.units_lost != null
+      ? p.units_lost > 0
+        ? Math.min(p.units_killed / p.units_lost, KD_CAP)
+        : KD_CAP
+      : null;
+  const stored = p.kill_death_ratio;
+  const storedIsPoisoned =
+    stored === 1.0 && derived != null && Math.abs(derived - 1.0) > 1e-9;
+  if (stored != null && !storedIsPoisoned) return stored.toFixed(2);
+  if (derived != null) return derived.toFixed(2);
   return '—';
 };
 
@@ -76,7 +76,6 @@ const COLUMNS: Record<Section, ColumnDef[]> = {
     { label: 'APM', render: (p) => fmtNum(p.apm) },
     { label: 'Resources Collected', render: (p) => fmtNum(p.total_resources_collected) },
     { label: 'Workers Made', render: (p) => fmtNum(p.workers_created) },
-    { label: 'Supply Blocked', render: (p) => fmtSeconds(p.supply_block_seconds) },
     { label: 'K/D', render: fmtKD },
   ],
   economy: [

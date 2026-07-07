@@ -29,7 +29,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { keyframes } from '@emotion/react';
-import { FiTarget, FiUsers, FiTrendingUp, FiActivity, FiClock, FiMap } from 'react-icons/fi';
+import { FiTarget, FiClock, FiMap } from 'react-icons/fi';
 import { headToHeadApi } from '../api/headtohead';
 import { playersApi } from '../api/endpoints';
 import {
@@ -283,7 +283,6 @@ const HeadToHead: React.FC = () => {
     player2Id ? Number(player2Id) : null
   );
 
-  const bgColor = useColorModeValue('gray.900', 'space.900');
   const cardBg = useColorModeValue('gray.800', 'space.800');
 
   // Update URL when players change

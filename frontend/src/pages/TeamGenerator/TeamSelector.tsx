@@ -32,7 +32,7 @@ import {
   FormControl,
   FormLabel,
 } from '@chakra-ui/react';
-import { FiUsers, FiCheck, FiX, FiPlus, FiCpu, FiChevronDown, FiEdit2, FiTrash2, FiClock, FiSearch } from 'react-icons/fi';
+import { FiUsers, FiX, FiPlus, FiCpu, FiChevronDown, FiEdit2, FiTrash2, FiClock, FiSearch } from 'react-icons/fi';
 import PlayerCard from '@/components/PlayerCard';
 import TacticalCard from '@/components/TacticalCard';
 import type { Player } from '@/types/api';
@@ -56,7 +56,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
   players,
   selectedPlayers,
   onTogglePlayer,
-  onSelectAll,
   onClearSelection,
   onAddGuest,
   onEditGuest,
@@ -128,7 +127,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
 
   const minPlayers = 2;
   const canGenerate = selectedPlayers.length >= minPlayers;
-  const needMorePlayers = selectedPlayers.length < minPlayers;
   const hasOddPlayers = selectedPlayers.length % 2 !== 0;
 
   const getGameMode = (count: number): string => {

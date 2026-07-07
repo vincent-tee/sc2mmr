@@ -54,7 +54,6 @@ import {
   FiCheckCircle,
   FiActivity,
   FiHeart,
-  FiAward,
   FiShuffle,
   FiRepeat,
   FiArrowRight,
@@ -1041,7 +1040,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
   onRemovePlayer,
   onMovePlayer,
   getPlayerById,
-  bg,
   borderColor,
   iconColor,
   prediction,
@@ -1063,7 +1061,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
     return sum + (player?.mmr || 0);
   }, 0);
 
-  const avgMMR = teamPlayers.length > 0 ? totalMMR / teamPlayers.length : 0;
 
   return (
     <Box

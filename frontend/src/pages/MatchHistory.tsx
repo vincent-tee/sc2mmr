@@ -26,7 +26,7 @@ import {
   InputLeftElement,
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import {
   FiTarget,
@@ -417,29 +417,50 @@ const GAME_MODES = [
 const MatchHistory: React.FC = () => {
   const navigate = useNavigate();
 
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [searchText, setSearchText] = useState<string>('');
-  const [modeFilter, setModeFilter] = useState<string>('');
-  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  // The URL is the source of truth for filters + page, so searches are
+  // deep-linkable and survive back/forward navigation.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSearch = searchParams.get('q') ?? '';
+  const modeFilter = searchParams.get('mode') ?? '';
+  const currentPage = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
 
-  // Debounce the search input so each keystroke doesn't fire a request (~300ms).
+  const updateParams = (updates: Record<string, string>, replace = false): void => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    setSearchParams(next, { replace });
+  };
+
+  // Local input state so typing is instant; debounced into the URL (~300ms),
+  // which resets to page 1 and triggers the query.
+  const [searchText, setSearchText] = useState<string>(urlSearch);
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchText), 300);
+    const timer = setTimeout(() => {
+      if (searchText !== urlSearch) updateParams({ q: searchText, page: '' }, true);
+    }, 300);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchText]);
+  // Keep the input in sync when the URL changes underneath us (back button).
+  useEffect(() => {
+    setSearchText(urlSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSearch]);
 
-  const hasFilters = Boolean(debouncedSearch || modeFilter);
+  const hasFilters = Boolean(urlSearch || modeFilter);
   const availableModes = GAME_MODES;
 
   // Server-side pagination + filtering: fetch only the current page for the
   // active filters instead of pulling the whole archive down at once.
   const { data: matchesData, isLoading } = useQuery<MatchListWithPlayersResponse>({
-    queryKey: ['matches-with-players', currentPage, debouncedSearch, modeFilter],
+    queryKey: ['matches-with-players', currentPage, urlSearch, modeFilter],
     queryFn: async () => {
       const response = await replaysApi.getMatchesWithPlayers(
         MATCHES_PER_PAGE,
         (currentPage - 1) * MATCHES_PER_PAGE,
-        { search: debouncedSearch, game_mode: modeFilter }
+        { search: urlSearch, game_mode: modeFilter }
       );
       return response.data;
     },
@@ -448,41 +469,29 @@ const MatchHistory: React.FC = () => {
 
   const pageMatches = useMemo(() => matchesData?.matches || [], [matchesData]);
 
-  // total_count from the server reflects the FILTERED total for the active query.
+  // total_count is the count for the active filters (drives pagination);
+  // grand_total is the whole archive (drives the header stat).
   const filteredTotal = matchesData?.total_count || 0;
-
-  // Remember the unfiltered grand total (captured whenever no filters are active)
-  // so the header can keep showing the full archive size while filtering.
-  const [grandTotal, setGrandTotal] = useState<number>(0);
-  useEffect(() => {
-    if (!hasFilters && matchesData) {
-      setGrandTotal(matchesData.total_count);
-    }
-  }, [hasFilters, matchesData]);
-
-  const totalMatches = hasFilters ? grandTotal : filteredTotal;
+  const totalMatches = matchesData?.grand_total ?? filteredTotal;
   const totalPages = Math.ceil(filteredTotal / MATCHES_PER_PAGE) || 1;
   const safePage = Math.min(currentPage, totalPages);
 
   const handlePageChange = (newPage: number): void => {
-    setCurrentPage(newPage);
+    updateParams({ page: newPage > 1 ? String(newPage) : '' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>): void => {
     setSearchText(e.target.value);
-    setCurrentPage(1);
   };
 
   const handleModeChange = (e: ChangeEvent<HTMLSelectElement>): void => {
-    setModeFilter(e.target.value);
-    setCurrentPage(1);
+    updateParams({ mode: e.target.value, page: '' });
   };
 
   const clearFilters = (): void => {
     setSearchText('');
-    setModeFilter('');
-    setCurrentPage(1);
+    updateParams({ q: '', mode: '', page: '' });
   };
 
   const handleNavigate = (matchId: number): void => {
