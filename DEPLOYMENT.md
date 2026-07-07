@@ -1,5 +1,11 @@
 # Deploying SC2MMR online (group-only)
 
+> **Current deployment (live since 2026-07-07):**
+> - App: **https://sc2mmr.vercel.app** (Vercel project `sc2mmr`, team `vincent-tees-projects`)
+> - API: https://sc2mmr-api-864756980714.australia-southeast2.run.app (Cloud Run `sc2mmr-api`, project `sc2mmr-squad`)
+> - State: `gs://sc2mmr-squad-state` (Litestream DB replica under `sc2mmr-db/`, replays under `replays/`, seed under `seed/`)
+> - Secrets (squad password, admin token, auth secret): `~/sc2mmr-deploy-secrets.txt` on the WSL2 dev machine - not in the repo
+
 Architecture: **Vercel** serves the built frontend; **Cloud Run** runs the
 backend with the SQLite DB replicated to GCS by **Litestream**; replay files
 live in a **GCS bucket**. Access is gated by a shared **group password**
