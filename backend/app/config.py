@@ -131,14 +131,17 @@ class Settings(BaseSettings):
     # random per-process secret is generated at startup (works, but everyone
     # is logged out whenever the server restarts - set it in production).
     auth_secret: str = ""
-    # Session cookie lifetime.
-    auth_session_days: int = 30
-    # Cookie attributes. The Vercel-frontend + Cloud-Run-backend split is
-    # cross-site, which requires SameSite=None + Secure (HTTPS only). For
-    # local testing with auth enabled over plain http, set
-    # AUTH_COOKIE_SECURE=false and AUTH_COOKIE_SAMESITE=lax.
+    # Session cookie lifetime (default one year; each device re-logs-in ~annually).
+    auth_session_days: int = 365
+    # Cookie attributes. The frontend reaches the API same-origin via the
+    # Vercel /api proxy (see frontend/vercel.json), so the session cookie is
+    # first-party to the app domain and SameSite=Lax is correct - and Lax
+    # blocks cross-site POST from carrying the cookie, which closes the CSRF
+    # write vector. (If you ever call Cloud Run cross-site directly again,
+    # you'd need SameSite=None + Secure, which reopens CSRF - keep the proxy.)
+    # For local testing with auth over plain http, set AUTH_COOKIE_SECURE=false.
     auth_cookie_secure: bool = True
-    auth_cookie_samesite: str = "none"  # "none" | "lax" | "strict"
+    auth_cookie_samesite: str = "lax"  # "none" | "lax" | "strict"
     # Extra shared secret (X-Admin-Token header) required for destructive
     # admin endpoints (rating recalc, player merge, ML retrain, bulk
     # recalculations). Empty (default) = not enforced, preserving current
