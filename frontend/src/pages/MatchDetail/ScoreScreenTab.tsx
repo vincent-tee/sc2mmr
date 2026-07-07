@@ -45,11 +45,30 @@ const fmtNum = (v: number | null | undefined): string =>
 const fmtPct = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
 
-const fmtRatio = (v: number | null | undefined): string =>
-  v === null || v === undefined ? '—' : v.toFixed(2);
-
 const fmtSeconds = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : formatDuration(v);
+
+// The backend's stored kill_death_ratio is the source of truth (computed and
+// capped at 10 by the parser). One exception: rows uploaded before the K/D
+// fix all carry the old poisoned default of exactly 1.0 — when the unit
+// counts contradict a stored 1.0, trust the counts. Self-healing: once the
+// backfill runs, stored and derived agree and the exception never fires.
+const KD_CAP = 10;
+const fmtKD = (p: MatchPlayer): string => {
+  if (!p.units_killed && !p.units_lost) return '—';
+  const derived =
+    p.units_killed != null && p.units_lost != null
+      ? p.units_lost > 0
+        ? Math.min(p.units_killed / p.units_lost, KD_CAP)
+        : KD_CAP
+      : null;
+  const stored = p.kill_death_ratio;
+  const storedIsPoisoned =
+    stored === 1.0 && derived != null && Math.abs(derived - 1.0) > 1e-9;
+  if (stored != null && !storedIsPoisoned) return stored.toFixed(2);
+  if (derived != null) return derived.toFixed(2);
+  return '—';
+};
 
 interface ColumnDef {
   label: string;
@@ -62,7 +81,7 @@ const COLUMNS: Record<Section, ColumnDef[]> = {
     { label: 'Resources Collected', render: (p) => fmtNum(p.total_resources_collected) },
     { label: 'Workers Made', render: (p) => fmtNum(p.workers_created) },
     { label: 'Supply Blocked', render: (p) => fmtSeconds(p.supply_block_seconds) },
-    { label: 'K/D', render: (p) => fmtRatio(p.kill_death_ratio) },
+    { label: 'K/D', render: fmtKD },
   ],
   economy: [
     { label: 'Minerals', render: (p) => fmtNum(p.minerals_collected) },
@@ -85,9 +104,9 @@ const COLUMNS: Record<Section, ColumnDef[]> = {
     { label: 'Army Lost', render: (p) => fmtNum(p.army_value_lost) },
     { label: 'Units Killed', render: (p) => fmtNum(p.units_killed) },
     { label: 'Units Lost', render: (p) => fmtNum(p.units_lost) },
+    { label: 'K/D', render: fmtKD },
     { label: 'Damage Dealt', render: (p) => fmtNum(p.damage_dealt) },
     { label: 'Damage Taken', render: (p) => fmtNum(p.damage_taken) },
-    { label: 'K/D', render: (p) => fmtRatio(p.kill_death_ratio) },
   ],
 };
 
@@ -211,14 +230,14 @@ const ScoreScreenTab: React.FC<ScoreScreenTabProps> = ({ matchData, team1Won }) 
       )}
 
       <TeamTable
-        title="Squad Alpha"
-        accentColor="shield.400"
+        title="Team 1"
+        accentColor="brand.400"
         won={team1Won}
         players={team1Players}
         columns={columns}
       />
       <TeamTable
-        title="Squad Bravo"
+        title="Team 2"
         accentColor="accent.400"
         won={!team1Won}
         players={team2Players}

@@ -24,8 +24,11 @@ import {
   Flex,
   Heading,
   Switch,
+  Tooltip,
 } from '@chakra-ui/react';
-import { FiSearch, FiTarget, FiArrowRight } from 'react-icons/fi';
+import { FiSearch, FiTarget, FiArrowRight, FiClock } from 'react-icons/fi';
+import { LuFlame, LuSnowflake } from 'react-icons/lu';
+import type { IconType } from 'react-icons';
 import { useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -33,11 +36,29 @@ import { playersApi } from '../api/endpoints';
 import EmptyState from '../components/EmptyState';
 import LoadingState from '../components/LoadingState';
 import PageHeader from '../components/PageHeader';
-import { formatWinRate, getPlayerRaces, getRaceColor, getPlayerAvatarUrl } from '../utils/formatting';
+import { formatWinRate, formatDate, getPlayerRaces, getRaceColor, getPlayerAvatarUrl } from '../utils/formatting';
 import RankBadge from '../components/RankBadge';
 import type { Player } from '../types/api';
 
-type SortOption = 'mmr' | 'name' | 'games';
+type SortOption = 'mmr' | 'recent' | 'games' | 'name';
+
+// Recent form is the win rate over a player's last 5 games (0.0-1.0). Render it
+// as 5 pips so the roster shows momentum the ladder never does.
+const getFormPips = (recentForm: number | null | undefined): { filled: number; label: string } | null => {
+  if (recentForm === null || recentForm === undefined) return null;
+  return {
+    filled: Math.round(recentForm * 5),
+    label: `${Math.round(recentForm * 100)}% win rate over last 5 games`,
+  };
+};
+
+// Hot/cold streak flag, matching the thresholds PlayerCard already uses.
+const getFormTone = (recentForm: number | null | undefined): { icon: IconType; color: string } | null => {
+  if (recentForm === null || recentForm === undefined) return null;
+  if (recentForm >= 0.7) return { icon: LuFlame, color: 'orange.400' };
+  if (recentForm <= 0.3) return { icon: LuSnowflake, color: 'blue.400' };
+  return null;
+};
 
 const Players: React.FC = () => {
   const navigate = useNavigate();
@@ -62,16 +83,24 @@ const Players: React.FC = () => {
       (player) =>
         player.total_games > 0 &&
         player.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        (showLegacy || player.is_active)
+        // Treat a missing is_active flag as active so the roster still renders
+        // against backends that don't yet return the field.
+        (showLegacy || (player.is_active ?? true))
     )
     .sort((a, b) => {
       switch (sortBy) {
         case 'mmr':
           return b.mmr - a.mmr;
-        case 'name':
-          return a.name.localeCompare(b.name);
+        case 'recent': {
+          // Most recently active first; players who never laddered sink last.
+          const aDays = a.days_since_played ?? Number.POSITIVE_INFINITY;
+          const bDays = b.days_since_played ?? Number.POSITIVE_INFINITY;
+          return aDays - bDays;
+        }
         case 'games':
           return b.total_games - a.total_games;
+        case 'name':
+          return a.name.localeCompare(b.name);
         default:
           return 0;
       }
@@ -85,14 +114,19 @@ const Players: React.FC = () => {
     setSortBy(e.target.value as SortOption);
   };
 
-  const activePlayers = players.filter((p) => p.total_games > 0).length;
+  // Count only the players actually rendered by the grid's active/legacy
+  // filter, so the header stat never disagrees with the card count. Search
+  // is intentionally excluded so the header reflects roster size, not results.
+  const rosterCount = players.filter(
+    (p) => p.total_games > 0 && (showLegacy || (p.is_active ?? true))
+  ).length;
 
   const header = (
     <PageHeader
       kicker="The Roster"
       title="Squad [Roster]"
-      description="Everyone who's ever laddered with the squad — records, races, and receipts."
-      stats={[{ label: 'Active players', value: activePlayers }]}
+      description="Who's who in the squad — races, recent form, and who's laddering lately."
+      stats={[{ label: showLegacy ? 'Players' : 'Active players', value: rosterCount }]}
       actions={
         <HStack spacing={3}>
           <FormControl w={{ base: '100%', md: '240px' }}>
@@ -117,7 +151,7 @@ const Players: React.FC = () => {
               />
             </InputGroup>
           </FormControl>
-          <FormControl w="150px">
+          <FormControl w="160px">
             <VisuallyHidden>
               <FormLabel htmlFor="player-sort">Sort players by</FormLabel>
             </VisuallyHidden>
@@ -133,8 +167,9 @@ const Players: React.FC = () => {
               _focus={{ borderColor: 'brand.500' }}
             >
               <option value="mmr">By MMR</option>
+              <option value="recent">Recently active</option>
+              <option value="games">Most matches</option>
               <option value="name">By Name</option>
-              <option value="games">By Matches</option>
             </Select>
           </FormControl>
           <FormControl w="auto" display="flex" alignItems="center" gap={2}>
@@ -262,7 +297,9 @@ const Players: React.FC = () => {
                               NEW
                             </Badge>
                           )}
-                          {!player.is_active && (
+                          {/* Only brand LEGACY when the backend explicitly says
+                              inactive — a missing field must not mark everyone */}
+                          {player.is_active === false && (
                             <Badge colorScheme="gray" fontSize="9px">
                               LEGACY
                             </Badge>
@@ -280,6 +317,44 @@ const Players: React.FC = () => {
                         </Badge>
                       ))}
                     </HStack>
+
+                    {/* Activity + recent form — the "who's who" the ladder never shows */}
+                    <Flex justify="space-between" align="center" gap={2}>
+                      <HStack spacing={1.5} color="gray.400" minW={0}>
+                        <Icon as={FiClock} boxSize={3.5} flexShrink={0} />
+                        <Text fontSize="xs" fontFamily="heading" fontWeight="600" noOfLines={1}>
+                          {player.last_played ? `Last seen ${formatDate(player.last_played)}` : 'No games yet'}
+                        </Text>
+                      </HStack>
+                      {(() => {
+                        const pips = getFormPips(player.recent_form);
+                        if (!pips) return null;
+                        const tone = getFormTone(player.recent_form);
+                        return (
+                          <Tooltip label={pips.label} hasArrow fontSize="xs">
+                            <HStack spacing={1} flexShrink={0}>
+                              {tone && (
+                                <Icon
+                                  as={tone.icon}
+                                  color={tone.color}
+                                  boxSize={3.5}
+                                  filter="drop-shadow(0 0 3px currentColor)"
+                                />
+                              )}
+                              {[0, 1, 2, 3, 4].map((i) => (
+                                <Box
+                                  key={i}
+                                  w="6px"
+                                  h="6px"
+                                  borderRadius="full"
+                                  bg={i < pips.filled ? 'green.400' : 'whiteAlpha.300'}
+                                />
+                              ))}
+                            </HStack>
+                          </Tooltip>
+                        );
+                      })()}
+                    </Flex>
 
                     {/* Inline stats */}
                     <Flex justify="space-between" borderTop="1px solid" borderColor="whiteAlpha.100" pt={3}>

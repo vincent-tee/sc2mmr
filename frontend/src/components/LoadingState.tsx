@@ -11,7 +11,6 @@ import {
   HStack,
   SimpleGrid,
   Text,
-  useColorModeValue,
 } from '@chakra-ui/react';
 
 type LoadingStateVariant = 'players' | 'team' | 'match';

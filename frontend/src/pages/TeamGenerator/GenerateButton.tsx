@@ -2,7 +2,7 @@
  * GenerateButton Component - Team Generation Action Button
  * Displays button to generate teams and validation messages
  */
-import { Box, Button, Text, VStack, HStack, Badge, Icon } from '@chakra-ui/react';
+import { Box, Button, Text, VStack, HStack, Icon } from '@chakra-ui/react';
 import { FiZap, FiCpu, FiPlus } from 'react-icons/fi';
 
 interface GenerateButtonProps {

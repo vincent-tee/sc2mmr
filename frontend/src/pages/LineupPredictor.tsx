@@ -47,7 +47,6 @@ import {
   FiUsers,
   FiTarget,
   FiX,
-  FiPlus,
   FiZap,
   FiShield,
   FiTrendingUp,
@@ -55,7 +54,6 @@ import {
   FiCheckCircle,
   FiActivity,
   FiHeart,
-  FiAward,
   FiShuffle,
   FiRepeat,
   FiArrowRight,
@@ -545,7 +543,7 @@ const LineupPredictor: React.FC = () => {
                   <VStack align="stretch" spacing={4}>
                     <HStack justify="space-between">
                       <Badge colorScheme={currentTurnTeam === 1 ? 'cyan' : 'orange'} fontSize="sm" px={3} py={1}>
-                        {currentTurnTeam === 1 ? 'Squad Alpha' : 'Squad Bravo'}&apos;s pick
+                        {currentTurnTeam === 1 ? 'Team 1' : 'Team 2'}&apos;s pick
                       </Badge>
                       <Button size="xs" variant="ghost" leftIcon={<FiZap />} onClick={autoGenerateFully} isLoading={autoGenerateMutation.isPending}>
                         Auto-complete rest
@@ -586,7 +584,7 @@ const LineupPredictor: React.FC = () => {
           {/* Team Selection */}
           {(team1Players.length > 0 || team2Players.length > 0) && (
             <Flex justify="center">
-              <Tooltip label="Flip Squad Alpha and Squad Bravo's entire rosters">
+              <Tooltip label="Flip Team 1 and Team 2's entire rosters">
                 <Button
                   leftIcon={<FiRepeat />}
                   variant="outline"
@@ -816,7 +814,7 @@ const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
               <HStack>
                 <Icon as={FiShield} color="brand.400" boxSize={5} />
                 <Text fontFamily="heading" fontWeight="bold" textTransform="uppercase" color="brand.400" letterSpacing="wide">
-                  Squad Alpha
+                  Team 1
                 </Text>
                 {prediction.predicted_winner === 1 && (
                   <Badge colorScheme="green" ml={2} variant="solid">
@@ -878,7 +876,7 @@ const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
               <HStack>
                 <Icon as={FiShield} color="accent.400" boxSize={5} />
                 <Text fontFamily="heading" fontWeight="bold" textTransform="uppercase" color="accent.400" letterSpacing="wide">
-                  Squad Bravo
+                  Team 2
                 </Text>
                 {prediction.predicted_winner === 2 && (
                   <Badge colorScheme="green" ml={2} variant="solid">
@@ -1042,14 +1040,13 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
   onRemovePlayer,
   onMovePlayer,
   getPlayerById,
-  bg,
   borderColor,
   iconColor,
   prediction,
 }) => {
   const [recruitSearch, setRecruitSearch] = useState('');
   const [recruitOpen, setRecruitOpen] = useState(false);
-  const otherTeamLabel = teamNumber === 1 ? 'Squad Bravo' : 'Squad Alpha';
+  const otherTeamLabel = teamNumber === 1 ? 'Team 2' : 'Team 1';
   const moveIcon = teamNumber === 1 ? <FiArrowRight /> : <FiArrowLeft />;
   const filteredAvailable = availablePlayers.filter((p) =>
     p.name.toLowerCase().includes(recruitSearch.toLowerCase())
@@ -1064,7 +1061,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
     return sum + (player?.mmr || 0);
   }, 0);
 
-  const avgMMR = teamPlayers.length > 0 ? totalMMR / teamPlayers.length : 0;
 
   return (
     <Box
@@ -1081,7 +1077,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
           <HStack spacing={3}>
             <Icon as={FiUsers} color={iconColor} boxSize={6} />
             <Heading size="md" fontFamily="heading" textTransform="uppercase" letterSpacing="wider" color="gray.200">
-              Squad {teamNumber === 1 ? 'Alpha' : 'Bravo'}
+              Team {teamNumber}
             </Heading>
           </HStack>
           <Badge bg={teamNumber === 1 ? 'cyan.500' : 'orange.500'} color="white" fontSize="sm" px={3} py={1} borderRadius="full">
@@ -1126,12 +1122,13 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
               p={8}
               textAlign="center"
               color="gray.600"
-              border="2px dashed"
-              borderColor="space.700"
+              border="1px solid"
+              borderColor="whiteAlpha.100"
               borderRadius="xl"
             >
-              <Icon as={FiPlus} boxSize={8} mb={2} opacity={0.5} />
-              <Text fontSize="sm" fontFamily="heading">Draft players to this squad</Text>
+              <Icon as={FiSearch} boxSize={7} mb={2} opacity={0.4} />
+              <Text fontSize="sm" fontFamily="heading">No players yet</Text>
+              <Text fontSize="xs" color="gray.600" mt={1}>Search below to add players</Text>
             </Box>
           ) : (
             teamPlayers.map((playerId) => {

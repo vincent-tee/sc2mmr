@@ -36,6 +36,8 @@ import {
   Tab,
   TabPanel,
   Flex,
+  Tooltip,
+  Link,
 } from '@chakra-ui/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
@@ -45,14 +47,9 @@ import {
   FiActivity, 
   FiAward, 
   FiTarget, 
-  FiStar,
-  FiZap,
-  FiClock,
-  FiTrendingDown
+  FiZap
 } from 'react-icons/fi';
 import { 
-  LineChart, 
-  Line, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -74,6 +71,22 @@ const cardBg = 'space.800';
 const borderColor = 'space.900';
 const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
+/**
+ * Compact "D MMM" label for the trajectory chart x-axis. Mirrors the AEST
+ * handling in utils/formatting (API timestamps are naive UTC), kept local
+ * to avoid widening the shared util surface for a chart-only format.
+ */
+const formatAxisDate = (value: string): string => {
+  if (!value) return '';
+  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(value);
+  const date = new Date(hasTz ? value : `${value}Z`);
+  return date.toLocaleDateString('en-AU', {
+    timeZone: 'Australia/Sydney',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
 // Extended player detail type with optional race_stats
 interface PlayerDetailWithRaceStats extends Omit<PlayerDetailType, 'recent_matches'> {
   recent_matches: RecentMatch[];
@@ -87,7 +100,7 @@ const PlayerDetail: React.FC = () => {
   const [matchesOffset, setMatchesOffset] = useState<number>(0);
 
   // Fetch player details
-  const { data: playerData, isLoading, isFetching } = useQuery<PlayerDetailWithRaceStats>({
+  const { data: playerData, isLoading } = useQuery<PlayerDetailWithRaceStats>({
     queryKey: ['player', playerId, matchesLimit, matchesOffset],
     queryFn: async () => {
       const response = await playersApi.getById(parseInt(playerId!, 10), matchesLimit, matchesOffset);
@@ -212,9 +225,15 @@ const PlayerDetail: React.FC = () => {
                     {favoriteRace}
                   </Badge>
                   {playerData.is_core_player && (
-                    <Badge bg="brand.500" color="white" fontSize="sm" px={2} py={1} borderRadius="md">
-                      Core
-                    </Badge>
+                    <Tooltip
+                      label="A regular member of the clubhouse ladder — counts toward rankings, the champion, and team balancing (as opposed to a one-off guest)."
+                      hasArrow
+                      placement="top"
+                    >
+                      <Badge bg="brand.500" color="white" fontSize="sm" px={2} py={1} borderRadius="md" cursor="help">
+                        Core
+                      </Badge>
+                    </Tooltip>
                   )}
                   {playerData.is_ai && (
                     <Badge bg="purple.500" color="white" fontSize="sm" px={2} py={1} borderRadius="md">
@@ -268,9 +287,16 @@ const PlayerDetail: React.FC = () => {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" vertical={false} />
-                    <XAxis 
-                      dataKey="match_id" 
-                      hide 
+                    <XAxis
+                      dataKey="played_at"
+                      tickFormatter={formatAxisDate}
+                      stroke="#718096"
+                      fontSize={11}
+                      minTickGap={48}
+                      interval="preserveStartEnd"
+                      tickLine={false}
+                      axisLine={false}
+                      dy={6}
                     />
                     <YAxis
                       domain={['dataMin - 20', 'dataMax + 20']}
@@ -314,9 +340,21 @@ const PlayerDetail: React.FC = () => {
           {/* Statistics Grid */}
 
           <Box>
-            <Heading size="md" fontFamily="heading" color="gray.300" mb={4}>
-              Player Stats
-            </Heading>
+            <Flex justify="space-between" align="center" mb={4} gap={3} flexWrap="wrap">
+              <Heading size="md" fontFamily="heading" color="gray.300">
+                Player Stats
+              </Heading>
+              <Link
+                onClick={() => navigate('/rating-system')}
+                fontSize="sm"
+                fontFamily="heading"
+                fontWeight="700"
+                color="accent.400"
+                _hover={{ color: 'accent.300', textDecoration: 'none' }}
+              >
+                How the rating works →
+              </Link>
+            </Flex>
             <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }} gap={4}>
               <GridItem>
                 <Box
@@ -379,12 +417,14 @@ const PlayerDetail: React.FC = () => {
                   <Stat>
                     <StatLabel color="gray.400" fontFamily="heading" letterSpacing="wide">
                       <Icon as={FiTarget} mr={2} color="shield.400" />
-                      Skill (mu)
+                      Skill estimate
                     </StatLabel>
                     <StatNumber fontSize="3xl" color="shield.400" fontWeight="bold">
                       {playerData.mu.toFixed(1)}
                     </StatNumber>
-                    <StatHelpText color="gray.500">&nbsp;</StatHelpText>
+                    <StatHelpText color="gray.500" fontSize="xs">
+                      The system's best guess at true skill
+                    </StatHelpText>
                   </Stat>
                 </Box>
               </GridItem>
@@ -402,13 +442,13 @@ const PlayerDetail: React.FC = () => {
                   <Stat>
                     <StatLabel color="gray.400" fontFamily="heading" letterSpacing="wide">
                       <Icon as={FiTrendingUp} mr={2} color="purple.400" />
-                      Uncertainty
+                      Rating confidence
                     </StatLabel>
                     <StatNumber fontSize="3xl" color="purple.400" fontWeight="bold">
                       {playerData.sigma.toFixed(2)}
                     </StatNumber>
                     <StatHelpText color="gray.500" fontSize="xs">
-                      Lower = More certain
+                      How settled this rating is — lower means more certain
                     </StatHelpText>
                   </Stat>
                 </Box>
@@ -483,6 +523,7 @@ const PlayerDetail: React.FC = () => {
                             size="sm"
                             borderRadius="full"
                             bg="space.900"
+                            sx={{ '& > div': { bg: `${getRaceColor(race)}.500` } }}
                           />
                         </VStack>
                       </GridItem>

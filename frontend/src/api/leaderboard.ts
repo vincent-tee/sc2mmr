@@ -7,6 +7,7 @@ import apiClient from './client';
 import type {
   LeaderboardEntry,
   DuoLeaderboardEntry,
+  TrioLeaderboardEntry,
   LeaderboardCategoryKey,
 } from '@/types/leaderboard';
 
@@ -64,8 +65,20 @@ export interface LeaderboardApi {
     sortBy?: 'wins' | 'winrate' | 'synergy'
   ) => Promise<AxiosResponse<TrioLeaderboardEntry[]>>;
 
-  /** Generic getter by category key */
   getMetaReport: () => Promise<AxiosResponse<any>>;
+
+  /** Generic getter by category key */
+  getByCategory: (
+    category: LeaderboardCategoryKey,
+    options?: {
+      limit?: number;
+      minGames?: number;
+      sortBy?: string;
+      activeOnly?: boolean;
+    }
+  ) => Promise<
+    AxiosResponse<LeaderboardEntry[] | DuoLeaderboardEntry[] | TrioLeaderboardEntry[]>
+  >;
 }
 
 export const leaderboardApi: LeaderboardApi = {

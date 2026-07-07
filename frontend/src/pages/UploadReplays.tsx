@@ -16,6 +16,7 @@ import {
   Button,
   Collapse,
   IconButton,
+  Link,
   List,
   ListItem,
 } from '@chakra-ui/react';
@@ -29,6 +30,7 @@ import {
   FiRefreshCw,
 } from 'react-icons/fi';
 import { useDropzone, type FileRejection } from 'react-dropzone';
+import { Link as RouterLink } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { replaysApi } from '../api/endpoints';
 import PageHeader from '../components/PageHeader';
@@ -323,16 +325,15 @@ const UploadReplays: React.FC = () => {
               <Text color="gray.500" fontSize="lg">
                 or click to browse
               </Text>
-              <Badge
-                bg="space.700"
-                color="brand.400"
-                fontSize="md"
-                px={4}
-                py={2}
-                borderRadius="full"
+              <Text
+                fontFamily="mono"
+                fontSize="xs"
+                color="gray.600"
+                textTransform="uppercase"
+                letterSpacing="wider"
               >
                 .SC2Replay files only
-              </Badge>
+              </Text>
             </VStack>
           </Box>
         )}
@@ -442,6 +443,21 @@ const UploadReplays: React.FC = () => {
             </VStack>
           </Box>
         )}
+
+        {/* Companion link to failed uploads */}
+        <HStack justify="center" spacing={2} color="gray.500" fontSize="sm">
+          <Icon as={FiAlertCircle} boxSize={4} />
+          <Text>A replay didn't go through?</Text>
+          <Link
+            as={RouterLink}
+            to="/failed-uploads"
+            color="brand.400"
+            fontWeight="medium"
+            _hover={{ color: 'brand.300', textDecoration: 'underline' }}
+          >
+            Review failed uploads
+          </Link>
+        </HStack>
       </VStack>
       </Container>
     </Box>
@@ -509,6 +525,27 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
             <Text fontSize="xs" color="yellow.400">
               Already uploaded
             </Text>
+          )}
+
+          {/* Match Result (for completed uploads) */}
+          {file.status === UPLOAD_STATUS.COMPLETE && file.data && (
+            <HStack spacing={2} fontSize="xs" color="gray.500" flexWrap="wrap">
+              {file.data.map_name && <Text noOfLines={1}>{file.data.map_name}</Text>}
+              {file.data.game_mode && (
+                <Badge bg="space.900" color="gray.400" fontSize="2xs" px={1.5}>
+                  {file.data.game_mode}
+                </Badge>
+              )}
+              <Link
+                as={RouterLink}
+                to={`/history/${file.data.match_id}`}
+                color="brand.400"
+                fontWeight="medium"
+                _hover={{ color: 'brand.300', textDecoration: 'underline' }}
+              >
+                View match
+              </Link>
+            </HStack>
           )}
         </VStack>
 

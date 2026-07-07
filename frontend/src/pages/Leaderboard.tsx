@@ -51,6 +51,19 @@ import {
   formatLeaderboardValue,
 } from '../types/leaderboard';
 
+// Parse a "383W 325L" record string into a win-rate percentage.
+// Returns null when the extra_info isn't a W/L record (e.g. "Current: 1").
+const winRateFromRecord = (info?: string): string | null => {
+  if (!info) return null;
+  const match = info.match(/(\d+)\s*W\s*(\d+)\s*L/i);
+  if (!match) return null;
+  const wins = parseInt(match[1], 10);
+  const losses = parseInt(match[2], 10);
+  const total = wins + losses;
+  if (total === 0) return null;
+  return `${((wins / total) * 100).toFixed(1)}%`;
+};
+
 // Icon per category (replaces the old emoji icons)
 const CATEGORY_ICONS: Record<string, IconType> = {
   mmr: LuTrophy,
@@ -93,7 +106,7 @@ const CategoryTab: React.FC<CategoryTabProps> = React.memo(({ category, isActive
   >
     <HStack spacing={2}>
       <Icon as={CATEGORY_ICONS[category.key] || LuTrophy} boxSize="14px" />
-      <Text display={{ base: 'none', md: 'block' }}>{category.name}</Text>
+      <Text>{category.name}</Text>
     </HStack>
   </Button>
 ));
@@ -238,6 +251,11 @@ const Podium: React.FC<PodiumProps> = React.memo(({ entries, category, onPlayerC
               >
                 {formatLeaderboardValue(entry.value, category)}
               </Text>
+              {category === 'mmr' && (
+                <HStack justify="center" mt={2}>
+                  <RankBadge mmr={entry.value} size="xs" showMMR={false} />
+                </HStack>
+              )}
               {entry.extra_info && (
                 <Text fontSize="xs" color="gray.500" mt={1.5} noOfLines={1}>
                   {entry.extra_info}
@@ -309,6 +327,8 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(
     const categoryInfo = LEADERBOARD_CATEGORIES.find((c) => c.key === category);
 
     const isRecentForm = category === 'recent-form';
+    // Categories whose extra_info is a "383W 325L" record: show RECORD + WIN RATE.
+    const showRecordCols = category === 'mmr' || category === 'winrate';
 
     return (
       <Table variant="simple" size="md">
@@ -324,6 +344,15 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(
                 </Th>
                 <Th color="gray.500" isNumeric display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
                   WR
+                </Th>
+              </>
+            ) : showRecordCols ? (
+              <>
+                <Th color="gray.500" display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
+                  Record
+                </Th>
+                <Th color="gray.500" isNumeric display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
+                  Win Rate
                 </Th>
               </>
             ) : (
@@ -351,7 +380,11 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(
                   <Text fontWeight="700" color="gray.100" fontFamily="heading">
                     {entry.name}
                   </Text>
-                  {category === 'mmr' && <RankBadge mmr={entry.value} size="xs" showMMR={false} />}
+                  {category === 'mmr' && (
+                    <Box display={{ base: 'none', md: 'block' }}>
+                      <RankBadge mmr={entry.value} size="xs" showMMR={false} />
+                    </Box>
+                  )}
                   {entry.is_new && (
                     <Badge colorScheme="teal" fontSize="9px" px={1.5}>
                       NEW
@@ -388,6 +421,19 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(
                         {entry.secondary_value != null ? `${entry.secondary_value}%` : '-'}
                       </Text>
                     </HStack>
+                  </Td>
+                </>
+              ) : showRecordCols ? (
+                <>
+                  <Td display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
+                    <Text color="gray.400" fontFamily="mono" fontSize="sm">
+                      {entry.extra_info || '-'}
+                    </Text>
+                  </Td>
+                  <Td isNumeric display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
+                    <Text color="gray.300" fontFamily="mono" fontSize="sm" fontWeight="600">
+                      {winRateFromRecord(entry.extra_info) ?? '-'}
+                    </Text>
                   </Td>
                 </>
               ) : (
@@ -635,7 +681,12 @@ const Leaderboard: React.FC = () => {
         <VStack spacing={8} align="stretch">
           {/* Category Tabs */}
           <Flex justify="space-between" align="center" gap={3} wrap="wrap">
-            <Box overflowX="auto" pb={1}>
+            <Box
+              w={{ base: '100%', md: 'auto' }}
+              overflowX="auto"
+              pb={1}
+              sx={{ WebkitOverflowScrolling: 'touch' }}
+            >
               <Flex gap={2} minW="max-content">
                 {LEADERBOARD_CATEGORIES.map((category) => (
                   <CategoryTab
@@ -690,7 +741,7 @@ const Leaderboard: React.FC = () => {
                 borderRadius="xl"
                 border="1px solid"
                 borderColor="whiteAlpha.100"
-                overflow="hidden"
+                overflowX="auto"
               >
                 {activeCategory === 'duos' ? (
                   <DuoTable entries={data as DuoLeaderboardEntry[]} onPlayerClick={handlePlayerClick} />

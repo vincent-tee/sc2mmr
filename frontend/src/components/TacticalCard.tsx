@@ -4,7 +4,7 @@
  */
 import React, { ReactNode, useCallback, KeyboardEvent } from 'react';
 import { Box, BoxProps, useColorModeValue } from '@chakra-ui/react';
-import { colors, shadows, radii, transitions } from '../theme/tokens';
+import { shadows, transitions } from '../theme/tokens';
 
 type TacticalCardVariant = 'default' | 'angled' | 'command';
 

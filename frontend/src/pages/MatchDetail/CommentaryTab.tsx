@@ -199,11 +199,6 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                           {race}
                         </Badge>
                       </HStack>
-                      {playerInfo?.impact_score && (
-                        <Badge colorScheme="purple" fontSize="xs">
-                          Impact: {playerInfo.impact_score.toFixed(0)}
-                        </Badge>
-                      )}
                     </HStack>
                     <Text fontSize="sm" lineHeight="tall" color="gray.300">
                       {analysis}
@@ -227,6 +222,7 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                   mb={3}
                   fontFamily="heading"
                   letterSpacing="wider"
+                  color="brand.400"
                 >
                   Team 1 Analysis
                 </Heading>
@@ -244,6 +240,7 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
                   mb={3}
                   fontFamily="heading"
                   letterSpacing="wider"
+                  color="accent.400"
                 >
                   Team 2 Analysis
                 </Heading>

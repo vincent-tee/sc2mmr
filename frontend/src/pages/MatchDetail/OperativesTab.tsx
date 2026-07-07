@@ -3,8 +3,6 @@
  */
 import {
   Box,
-  Card,
-  CardBody,
   VStack,
   HStack,
   Heading,
@@ -18,7 +16,6 @@ import {
   Badge,
   Icon,
   Text,
-  useColorModeValue,
 } from '@chakra-ui/react';
 import { FiAward, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import type { MatchDetail as MatchDetailType } from '@/types/api';
@@ -54,9 +51,9 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
             fontFamily="heading"
             letterSpacing="widest"
             textTransform="uppercase"
-            color="shield.400"
+            color="brand.400"
           >
-            Squad Alpha
+            Team 1
           </Heading>
           {team1Won && (
             <Badge
@@ -152,7 +149,7 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
             textTransform="uppercase"
             color="accent.400"
           >
-            Squad Bravo
+            Team 2
           </Heading>
           {!team1Won && (
             <Badge
