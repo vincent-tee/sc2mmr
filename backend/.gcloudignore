@@ -1,0 +1,35 @@
+# Keep Cloud Build source uploads small: runtime state and dev artifacts
+# never belong in the build context (mirrors .dockerignore, which gcloud
+# does NOT read - it reads this file).
+.gcloudignore
+.git
+.gitignore
+
+# Runtime state (comes from GCS/Litestream at runtime)
+data/
+!data/xgboost_model.pkl
+replays/
+failed_replays/
+*.log
+*.db
+*.db.backup*
+
+# Dev/test artifacts
+tests/
+scripts/
+docker/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+app/lib/
+*.py[cod]
+.env
+.moai/
+
+# Local one-off tools at backend root
+analyze_ai.py
+upload_all_replays.py
+recalculate_ratings.py
+merge_players.py
+manage_aliases.py
+leaderboard_query.py
