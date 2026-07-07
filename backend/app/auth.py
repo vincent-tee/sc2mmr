@@ -31,6 +31,19 @@ COOKIE_NAME = "sc2mmr_session"
 # Reachable without a session. Everything else needs auth when enabled.
 PUBLIC_PATHS = {"/health", "/auth/login", "/auth/logout", "/auth/status"}
 
+# In public-read mode these stay session-gated even though they are GETs:
+# replay downloads are the one path where a stored file reaches a visitor's
+# machine (malware-distribution defense), and the interactive API docs are
+# developer surface, not ladder data.
+_PROTECTED_READ_EXACT = {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"}
+
+
+def _is_protected_read(path: str) -> bool:
+    if path in _PROTECTED_READ_EXACT:
+        return True
+    # GET /replays/matches/{id}/download
+    return path.startswith("/replays/") and path.rstrip("/").endswith("/download")
+
 
 # =============================================================================
 # Session tokens: "<expiry-unix-ts>.<hmac-sha256>"
@@ -122,6 +135,14 @@ class RequireSessionMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if request.method == "OPTIONS" or request.url.path in PUBLIC_PATHS:
             return await call_next(request)
+        # Public-read mode: anonymous GET/HEAD is fine for ladder data; every
+        # write and every protected read still needs the session.
+        if (
+            settings.auth_public_read
+            and request.method in ("GET", "HEAD")
+            and not _is_protected_read(request.url.path)
+        ):
+            return await call_next(request)
         token = request.cookies.get(COOKIE_NAME, "")
         if token and verify_session_token(token):
             return await call_next(request)
@@ -205,9 +226,10 @@ def logout(response: Response):
 def auth_status(request: Request):
     """Lets the frontend decide whether to show the login screen."""
     if not settings.auth_enabled:
-        return {"auth_enabled": False, "authenticated": True}
+        return {"auth_enabled": False, "public_read": True, "authenticated": True}
     token = request.cookies.get(COOKIE_NAME, "")
     return {
         "auth_enabled": True,
+        "public_read": settings.auth_public_read,
         "authenticated": bool(token and verify_session_token(token)),
     }

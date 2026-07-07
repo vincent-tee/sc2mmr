@@ -45,6 +45,34 @@ def auth_on():
 
 
 @pytest.fixture
+def public_read_on():
+    """auth_on plus auth_public_read=True; restores all of it afterwards."""
+    saved = (
+        settings.auth_enabled,
+        settings.group_password,
+        settings.auth_secret,
+        settings.auth_cookie_secure,
+        settings.auth_cookie_samesite,
+        settings.auth_public_read,
+    )
+    settings.auth_enabled = True
+    settings.group_password = "squad-pw"
+    settings.auth_secret = "test-secret"
+    settings.auth_cookie_secure = False
+    settings.auth_cookie_samesite = "lax"
+    settings.auth_public_read = True
+    yield
+    (
+        settings.auth_enabled,
+        settings.group_password,
+        settings.auth_secret,
+        settings.auth_cookie_secure,
+        settings.auth_cookie_samesite,
+        settings.auth_public_read,
+    ) = saved
+
+
+@pytest.fixture
 def admin_token_on():
     saved = settings.admin_token
     settings.admin_token = "admin-secret"
@@ -57,7 +85,7 @@ class TestAuthDisabled:
         assert settings.auth_enabled is False
         assert client.get("/health").status_code == 200
         status = client.get("/auth/status").json()
-        assert status == {"auth_enabled": False, "authenticated": True}
+        assert status == {"auth_enabled": False, "public_read": True, "authenticated": True}
 
     def test_login_is_a_noop(self, client):
         resp = client.post("/auth/login", json={"password": "anything"})
@@ -73,7 +101,7 @@ class TestAuthEnabled:
     def test_public_paths_stay_open(self, client, auth_on):
         assert client.get("/health").status_code == 200
         status = client.get("/auth/status").json()
-        assert status == {"auth_enabled": True, "authenticated": False}
+        assert status == {"auth_enabled": True, "public_read": False, "authenticated": False}
 
     def test_wrong_password_rejected_no_cookie(self, client, auth_on):
         resp = client.post("/auth/login", json={"password": "nope"})
@@ -133,3 +161,66 @@ class TestUploadSizeLimit:
             files={"file": ("big.SC2Replay", oversized, "application/octet-stream")},
         )
         assert resp.status_code == 413
+
+
+class TestPublicReadMode:
+    def test_anonymous_get_data_endpoint_allowed(self, client, public_read_on):
+        assert client.get("/leaderboard/mmr").status_code == 200
+
+    def test_anonymous_write_still_rejected(self, client, public_read_on):
+        # 401 must come from the middleware before any file parsing happens.
+        resp = client.post(
+            "/replays/upload",
+            files={"file": ("dummy.SC2Replay", b"not a real replay", "application/octet-stream")},
+        )
+        assert resp.status_code == 401
+
+    def test_anonymous_docs_and_openapi_still_protected(self, client, public_read_on):
+        assert client.get("/docs").status_code == 401
+        assert client.get("/openapi.json").status_code == 401
+
+    def test_anonymous_replay_download_still_protected(self, client, public_read_on):
+        assert client.get("/replays/matches/1/download").status_code == 401
+        # Trailing slash must not slip past the endswith("/download") check.
+        assert client.get("/replays/matches/1/download/").status_code == 401
+
+    def test_auth_status_reports_public_read(self, client, public_read_on):
+        status = client.get("/auth/status").json()
+        assert status == {
+            "auth_enabled": True,
+            "public_read": True,
+            "authenticated": False,
+        }
+
+    def test_login_unlocks_write_paths(self, client, public_read_on):
+        resp = client.post("/auth/login", json={"password": "squad-pw"})
+        assert resp.status_code == 200
+        # Past the middleware now; a dummy file 400s on invalid content,
+        # which is fine - the point is it's not a 401 from the auth gate.
+        resp = client.post(
+            "/replays/upload",
+            files={"file": ("dummy.SC2Replay", b"not a real replay", "application/octet-stream")},
+        )
+        assert resp.status_code != 401
+
+    def test_anonymous_head_data_endpoint_allowed(self, client, public_read_on):
+        resp = client.head("/leaderboard/mmr")
+        assert resp.status_code != 401
+
+    def test_public_read_without_auth_enabled_is_fully_open(self, client):
+        # Regression guard: auth_public_read=True but auth_enabled=False must
+        # behave exactly like today's fully-open default (the middleware's
+        # very first check is `if not settings.auth_enabled: return`).
+        assert settings.auth_enabled is False
+        settings.auth_public_read = True
+        try:
+            assert client.get("/leaderboard/mmr").status_code == 200
+            assert client.get("/docs").status_code == 200
+            assert client.get("/replays/matches/1/download").status_code != 401
+            resp = client.post(
+                "/replays/upload",
+                files={"file": ("dummy.SC2Replay", b"not a real replay", "application/octet-stream")},
+            )
+            assert resp.status_code != 401
+        finally:
+            settings.auth_public_read = False

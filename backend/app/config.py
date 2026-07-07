@@ -121,6 +121,12 @@ class Settings(BaseSettings):
     # The shared squad password. Must be set when auth_enabled is True or
     # logins are rejected with a config error.
     group_password: str = ""
+    # Public-read mode: anonymous GETs are allowed (browse the ladder without
+    # logging in) while every write - uploads included - still requires the
+    # session. Replay downloads and the API docs stay session-gated even for
+    # GET: downloads are the one path where a stored file reaches someone's
+    # machine (malware-distribution defense), and /docs is developer surface.
+    auth_public_read: bool = False
     # Secret for signing session cookies. If empty while auth is enabled, a
     # random per-process secret is generated at startup (works, but everyone
     # is logged out whenever the server restarts - set it in production).

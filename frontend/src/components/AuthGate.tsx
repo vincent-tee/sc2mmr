@@ -22,6 +22,8 @@ import apiClient, { AUTH_EXPIRED_EVENT, ApiClientError } from '../api/client';
 
 interface AuthStatus {
   auth_enabled: boolean;
+  /** Anonymous GETs allowed; only writes (uploads etc.) need the session. */
+  public_read?: boolean;
   authenticated: boolean;
 }
 
@@ -129,7 +131,13 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const checkStatus = useCallback(async () => {
     try {
       const { data } = await apiClient.get<AuthStatus>('/auth/status');
-      setState(!data.auth_enabled || data.authenticated ? 'open' : 'locked');
+      // In public-read mode anonymous browsing is fine - the gate only
+      // appears when a write gets a 401 (AUTH_EXPIRED_EVENT below).
+      setState(
+        !data.auth_enabled || data.public_read || data.authenticated
+          ? 'open'
+          : 'locked'
+      );
     } catch {
       // Backend unreachable or errored: fail open. The middleware still
       // enforces auth server-side; pages will surface their own errors.
