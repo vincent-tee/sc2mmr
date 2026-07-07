@@ -12,6 +12,7 @@ from typing import Dict, Optional, Any, List, cast
 from sqlalchemy import func
 from datetime import datetime, timedelta
 
+from ..auth import require_admin
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
@@ -443,7 +444,7 @@ def get_shap_importance():
     }
 
 
-@router.post("/train-ml-model")
+@router.post("/train-ml-model", dependencies=[Depends(require_admin)])
 def train_ml_model_endpoint(db: Session = Depends(get_db)):
     """
     Train the ML prediction model.
@@ -453,7 +454,7 @@ def train_ml_model_endpoint(db: Session = Depends(get_db)):
     return train_ml_model(db)
 
 
-@router.post("/build-order/retrain")
+@router.post("/build-order/retrain", dependencies=[Depends(require_admin)])
 def retrain_build_order_classifier(db: Session = Depends(get_db)):
     """
     Retrain the K-Means build order classifier on all available data.

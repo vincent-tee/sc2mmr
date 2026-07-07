@@ -11,6 +11,8 @@ import logging
 
 from .database import init_db
 from .api import replays, players, teams, impact, adaptive, achievements, leaderboard, headtohead
+from .auth import RequireSessionMiddleware
+from .auth import router as auth_router
 from .config import settings
 
 # Configure logging using settings
@@ -42,6 +44,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Group-password session gate (no-op unless AUTH_ENABLED=true). Added BEFORE
+# CORSMiddleware so CORS ends up outermost: preflights bypass auth and 401
+# responses still carry CORS headers the browser needs to surface them.
+app.add_middleware(RequireSessionMiddleware)
+
 # CORS middleware for frontend
 # Uses settings.cors_origins instead of wildcard ["*"] for security
 # In development: ["http://localhost:5173", "http://localhost:3000"]
@@ -55,6 +62,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth_router)
 app.include_router(replays.router)
 app.include_router(players.router)
 app.include_router(teams.router)

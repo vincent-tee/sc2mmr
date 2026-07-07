@@ -8,6 +8,7 @@ from sqlalchemy import desc, or_, and_
 from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 
+from ..auth import require_admin
 from ..database import get_db
 from ..models import Player, MatchPlayer, Match, PlayerMatchMetrics
 from ..rating_system import RatingSystem
@@ -512,7 +513,11 @@ class RecalculationStats(BaseModel):
     total_adjustments_applied: int
 
 
-@router.post("/recalculate-ratings", response_model=RecalculationStats)
+@router.post(
+    "/recalculate-ratings",
+    response_model=RecalculationStats,
+    dependencies=[Depends(require_admin)],
+)
 def recalculate_all_ratings(db: Session = Depends(get_db)):
     """
     Recalculate all player ratings from scratch using TrueSkill + Performance Adjustments.
@@ -815,7 +820,11 @@ class MergePlayersResponse(BaseModel):
     synergies_updated: int
 
 
-@router.post("/merge", response_model=MergePlayersResponse)
+@router.post(
+    "/merge",
+    response_model=MergePlayersResponse,
+    dependencies=[Depends(require_admin)],
+)
 def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
     """
     Merge two players into one.
