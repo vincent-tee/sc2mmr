@@ -6,7 +6,7 @@
 .gitignore
 
 # Runtime state (comes from GCS/Litestream at runtime)
-data/
+data/*
 !data/xgboost_model.pkl
 replays/
 failed_replays/
