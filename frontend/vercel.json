@@ -3,5 +3,11 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://sc2mmr-api-864756980714.australia-southeast2.run.app/$1"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
