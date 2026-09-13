@@ -810,6 +810,24 @@ class MergePlayersRequest(BaseModel):
     target_player_name: str  # Player to merge into (will be kept)
 
 
+class AddPlayerAliasRequest(BaseModel):
+    """Request to map an alternate name to a canonical player."""
+
+    source_name: str  # Name as it appears in replays (e.g. an old handle)
+    target_player_name: str  # Canonical player this name should resolve to
+    exclude_1v1: bool = True
+    min_players: int = 4
+
+
+class AddPlayerAliasResponse(BaseModel):
+    """Response from creating/updating a player alias."""
+
+    source_name: str
+    target_player_name: str
+    exclude_1v1: bool
+    min_players: int
+
+
 class MergePlayersResponse(BaseModel):
     """Response from merging players."""
 
@@ -900,7 +918,7 @@ def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
         .values(player_id=target_player.id)
     )
 
-    from ..models import PlayerSynergy, PlayerAchievement, PlayerRivalry
+    from ..models import PlayerSynergy, PlayerAchievement, PlayerRivalry, PlayerAlias
 
     db.execute(
         update(PlayerAchievement)
@@ -946,6 +964,16 @@ def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
     )
 
     synergies_updated = synergies_p1_count + synergies_p2_count
+
+    # Repoint any aliases that resolved to the source player, so future
+    # uploads under those alias names attribute to the surviving player.
+    # Without this, deleting source_player leaves SQLAlchemy trying to null
+    # out target_player_id (NOT NULL) on the orphaned alias row.
+    db.execute(
+        update(PlayerAlias)
+        .where(PlayerAlias.target_player_id == source_player.id)
+        .values(target_player_id=target_player.id)
+    )
 
     # Flush to ensure updates are committed before we delete
     db.flush()
@@ -1027,6 +1055,38 @@ def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
         kept_player=_player_to_response(target_player),
         matches_transferred=matches_transferred,
         synergies_updated=synergies_updated,
+    )
+
+
+@router.post(
+    "/aliases",
+    response_model=AddPlayerAliasResponse,
+    dependencies=[Depends(require_admin)],
+)
+def add_player_alias(request: AddPlayerAliasRequest, db: Session = Depends(get_db)):
+    """
+    Map an alternate name to a canonical player so future replay uploads
+    under that name are attributed to the canonical player instead of
+    creating a new duplicate.
+    """
+    from ..services.player_service import PlayerService
+
+    try:
+        alias = PlayerService.add_alias(
+            db,
+            request.source_name,
+            request.target_player_name,
+            exclude_1v1=request.exclude_1v1,
+            min_players=request.min_players,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return AddPlayerAliasResponse(
+        source_name=alias.source_name,
+        target_player_name=request.target_player_name,
+        exclude_1v1=bool(alias.exclude_1v1),
+        min_players=alias.min_players,
     )
 
 
