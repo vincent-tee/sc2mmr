@@ -13,12 +13,15 @@ Run with: pytest tests/test_balance_regression.py -v -s
 """
 
 import pytest
+
+pytestmark = pytest.mark.local_data
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
 import sys
+import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -274,7 +277,10 @@ class TestBalanceRegression:
     @pytest.fixture(scope="class")
     def db_session(self):
         """Create database session."""
-        engine = create_engine("sqlite:///data/sc2mmr.db")
+        snapshot = os.environ.get("SC2MMR_HISTORY_SNAPSHOT")
+        if not snapshot:
+            pytest.skip("Set SC2MMR_HISTORY_SNAPSHOT to a historical database copy")
+        engine = create_engine(f"sqlite:///file:{Path(snapshot).resolve()}?mode=ro&uri=true")
         Session = sessionmaker(bind=engine)
         session = Session()
         yield session

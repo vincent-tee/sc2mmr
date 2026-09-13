@@ -16,26 +16,15 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, Optional, cast
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.auto_adaptive import trigger_auto_optimization  # type: ignore
-from app.exceptions import (  # type: ignore
-    DuplicateReplayError,
-    DuplicateGameError,
-    ReplayParseError,
-    ValidationError,
-    WinnerDeterminationError,
-)
-from app.models import Match, MatchPlayer, Player, PerformanceFeatures, Race  # type: ignore
+from app.models import Match, MatchPlayer, Player, PerformanceFeatures  # type: ignore
 from app.impact_service import ImpactService  # type: ignore
-from app.performance_rating import PerformanceRatingAdjuster  # type: ignore
-from app.rating_system import RatingSystem  # type: ignore
 from app.services.unified_parser import UnifiedParser  # type: ignore
-from app.types.results import ProcessedMatchResult, PlayerMatchResult  # type: ignore
-from app.services.ml_features_service import MLFeaturesService  # type: ignore
+from app.types.results import ProcessedMatchResult  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +84,7 @@ class MatchOrchestrationResult:
     num_players: int
     stats: OrchestrationStats
     message: str
+    created: bool = True
 
 
 from app.services.commandcenter_parser import (  # type: ignore
@@ -120,6 +110,7 @@ class MatchOrchestrator:
         manual_winner_team: Optional[int] = None,
         use_advanced_parser: bool = True,
         use_cc_parser: bool = False,
+        persist_replay: bool = False,
     ) -> MatchOrchestrationResult:
         """Execute the full match processing pipeline."""
         start_time = time.time()
@@ -150,53 +141,33 @@ class MatchOrchestrator:
 
         parse_time_ms = (time.time() - parse_start) * 1000
 
-        # 2. Duplicate Detection (by hash and fingerprint)
-        duplicate_start = time.time()
+        from app.replay_parser import ReplayData, PlayerData
+        from app.services.ingestion import ingest_match
 
-        # 2a. Check for exact file duplicate (same replay file)
-        existing = (
-            self.db.query(Match).filter(Match.replay_hash == result.replay_hash).first()
+        legacy_data = ReplayData(
+            played_at=result.played_at, game_mode=result.game_mode,
+            map_name=result.map_name, duration_seconds=result.duration_seconds,
+            replay_hash=result.replay_hash, game_fingerprint=result.game_fingerprint or "",
+            players=[PlayerData(name=resolve_player_name(p.name), race=p.race,
+                                team=p.team, won=p.won) for p in result.players],
         )
-        if existing:
-            raise DuplicateReplayError(result.replay_hash, existing.id)
+        if persist_replay:
+            from app.services import replay_storage
 
-        # 2b. Check for same game from different observer (fingerprint match)
-        if result.game_fingerprint:
-            fingerprint_match = (
-                self.db.query(Match)
-                .filter(Match.game_fingerprint == result.game_fingerprint)
-                .first()
-            )
-            if fingerprint_match:
-                # Same game found - compare durations
-                if fingerprint_match.duration_seconds >= result.duration_seconds:
-                    # Existing has more or equal data - reject new upload
-                    raise DuplicateGameError(
-                        game_fingerprint=result.game_fingerprint,
-                        existing_match_id=fingerprint_match.id,
-                        existing_duration=fingerprint_match.duration_seconds,
-                        new_duration=result.duration_seconds,
-                    )
-                else:
-                    # New replay has more data - delete old match and proceed
-                    logger.info(
-                        f"Replacing match {fingerprint_match.id} with longer replay "
-                        f"({fingerprint_match.duration_seconds}s -> {result.duration_seconds}s)"
-                    )
-                    self._delete_match_and_recalculate(fingerprint_match.id)
-
-        duplicate_check_time_ms = (time.time() - duplicate_start) * 1000
-
-        # 3. DB Record Creation (Match & MatchPlayers)
-        match = self._create_match_records(result)
-
-        # 4. Rating & Metrics Pipeline
+            with open(file_path, "rb") as replay_file:
+                result.replay_file_path = replay_storage.save_replay(
+                    replay_file.read(), result.replay_hash
+                )
         rating_start = time.time()
-        self._process_match_data(match, result)
+        match, created = ingest_match(
+            self.db, legacy_data, result.replay_file_path,
+            save_metrics=lambda work, recorded: self.save_metrics_only(recorded, result, db=work),
+            require_experience=False,
+        )
         rating_update_time_ms = (time.time() - rating_start) * 1000
-
-        # 5. Optimization Triggers
-        self._trigger_post_processing(match, result)
+        duplicate_check_time_ms = 0.0
+        if created:
+            self._trigger_post_processing(match, result)
 
         total_time_ms = (time.time() - start_time) * 1000
 
@@ -211,6 +182,7 @@ class MatchOrchestrator:
                 total_time_ms=round(total_time_ms, 2),
             ),
             message=f"Match {match.id} orchestrated successfully",
+            created=created,
         )
 
     def _augment_with_cc_metrics(
@@ -289,120 +261,21 @@ class MatchOrchestrator:
                 + stats.get("total_value_structures", 0)
             )
 
-    def _create_match_records(self, result: ProcessedMatchResult) -> Match:
-        """Create Match and MatchPlayer records."""
-        match = Match(
-            played_at=result.played_at,
-            game_mode=result.game_mode,
-            map_name=result.map_name,
-            duration_seconds=result.duration_seconds,
-            replay_file_path=result.replay_file_path,
-            replay_hash=result.replay_hash,
-            game_fingerprint=result.game_fingerprint,
-        )
-        self.db.add(match)
-        self.db.flush()
-
-        for pr in result.players:
-            canonical_name = resolve_player_name(pr.name)
-            player = self.db.query(Player).filter(Player.name == canonical_name).first()
-            if not player:
-                player = Player(name=canonical_name)
-                self.db.add(player)
-                self.db.flush()
-
-            mp = MatchPlayer(
-                match_id=match.id,
-                player_id=player.id,
-                team_number=pr.team,
-                race=Race(pr.race),
-                won=1 if pr.won else 0,
-                mu_before=player.mu,
-                sigma_before=player.sigma,
-                mu_after=player.mu,
-                sigma_after=player.sigma,
-            )
-            self.db.add(mp)
-
-        self.db.flush()
-        return match
-
-    def _process_match_data(self, match: Match, result: ProcessedMatchResult):
-        """Update ratings, save metrics, and extract ML features."""
-        # A. Save Performance Metrics & Features FIRST
-        # This ensures RatingSystem/PICalculator can use them for PIM
-        self.save_metrics_only(match, result)
-
-        # B. Update TrueSkill Ratings
-        from app.replay_parser import ReplayData, PlayerData  # type: ignore
-
-        legacy_data = ReplayData(
-            played_at=result.played_at,
-            game_mode=result.game_mode,
-            map_name=result.map_name,
-            duration_seconds=result.duration_seconds,
-            replay_hash=result.replay_hash,
-            game_fingerprint=result.game_fingerprint or "",
-            players=[
-                PlayerData(
-                    name=resolve_player_name(p.name),  # Use canonical name
-                    race=p.race,
-                    team=p.team,
-                    won=p.won,
-                )
-                for p in result.players
-            ],
-        )
-        RatingSystem.update_ratings_from_match(self.db, legacy_data, match)
-
-        # C. Performance Adjustments (PIM)
-        PerformanceRatingAdjuster.adjust_ratings_for_match(self.db, int(match.id))
-        ImpactService.update_synergies(self.db, int(match.id))
-
-        # D. Achievements - checked against the totals/metrics/synergies just
-        # written above. Non-blocking: an achievement bug must never break
-        # ingestion for the batch/observer pipeline.
-        try:
-            from app.services import AchievementService  # type: ignore
-
-            for pr in result.players:
-                canonical_name = resolve_player_name(pr.name)
-                player = (
-                    self.db.query(Player)
-                    .filter(Player.name == canonical_name)
-                    .first()
-                )
-                if player:
-                    AchievementService.check_and_award_all(
-                        self.db, int(player.id), int(match.id)
-                    )
-        except Exception as e:
-            logger.warning(f"Achievement check failed for match {match.id}: {e}")
-
-        # E. Head-to-head/rivalry stats (player_rivalries table, backing the
-        # /h2h page) - same non-blocking rationale as Achievements above.
-        # This mirrors the equivalent call added to the HTTP upload path
-        # (app/api/replays.py); both pipelines must stay in sync or rivalry
-        # data silently goes stale for matches ingested via this path
-        # (batch scripts / replay observer).
-        try:
-            from app.services.rivalry_service import RivalryService  # type: ignore
-
-            RivalryService.calculate_all_rivalries(self.db)
-        except Exception as e:
-            logger.warning(f"Rivalry recalculation failed for match {match.id}: {e}")
-
-    def save_metrics_only(self, match: Match, result: ProcessedMatchResult):
+    def save_metrics_only(self, match: Match, result: ProcessedMatchResult, *, db: Optional[Session] = None):
         """Save metrics and features without updating ratings."""
+        db = db if db is not None else self.db
         for pr in result.players:
             # Use canonical name from alias resolution
-            canonical_name = resolve_player_name(pr.name)
-            player = self.db.query(Player).filter(Player.name == canonical_name).first()
+            from app.services.player_service import PlayerService
+            canonical_name = PlayerService.resolve_canonical_name(
+                db, resolve_player_name(pr.name), result.game_mode, len(result.players)
+            )
+            player = db.query(Player).filter(Player.name == canonical_name).first()
             if not player:
                 continue
 
             mp = (
-                self.db.query(MatchPlayer)
+                db.query(MatchPlayer)
                 .filter(
                     MatchPlayer.match_id == match.id, MatchPlayer.player_id == player.id
                 )
@@ -412,19 +285,19 @@ class MatchOrchestrator:
                 continue
 
             # Impact Metrics
-            ImpactService.save_match_metrics(self.db, mp.id, cast(Any, pr))
-            ImpactService.update_player_averages(self.db, player.id)
+            ImpactService.save_match_metrics(db, mp.id, cast(Any, pr))
+            ImpactService.update_player_averages(db, player.id)
 
             # Performance Features (ML features)
             # Check if pf already exists (might have been created by RatingSystem/PICalculator)
             pf = (
-                self.db.query(PerformanceFeatures)
+                db.query(PerformanceFeatures)
                 .filter(PerformanceFeatures.match_player_id == mp.id)
                 .first()
             )
             if not pf:
                 pf = PerformanceFeatures(match_player_id=mp.id)
-                self.db.add(pf)
+                db.add(pf)
 
             pf.build_order_json = pr.build_order  # type: ignore
             pf.build_order_hash = pr.build_order_hash
@@ -435,96 +308,36 @@ class MatchOrchestrator:
             pf.harassment_response_score = pr.harassment_response_score
             pf.detected_build_type = pr.detected_build_type
 
-        self.db.commit()
+        db.commit()
 
     def _trigger_post_processing(self, match: Match, result: ProcessedMatchResult):
-        """Trigger background tasks and optimizations."""
-        # A. ML Feature Extraction (Essential for SHAP and Win Prob)
-        try:
-            MLFeaturesService.extract_and_save_ml_features(
-                self.db, str(match.replay_file_path), int(match.id)
-            )
-        except Exception as e:
-            logger.warning(f"ML Feature extraction failed: {e}")
+        from app.services.ingestion import post_process_match, run_optional_processing
 
-        # B. Online Learning
-        try:
-            from app.online_learning import OnlineLearningEngine  # type: ignore
+        match_id = int(match.id)
+        post_process_match(self.db, match_id, True, result.replay_file_path, optimize=True)
+        run_optional_processing(self.db, "ML retraining", self._retrain_if_due)
+        run_optional_processing(
+            self.db, "Live forecast", lambda work: self._publish_forecast(work, match_id)
+        )
 
-            team1_won = any(p.won for p in result.players if p.team == 1)
-            engine = OnlineLearningEngine(self.db)
-            engine.record_outcome(int(match.id), team1_won)
-        except Exception as e:
-            logger.warning(f"Online learning failed: {e}")
+    @staticmethod
+    def _retrain_if_due(db: Session):
+        from .ml_predictor import train_ml_model
 
-        # C. Auto Optimization (Weights)
-        try:
-            trigger_auto_optimization(self.db)
-        except Exception as e:
-            logger.warning(f"Auto-optimization failed: {e}")
+        if db.query(Match).count() % 15 == 0:
+            train_ml_model(db)
 
-        # D. Automated ML Retraining (Every 15 matches)
-        try:
-            match_count = self.db.query(Match).count()
-            if match_count % 15 == 0:
-                from .ml_predictor import train_ml_model
+    @staticmethod
+    def _publish_forecast(db: Session, match_id: int):
+        from app.services.tactical_forecast import TacticalForecastService
+        from app.models import LiveMatchFeed
 
-                logger.info(
-                    f"Triggering automated ML retraining (Match #{match_count})"
-                )
-                train_ml_model(self.db)
-        except Exception as e:
-            logger.warning(f"Automated ML retraining failed: {e}")
-
-        # E. Live Forecast Feed
-        try:
-            from app.services.tactical_forecast import TacticalForecastService
-            from app.models import LiveMatchFeed
-
-            pids = [p.player_id for p in match.participants]
-            forecast = TacticalForecastService.get_forecast(
-                pids, match.map_name, self.db
-            )
-
-            # Deactivate old feeds
-            self.db.execute(text("UPDATE live_match_feed SET is_active = 0"))
-
-            new_feed = LiveMatchFeed(
-                match_id=match.id,
-                map_name=match.map_name,
-                forecast_json=forecast,
-                is_active=True,
-            )
-            self.db.add(new_feed)
-            self.db.commit()
-            logger.info(f"Live forecast generated for Match #{match.id}")
-        except Exception as e:
-            logger.warning(f"Live forecast generation failed: {e}")
-
-    def _delete_match_and_recalculate(self, match_id: int) -> None:
-        """
-        Delete a match that will be replaced by a longer replay of the same game.
-
-        This is used when a fingerprint duplicate is found but the new replay
-        has more data (longer duration). We delete the old match so the new
-        one can be inserted properly.
-        """
-        match = self.db.query(Match).filter(Match.id == match_id).first()
-        if not match:
-            return
-
-        # Delete related match_players first (CASCADE should handle this, but being explicit)
-        self.db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).delete()
-
-        # Delete performance features
-        self.db.query(PerformanceFeatures).filter(
-            PerformanceFeatures.match_player_id.in_(
-                self.db.query(MatchPlayer.id).filter(MatchPlayer.match_id == match_id)
-            )
-        ).delete(synchronize_session=False)
-
-        # Delete the match
-        self.db.delete(match)
-        self.db.flush()
-
-        logger.info(f"Deleted match {match_id} to be replaced by longer replay")
+        match = db.query(Match).filter(Match.id == match_id).one()
+        forecast = TacticalForecastService.get_forecast(
+            [p.player_id for p in match.participants], match.map_name, db
+        )
+        db.execute(text("UPDATE live_match_feed SET is_active = 0"))
+        db.add(LiveMatchFeed(
+            match_id=match_id, map_name=match.map_name,
+            forecast_json=forecast, is_active=True,
+        ))

@@ -1,4 +1,6 @@
 import pytest
+
+pytestmark = pytest.mark.local_data
 import os
 import io
 from fastapi.testclient import TestClient

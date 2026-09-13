@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, File, HTTPE
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
-from typing import List, Optional, Any, cast, Tuple
+from typing import List, Optional, Any
 from datetime import datetime
 import os
 import tempfile
@@ -35,12 +35,10 @@ from ..replay_parser import (
 )
 from ..rating_system import RatingSystem
 from ..advanced_parser import parse_replay_advanced
-from ..impact_service import ImpactService
-from ..performance_rating import PerformanceRatingAdjuster
 from ..services import replay_storage
-from ..services.rivalry_service import RivalryService
+from ..services.ingestion import find_existing_match, ingest_match, save_advanced_metrics, post_process_match
+from ..exceptions import ValidationError
 from ..match_commentary import MatchCommentaryGenerator
-from ..auto_adaptive import trigger_auto_optimization
 from pydantic import BaseModel
 import traceback
 
@@ -133,130 +131,7 @@ def _log_failed_upload(
         db.rollback()
 
 
-def find_existing_match(db: Session, replay_data: Any) -> Optional[Match]:
-    """
-    Find an existing match for this replay, whether it's an exact re-upload
-    (same file bytes, same replay_hash) or the same game uploaded by a
-    different participant. Different SC2 clients do NOT produce identical
-    replay files for the same match (confirmed empirically: 15 duplicate
-    matches found in this DB with matching game_fingerprint but different
-    replay_hash - see deduplicate_games.py), so replay_hash alone misses
-    that case. game_fingerprint (map + rounded start time + player roster)
-    catches it.
-    """
-    existing = (
-        db.query(Match).filter(Match.replay_hash == replay_data.replay_hash).first()
-    )
-    if existing:
-        return existing
-    fingerprint = getattr(replay_data, "game_fingerprint", None)
-    if fingerprint:
-        existing = (
-            db.query(Match).filter(Match.game_fingerprint == fingerprint).first()
-        )
-        if existing:
-            return existing
-    return None
 
-
-def upsert_match(
-    db: Session,
-    replay_data: Any,
-    replay_file_path: Optional[str] = None,
-) -> Tuple[Match, bool]:
-    """
-    Insert or update match based on replay_hash (or game_fingerprint, for
-    the same game uploaded by a different participant - see
-    find_existing_match).
-    Returns (match, created) tuple where created is True for new match.
-
-    Args:
-        db: Database session
-        replay_data: Parsed replay data from sc2reader
-        replay_file_path: Path to saved replay file
-
-    Returns:
-        Tuple of (Match, bool) where Match is the match object and bool indicates
-        if this was a new insertion or an update of existing match.
-    """
-    existing = (
-        db.query(Match).filter(Match.replay_hash == replay_data.replay_hash).first()
-    )
-
-    if existing:
-        # UPDATE existing match - exact re-upload of the same file
-        match = existing
-        logger.info(f"Updating existing match ID: {match.id}")
-
-        # Update fields that may have changed on re-upload
-        if (
-            hasattr(replay_data, "predicted_team1_win_prob")
-            and replay_data.predicted_team1_win_prob is not None
-        ):
-            match.predicted_team1_win_prob = replay_data.predicted_team1_win_prob
-        if (
-            hasattr(replay_data, "predicted_team2_win_prob")
-            and replay_data.predicted_team2_win_prob is not None
-        ):
-            match.predicted_team2_win_prob = replay_data.predicted_team2_win_prob
-
-        # Update replay file path (if changed)
-        if replay_file_path:
-            match.replay_file_path = replay_file_path
-
-        # Update replay hash (in case algorithm changes)
-        match.replay_hash = replay_data.replay_hash
-
-        # Keep original upload time (created_at stays the same)
-        # Track update time
-        match.updated_at = datetime.utcnow()
-
-        db.commit()
-        db.refresh(match)
-
-        return match, False  # Updated existing match
-
-    # No exact file match. The same real game uploaded by a different
-    # participant produces different file bytes (different replay_hash)
-    # but the same game_fingerprint - catch that here so it isn't recorded
-    # (and rated) twice. Deliberately don't touch the original match's
-    # replay_hash/file - that upload is already valid and rated.
-    fingerprint = getattr(replay_data, "game_fingerprint", None)
-    if fingerprint:
-        existing_by_fingerprint = (
-            db.query(Match).filter(Match.game_fingerprint == fingerprint).first()
-        )
-        if existing_by_fingerprint:
-            logger.info(
-                f"Same game already recorded as match "
-                f"{existing_by_fingerprint.id} (different uploader, same "
-                f"game_fingerprint) - not creating a duplicate"
-            )
-            return existing_by_fingerprint, False
-
-    # CREATE new match
-    match = Match(
-        played_at=replay_data.played_at,
-        game_mode=replay_data.game_mode,
-        map_name=replay_data.map_name,
-        duration_seconds=replay_data.duration_seconds,
-        replay_file_path=replay_file_path,
-        replay_hash=replay_data.replay_hash,
-        game_fingerprint=fingerprint,
-        predicted_team1_win_prob=getattr(
-            replay_data, "predicted_team1_win_prob", None
-        ),
-        predicted_team2_win_prob=getattr(
-            replay_data, "predicted_team2_win_prob", None
-        ),
-        created_at=datetime.utcnow(),
-    )
-
-    db.add(match)
-    db.commit()
-    db.refresh(match)
-
-    return match, True  # Created new match
 
 
 # Request/Response models
@@ -407,7 +282,7 @@ class MatchDetailResponse(BaseModel):
 
 
 @router.post("/upload", response_model=ReplayUploadResponse)
-async def upload_replay(
+def upload_replay(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -424,7 +299,7 @@ async def upload_replay(
             detail="Invalid file type. Only .SC2Replay files are accepted.",
         )
 
-    content = await file.read()
+    content = file.file.read(settings.max_replay_size_mb * 1024 * 1024 + 1)
     _reject_oversized_upload(content)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".SC2Replay") as tmp_file:
@@ -448,107 +323,13 @@ async def upload_replay(
         # match that's already there.
         duplicate = find_existing_match(db, replay_data)
         replay_file_path = None
-        if duplicate is None or duplicate.replay_hash == replay_data.replay_hash:
+        if (duplicate is None or duplicate.replay_hash == replay_data.replay_hash
+                or replay_data.duration_seconds > duplicate.duration_seconds):
             replay_file_path = _save_replay_file(content, fn, replay_data.replay_hash)
 
-        # Use upsert logic - allows re-uploading to update data
-        match, created = upsert_match(db, replay_data, replay_file_path)
+        match, created = ingest_match(db, replay_data, replay_file_path)
 
-        if not created:
-            logger.info(f"Updated existing match ID: {match.id}")
-
-        db.flush()
-
-        # Only update ratings for new matches to avoid double-counting MMR changes
-        if created:
-            # Validate team experience requirement (each team needs ≥1 player with >10 games)
-            team1_has_experienced = False
-            team2_has_experienced = False
-
-            for player_data in replay_data.players:
-                player = db.query(Player).filter(Player.name == player_data.name).first()
-                if player:
-                    if player_data.team == 1 and player.total_games > 10:
-                        team1_has_experienced = True
-                    elif player_data.team == 2 and player.total_games > 10:
-                        team2_has_experienced = True
-
-            if not team1_has_experienced or not team2_has_experienced:
-                # Delete the match we just created
-                db.delete(match)
-                db.commit()
-
-                # Log as failed upload
-                _log_failed_upload(
-                    db=db,
-                    filename=fn,
-                    file_size=len(content),
-                    error_type=UploadErrorType.VALIDATION_ERROR,
-                    error_message="Team experience requirement not met: Each team must have at least one player with >10 games",
-                    error_detail=f"Team 1 has experienced player: {team1_has_experienced}, Team 2 has experienced player: {team2_has_experienced}",
-                    replay_hash=replay_data.replay_hash,
-                    map_name=replay_data.map_name,
-                    game_mode=replay_data.game_mode.value,
-                    duration_seconds=replay_data.duration_seconds,
-                    num_players=len(replay_data.players),
-                    replay_file_path=replay_file_path,
-                )
-
-                raise HTTPException(
-                    status_code=400,
-                    detail="Match rejected: Each team must have at least one player with more than 10 games played"
-                )
-
-            RatingSystem.update_ratings_from_match(db, replay_data, match)
-
-            # Check and award achievements for new matches only. Non-blocking -
-            # an achievement bug must never fail a replay upload.
-            try:
-                from ..services import AchievementService
-
-                for player_data in replay_data.players:
-                    participant = (
-                        db.query(Player)
-                        .filter(Player.name == player_data.name)
-                        .first()
-                    )
-                    if participant:
-                        AchievementService.check_and_award_all(
-                            db, int(participant.id), int(match.id)
-                        )
-            except Exception as e:
-                logger.warning(f"Achievement check failed: {e}")
-
-        if replay_file_path:
-            try:
-                from ..services.ml_features_service import MLFeaturesService
-
-                MLFeaturesService.extract_and_save_ml_features(
-                    db, replay_file_path, int(match.id)
-                )
-            except Exception as e:
-                logger.warning(f"ML feature extraction failed: {e}")
-
-        try:
-            from ..online_learning import OnlineLearningEngine
-
-            team1_won = any(p.won for p in replay_data.players if p.team == 1)
-            learning_engine = OnlineLearningEngine(db)
-            learning_engine.record_outcome(int(match.id), team1_won)
-        except Exception as e:
-            logger.warning(f"Online learning record failed: {e}")
-
-        try:
-            from ..services.balance_capture import BalancePredictionService
-
-            BalancePredictionService.resolve_for_match(db, match)
-        except Exception as e:
-            logger.warning(f"Balance prediction resolution failed: {e}")
-
-        try:
-            RivalryService.calculate_all_rivalries(db)
-        except Exception as e:
-            logger.warning(f"Rivalry recalculation failed: {e}")
+        post_process_match(db, int(match.id), created, replay_file_path)
 
         if settings.upload_cc_enrichment_enabled:
             from ..services.cc_enrichment import enrich_match_with_cc_metrics_background
@@ -582,6 +363,9 @@ async def upload_replay(
                 total_time_ms=round(total_time_ms, 2),
             ),
         )
+
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     except WinnerDeterminationError as e:
         import sc2reader  # type: ignore
@@ -1159,60 +943,17 @@ def retry_failed_upload(upload_id: int, db: Session = Depends(get_db)):
             upload_id=upload_id, status="still_failing", detail=error_msg
         )
 
-    # Skip if this replay was already ingested via a separate successful
-    # upload (same file, or the same game from a different uploader)
-    existing = find_existing_match(db, replay_data)
-    if existing:
-        db.delete(failed_upload)
-        db.commit()
+    try:
+        match, created = ingest_match(
+            db, replay_data, failed_upload.replay_file_path,
+            failed_upload_id=upload_id,
+        )
+    except ValidationError as exc:
         return RetryFailedUploadResponse(
-            upload_id=upload_id,
-            status="recovered",
-            match_id=existing.id,
-            detail="Already present as a match; failed_upload record cleared",
+            upload_id=upload_id, status="still_failing", detail=str(exc)
         )
 
-    match, created = upsert_match(db, replay_data, file_path)
-    db.flush()
-
-    if created:
-        team1_has_experienced = False
-        team2_has_experienced = False
-        for player_data in replay_data.players:
-            player = db.query(Player).filter(Player.name == player_data.name).first()
-            if player:
-                if player_data.team == 1 and player.total_games > 10:
-                    team1_has_experienced = True
-                elif player_data.team == 2 and player.total_games > 10:
-                    team2_has_experienced = True
-
-        if not team1_has_experienced or not team2_has_experienced:
-            db.delete(match)
-            db.commit()
-            return RetryFailedUploadResponse(
-                upload_id=upload_id,
-                status="still_failing",
-                detail="Team experience requirement not met (each team needs a player with >10 games)",
-            )
-
-        RatingSystem.update_ratings_from_match(db, replay_data, match)
-
-    try:
-        from ..services.ml_features_service import MLFeaturesService
-
-        MLFeaturesService.extract_and_save_ml_features(db, file_path, int(match.id))
-    except Exception as e:
-        logger.warning(f"ML feature extraction failed on retry: {e}")
-
-    try:
-        from ..services.balance_capture import BalancePredictionService
-
-        BalancePredictionService.resolve_for_match(db, match)
-    except Exception as e:
-        logger.warning(f"Balance prediction resolution failed on retry: {e}")
-
-    db.delete(failed_upload)
-    db.commit()
+    post_process_match(db, int(match.id), created, file_path)
 
     logger.info(f"Recovered failed upload {upload_id} as match {match.id}")
     return RetryFailedUploadResponse(
@@ -1400,85 +1141,13 @@ def set_manual_winner(
                 status_code=400, detail=f"Validation failed: {error_msg}"
             )
 
-        # Check for duplicate (same file, or same game from a different uploader)
-        existing_match = find_existing_match(db, replay_data)
-
-        if existing_match:
-            # Delete the failed upload record since it's already processed
-            db.delete(failed_upload)
-            db.commit()
-
-            return ReplayUploadResponse(
-                match_id=int(existing_match.id),
-                map_name=str(existing_match.map_name),
-                game_mode=str(existing_match.game_mode.value),
-                played_at=existing_match.played_at,
-                duration_seconds=int(existing_match.duration_seconds),
-                num_players=len(replay_data.players),
-                created=False,
-                message=f"Replay was already successfully processed as Match #{existing_match.id}",
-                processing_stats=ProcessingStats(
-                    parse_time_ms=0,
-                    validation_time_ms=0,
-                    duplicate_check_time_ms=0,
-                    rating_update_time_ms=0.0,
-                    total_time_ms=round((time.time() - start_time) * 1000, 2),
-                ),
-            )
-
-        # Create match record
-        match = Match(
-            played_at=replay_data.played_at,
-            game_mode=replay_data.game_mode,
-            map_name=replay_data.map_name,
-            duration_seconds=replay_data.duration_seconds,
-            replay_file_path=failed_upload.replay_file_path,
-            replay_hash=replay_data.replay_hash,
-            game_fingerprint=getattr(replay_data, "game_fingerprint", None),
+        match, created = ingest_match(
+            db, replay_data, failed_upload.replay_file_path,
+            save_metrics=lambda work, recorded: save_advanced_metrics(work, recorded, advanced_data),
+            require_experience=False, failed_upload_id=upload_id,
         )
-        db.add(match)
-        db.flush()
 
-        # Update ratings and create match_players
-        RatingSystem.update_ratings_from_match(db, replay_data, match)
-
-        # Save advanced metrics
-        for player_metrics in advanced_data.player_metrics:
-            player = (
-                db.query(Player)
-                .filter(Player.name == player_metrics.player_name)
-                .first()
-            )
-            if player:
-                match_player = (
-                    db.query(MatchPlayer)
-                    .filter(
-                        MatchPlayer.match_id == match.id,
-                        MatchPlayer.player_id == player.id,
-                    )
-                    .first()
-                )
-
-                if match_player:
-                    ImpactService.save_match_metrics(
-                        db, match_player.id, player_metrics
-                    )
-                    ImpactService.update_player_averages(db, player.id)
-
-        # Update synergies and adjustments
-        ImpactService.update_synergies(db, int(match.id))
-        PerformanceRatingAdjuster.adjust_ratings_for_match(db, int(match.id))
-
-        try:
-            from ..services.balance_capture import BalancePredictionService
-
-            BalancePredictionService.resolve_for_match(db, match)
-        except Exception as e:
-            logger.warning(f"Balance prediction resolution failed: {e}")
-
-        # Delete the failed upload record since processing succeeded
-        db.delete(failed_upload)
-        db.commit()
+        post_process_match(db, int(match.id), created, local_replay_path)
 
         return ReplayUploadResponse(
             match_id=int(match.id),
@@ -1487,6 +1156,7 @@ def set_manual_winner(
             played_at=match.played_at,
             duration_seconds=int(match.duration_seconds),
             num_players=len(replay_data.players),
+            created=created,
             message="Replay processed successfully with manual winner determination",
             processing_stats=ProcessingStats(
                 parse_time_ms=0,
@@ -1496,6 +1166,9 @@ def set_manual_winner(
                 total_time_ms=round((time.time() - start_time) * 1000, 2),
             ),
         )
+
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     except HTTPException:
         raise
@@ -1509,7 +1182,7 @@ def set_manual_winner(
 
 
 @router.post("/upload-advanced", response_model=ReplayUploadResponse)
-async def upload_replay_advanced(
+def upload_replay_advanced(
     file: UploadFile = File(...), db: Session = Depends(get_db)
 ):
     """
@@ -1524,7 +1197,7 @@ async def upload_replay_advanced(
             detail="Invalid file type. Only .SC2Replay files are accepted.",
         )
 
-    content = await file.read()
+    content = file.file.read(settings.max_replay_size_mb * 1024 * 1024 + 1)
     _reject_oversized_upload(content)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".SC2Replay") as tmp_file:
@@ -1578,172 +1251,20 @@ async def upload_replay_advanced(
         step_start = time.time()
         duplicate = find_existing_match(db, replay_data)
         replay_file_path = None
-        if duplicate is None or duplicate.replay_hash == replay_data.replay_hash:
+        if (duplicate is None or duplicate.replay_hash == replay_data.replay_hash
+                or replay_data.duration_seconds > duplicate.duration_seconds):
             replay_file_path = _save_replay_file(content, fn, replay_data.replay_hash)
         step_times["save_file"] = (time.time() - step_start) * 1000
         logger.info(f"[UPLOAD-ADV] {fn}: File saved ({step_times['save_file']:.0f}ms)")
 
-        # Use upsert logic - allows re-uploading to update data
         step_start = time.time()
-        match, created = upsert_match(db, replay_data, replay_file_path)
-        step_times["upsert"] = (time.time() - step_start) * 1000
-        logger.info(f"[UPLOAD-ADV] {fn}: Upsert complete, created={created} ({step_times['upsert']:.0f}ms)")
+        match, created = ingest_match(
+            db, replay_data, replay_file_path,
+            save_metrics=lambda work, recorded: save_advanced_metrics(work, recorded, advanced_data),
+        )
+        step_times["rating_update"] = (time.time() - step_start) * 1000
 
-        if not created:
-            logger.info(f"[UPLOAD-ADV] Updated existing match ID: {match.id}")
-
-        db.flush()
-
-        # Update ratings only for new matches to avoid double-counting MMR changes
-        if created:
-            # Validate team experience requirement (each team needs ≥1 player with >10 games)
-            team1_has_experienced = False
-            team2_has_experienced = False
-
-            for player_data in replay_data.players:
-                player = db.query(Player).filter(Player.name == player_data.name).first()
-                if player:
-                    if player_data.team == 1 and player.total_games > 10:
-                        team1_has_experienced = True
-                    elif player_data.team == 2 and player.total_games > 10:
-                        team2_has_experienced = True
-
-            if not team1_has_experienced or not team2_has_experienced:
-                # Delete the match we just created
-                db.delete(match)
-                db.commit()
-
-                # Log as failed upload
-                _log_failed_upload(
-                    db=db,
-                    filename=fn,
-                    file_size=len(content),
-                    error_type=UploadErrorType.VALIDATION_ERROR,
-                    error_message="Team experience requirement not met: Each team must have at least one player with >10 games",
-                    error_detail=f"Team 1 has experienced player: {team1_has_experienced}, Team 2 has experienced player: {team2_has_experienced}",
-                    replay_hash=replay_data.replay_hash,
-                    map_name=replay_data.map_name,
-                    game_mode=replay_data.game_mode.value,
-                    duration_seconds=replay_data.duration_seconds,
-                    num_players=len(replay_data.players),
-                    replay_file_path=replay_file_path,
-                )
-
-                raise HTTPException(
-                    status_code=400,
-                    detail="Match rejected: Each team must have at least one player with more than 10 games played"
-                )
-
-            step_start = time.time()
-            RatingSystem.update_ratings_from_match(db, replay_data, match)
-            step_times["rating_update"] = (time.time() - step_start) * 1000
-            logger.info(f"[UPLOAD-ADV] {fn}: Rating update ({step_times['rating_update']:.0f}ms)")
-
-        # Save/update metrics (always update to get latest parsing improvements)
-        step_start = time.time()
-        metrics_count = 0
-        for player_metrics in advanced_data.player_metrics:
-            player = (
-                db.query(Player)
-                .filter(Player.name == player_metrics.player_name)
-                .first()
-            )
-            if player:
-                match_player = (
-                    db.query(MatchPlayer)
-                    .filter(
-                        MatchPlayer.match_id == match.id,
-                        MatchPlayer.player_id == player.id,
-                    )
-                    .first()
-                )
-
-                if match_player:
-                    ImpactService.save_match_metrics(
-                        db, match_player.id, player_metrics
-                    )
-                    ImpactService.update_player_averages(db, player.id)
-                    metrics_count += 1
-        step_times["metrics"] = (time.time() - step_start) * 1000
-        logger.info(f"[UPLOAD-ADV] {fn}: Metrics saved for {metrics_count} players ({step_times['metrics']:.0f}ms)")
-
-        # Update synergies (always update for re-uploads to refresh data)
-        step_start = time.time()
-        ImpactService.update_synergies(db, int(match.id))
-        step_times["synergies"] = (time.time() - step_start) * 1000
-        logger.info(f"[UPLOAD-ADV] {fn}: Synergies updated ({step_times['synergies']:.0f}ms)")
-
-        try:
-            from ..services.balance_capture import BalancePredictionService
-
-            BalancePredictionService.resolve_for_match(db, match)
-        except Exception as e:
-            logger.warning(f"Balance prediction resolution failed: {e}")
-
-        # Keep head-to-head/rivalry stats (player_rivalries table, backing
-        # the /h2h page) in sync with the matches that now exist. Non-blocking:
-        # a rivalry recalculation failure must never fail a valid upload.
-        step_start = time.time()
-        try:
-            RivalryService.calculate_all_rivalries(db)
-            step_times["rivalries"] = (time.time() - step_start) * 1000
-            logger.info(f"[UPLOAD-ADV] {fn}: Rivalries recalculated ({step_times['rivalries']:.0f}ms)")
-        except Exception as e:
-            logger.warning(f"[UPLOAD-ADV] {fn}: Rivalry recalculation failed: {e}")
-
-        # Only adjust ratings for new matches to avoid double-counting
-        if created:
-            step_start = time.time()
-            PerformanceRatingAdjuster.adjust_ratings_for_match(db, int(match.id))
-            step_times["perf_adjust"] = (time.time() - step_start) * 1000
-            logger.info(f"[UPLOAD-ADV] {fn}: Performance adjustment ({step_times['perf_adjust']:.0f}ms)")
-
-        # Check and award achievements for new matches only (checked against the
-        # totals/streaks/metrics/synergies just written above). Non-blocking by
-        # design, same as ML feature extraction below - an achievement bug must
-        # never fail a replay upload.
-        if created:
-            try:
-                from ..services import AchievementService
-
-                step_start = time.time()
-                for player_data in replay_data.players:
-                    participant = (
-                        db.query(Player)
-                        .filter(Player.name == player_data.name)
-                        .first()
-                    )
-                    if participant:
-                        AchievementService.check_and_award_all(
-                            db, int(participant.id), int(match.id)
-                        )
-                step_times["achievements"] = (time.time() - step_start) * 1000
-                logger.info(f"[UPLOAD-ADV] {fn}: Achievements checked ({step_times['achievements']:.0f}ms)")
-            except Exception as e:
-                logger.warning(f"[UPLOAD-ADV] {fn}: Achievement check failed: {e}")
-
-        # Extract and save ML features
-        if replay_file_path:
-            try:
-                step_start = time.time()
-                from ..services.ml_features_service import MLFeaturesService
-
-                MLFeaturesService.extract_and_save_ml_features(
-                    db, replay_file_path, int(match.id)
-                )
-                step_times["ml_features"] = (time.time() - step_start) * 1000
-                logger.info(f"[UPLOAD-ADV] {fn}: ML features extracted ({step_times['ml_features']:.0f}ms)")
-            except Exception as e:
-                logger.warning(f"[UPLOAD-ADV] {fn}: ML feature extraction failed: {e}")
-
-        # Trigger auto optimization
-        try:
-            step_start = time.time()
-            trigger_auto_optimization(db)
-            step_times["auto_opt"] = (time.time() - step_start) * 1000
-            logger.info(f"[UPLOAD-ADV] {fn}: Auto-optimization ({step_times['auto_opt']:.0f}ms)")
-        except Exception as e:
-            logger.warning(f"[UPLOAD-ADV] {fn}: Auto-optimization failed: {e}")
+        post_process_match(db, int(match.id), created, replay_file_path, optimize=True)
 
         total_time_ms = (time.time() - start_time) * 1000
 
@@ -1772,6 +1293,9 @@ async def upload_replay_advanced(
                 total_time_ms=round(total_time_ms, 2),
             ),
         )
+
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     except ReplayParseError as e:
         logger.error(f"[UPLOAD-ADV] {fn}: PARSE ERROR - {str(e)}")

@@ -965,10 +965,6 @@ def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
 
     synergies_updated = synergies_p1_count + synergies_p2_count
 
-    # Repoint any aliases that resolved to the source player, so future
-    # uploads under those alias names attribute to the surviving player.
-    # Without this, deleting source_player leaves SQLAlchemy trying to null
-    # out target_player_id (NOT NULL) on the orphaned alias row.
     db.execute(
         update(PlayerAlias)
         .where(PlayerAlias.target_player_id == source_player.id)

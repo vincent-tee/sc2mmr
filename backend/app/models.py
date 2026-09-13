@@ -16,6 +16,7 @@ from sqlalchemy import (
     Enum as SQLEnum,
     JSON,
     UniqueConstraint,
+    Index,
 )
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 import enum
@@ -205,6 +206,9 @@ class Match(Base):
     """
 
     __tablename__ = "matches"
+    __table_args__ = (
+        Index("uq_matches_game_fingerprint", "game_fingerprint", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 

@@ -2,18 +2,43 @@
 Pytest configuration and fixtures for SC2 MMR Tracker tests.
 """
 import pytest
-from sqlalchemy import create_engine
+import os
+import tempfile
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
+
+_test_directory = tempfile.TemporaryDirectory(prefix="sc2mmr-tests-")
+os.environ["DATABASE_URL"] = f"sqlite:///{_test_directory.name}/api.db"
+os.environ["AUTH_ENABLED"] = "false"
+os.environ["AUTH_PUBLIC_READ"] = "false"
+os.environ["ADMIN_TOKEN"] = ""
 
 from app.models import Base, Player
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_application_database():
+    from app.database import engine, init_db
+
+    init_db()
+    yield
+    engine.dispose()
+    _test_directory.cleanup()
 
 
 @pytest.fixture
 def db_engine():
     """Create an in-memory SQLite database engine."""
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    @event.listens_for(engine, "connect")
+    def enable_foreign_keys(connection, _):
+        connection.execute("PRAGMA foreign_keys=ON")
     Base.metadata.create_all(engine)
-    return engine
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture

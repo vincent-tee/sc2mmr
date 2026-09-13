@@ -51,7 +51,9 @@ def init_db() -> None:
     Initialize the database by creating all tables.
     This should be called once when the application starts.
     """
-    Base.metadata.create_all(bind=engine)
+    from .schema import upgrade_schema
+
+    upgrade_schema(engine)
 
 
 def get_db() -> Generator[Session, None, None]:

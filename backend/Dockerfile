@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # backups out of the image - state comes from Litestream/GCS at runtime.
 # The trained ML model artifact is the one data/ file that ships baked in.
 COPY app ./app
+COPY migrations ./migrations
 COPY config ./config
 COPY data/xgboost_model.pkl ./data/xgboost_model.pkl
 COPY litestream.yml /etc/litestream.yml

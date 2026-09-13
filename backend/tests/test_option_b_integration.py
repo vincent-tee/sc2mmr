@@ -5,6 +5,10 @@ This test modifies the existing enhanced_parser.py to replace the hardcoded
 TRACKED_ABILITIES with dynamic discovery from ability_discovery.py
 """
 
+import pytest
+
+pytestmark = pytest.mark.local_data
+
 import sys
 from pathlib import Path
 

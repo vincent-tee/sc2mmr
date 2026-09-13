@@ -140,6 +140,12 @@ class PerformanceRatingAdjuster:
         player = db.query(Player).filter(Player.id == match_player.player_id).first()
         if player:
             player.mu = adjusted_mu_after
+            from .rating_system import RatingSystem
+
+            player.mmr = RatingSystem.calculate_display_mmr(player.mu, player.sigma)
+            match_player.mmr_after = RatingSystem.calculate_display_mmr(
+                adjusted_mu_after, match_player.sigma_after
+            )
 
         db.commit()
 

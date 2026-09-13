@@ -19,12 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy.orm import Session
 from app.database import engine, get_db
 from app.services.match_orchestrator import MatchOrchestrator
-from app.exceptions import (
-    DuplicateReplayError,
-    DuplicateGameError,
-    ReplayParseError,
-    WinnerDeterminationError,
-)
+from app.exceptions import ReplayParseError, WinnerDeterminationError
 from sqlalchemy.orm import sessionmaker
 
 
@@ -41,11 +36,11 @@ def find_replays(directory: str) -> List[str]:
 def upload_replays(
     directory: str,
     dry_run: bool = False,
-) -> Tuple[int, int, int, int]:
+) -> Tuple[int, int, int]:
     """
     Upload all replays from a directory.
 
-    Returns: (success, duplicates, skipped_games, errors)
+    Returns: (new_matches, already_recorded, errors)
     """
     Session = sessionmaker(bind=engine)
 
@@ -60,11 +55,10 @@ def upload_replays(
 
     if dry_run:
         print("⚠️  DRY RUN MODE - No uploads will occur")
-        return (0, 0, 0, 0)
+        return (0, 0, 0)
 
-    success = 0
-    duplicates = 0
-    skipped_games = 0  # Same game, shorter replay
+    new_matches = 0
+    already_recorded = 0
     errors = 0
 
     print(f"\n🚀 Starting upload...\n")
@@ -74,7 +68,7 @@ def upload_replays(
 
         # Progress indicator every 50 replays
         if i % 50 == 0 or i == total:
-            print(f"📊 Progress: {i}/{total} ({success} new, {duplicates} exact dupes, {skipped_games} same-game dupes, {errors} errors)")
+            print(f"📊 Progress: {i}/{total} ({new_matches} new, {already_recorded} already recorded, {errors} errors)")
 
         # Create fresh session for each replay to avoid autoflush issues
         session = Session()
@@ -88,23 +82,10 @@ def upload_replays(
                 use_advanced_parser=True,
             )
             session.commit()
-            success += 1
-
-        except DuplicateReplayError as e:
-            # Exact same replay file
-            duplicates += 1
-            try:
-                session.rollback()
-            except:
-                pass
-
-        except DuplicateGameError as e:
-            # Same game but new replay has less data
-            skipped_games += 1
-            try:
-                session.rollback()
-            except:
-                pass
+            if result.created:
+                new_matches += 1
+            else:
+                already_recorded += 1
 
         except WinnerDeterminationError as e:
             # Can't determine winner - skip silently
@@ -137,7 +118,7 @@ def upload_replays(
             # Dispose connection to force fresh state
             session = None
 
-    return success, duplicates, skipped_games, errors
+    return new_matches, already_recorded, errors
 
 
 def main():
@@ -159,7 +140,7 @@ def main():
         print(f"❌ Directory not found: {args.directory}")
         sys.exit(1)
 
-    success, duplicates, skipped_games, errors = upload_replays(
+    new_matches, already_recorded, errors = upload_replays(
         args.directory,
         args.dry_run,
     )
@@ -168,13 +149,12 @@ def main():
         print(f"\n{'=' * 60}")
         print(f"✅ Upload Complete!")
         print(f"{'=' * 60}")
-        print(f"   ✅ New matches added:     {success}")
-        print(f"   🔄 Exact duplicates:      {duplicates}")
-        print(f"   📋 Same-game (shorter):   {skipped_games}")
+        print(f"   ✅ New matches added:     {new_matches}")
+        print(f"   🔄 Already recorded:      {already_recorded}")
         print(f"   ⚠️  Errors/unsupported:   {errors}")
         print(f"{'=' * 60}")
 
-        if success > 0:
+        if new_matches > 0:
             print(f"\n💡 Tip: Run rating recalculation if needed:")
             print(f"   python scripts/recalculate_all_mmrs.py")
 

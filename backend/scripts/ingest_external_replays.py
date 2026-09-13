@@ -9,7 +9,7 @@ sys.path.insert(0, str(backend_path))
 
 from app.database import SessionLocal
 from app.services.match_orchestrator import MatchOrchestrator
-from app.exceptions import DuplicateReplayError, DuplicateGameError, ReplayParseError
+from app.exceptions import ReplayParseError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,12 +45,13 @@ def ingest_folders(folders: list[str]):
                     use_advanced_parser=True,
                 )
 
-                total_ingested += 1
-                logger.info(f"Successfully ingested {filename}")
+                if result.created:
+                    total_ingested += 1
+                    logger.info(f"Successfully ingested {filename}")
+                else:
+                    total_duplicates += 1
+                    logger.info(f"Already recorded: {file_path.name}")
 
-            except (DuplicateReplayError, DuplicateGameError):
-                total_duplicates += 1
-                logger.info(f"Skipping duplicate: {file_path.name}")
             except Exception as e:
                 total_errors += 1
                 logger.error(f"Error processing {file_path.name}: {e}")

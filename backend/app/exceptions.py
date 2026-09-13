@@ -105,47 +105,6 @@ class MatchNotFoundError(SC2MMRException):
             super().__init__("Match not found")
 
 
-class DuplicateReplayError(SC2MMRException):
-    """
-    Raised when attempting to upload a replay that already exists.
-    """
-
-    def __init__(self, replay_hash: str, match_id: Optional[int] = None):
-        self.replay_hash = replay_hash
-        self.match_id = match_id
-        message = f"Replay already exists (hash: {replay_hash[:16]}...)"
-        if match_id:
-            message += f" - associated with match ID {match_id}"
-        super().__init__(message)
-
-
-class DuplicateGameError(SC2MMRException):
-    """
-    Raised when uploading a replay for a game that already exists with more data.
-
-    This happens when the same game is recorded by multiple observers who left
-    at different times - we keep the replay with longer duration (more data).
-    """
-
-    def __init__(
-        self,
-        game_fingerprint: str,
-        existing_match_id: int,
-        existing_duration: int,
-        new_duration: int,
-    ):
-        self.game_fingerprint = game_fingerprint
-        self.existing_match_id = existing_match_id
-        self.existing_duration = existing_duration
-        self.new_duration = new_duration
-        message = (
-            f"Game already exists with more data (match ID {existing_match_id}). "
-            f"Existing duration: {existing_duration}s, new replay: {new_duration}s. "
-            f"Keeping the longer replay."
-        )
-        super().__init__(message)
-
-
 class TeamBalanceError(SC2MMRException):
     """
     Raised when team balancing fails.
