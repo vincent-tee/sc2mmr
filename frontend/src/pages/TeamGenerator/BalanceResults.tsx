@@ -41,15 +41,17 @@ import {
 import TacticalCard from '@/components/TacticalCard';
 import VSScreen from '@/components/VSScreen';
 import { formatMMR } from '@/utils/formatting';
-import type { TeamSuggestionWithImpact } from '@/types/api';
+import SelectedGameCapture from '@/components/SelectedGameCapture';
+import { useAuth } from '@/components/AuthGate';
+import type { TeamSuggestionWithImpact, TacticalForecast } from '@/types/api';
 import { FiAlertTriangle } from 'react-icons/fi';
 
-const TacticalForecastOverlay: React.FC<{ forecast: any }> = ({ forecast }) => {
+const TacticalForecastOverlay: React.FC<{ forecast: TacticalForecast }> = ({ forecast }) => {
   if (!forecast || (!forecast.map_specialists?.length && !forecast.playstyle_alerts?.length)) return null;
 
   return (
     <VStack align="stretch" spacing={2} mb={4} w="100%">
-      {forecast.map_specialists.map((s: any, i: number) => (
+      {forecast.map_specialists.map((s, i: number) => (
         <Alert key={i} status="info" variant="solid" bg="brand.600" borderRadius="md" py={1}>
           <AlertIcon as={FiStar} />
           <Box flex="1">
@@ -59,7 +61,7 @@ const TacticalForecastOverlay: React.FC<{ forecast: any }> = ({ forecast }) => {
           </Box>
         </Alert>
       ))}
-      {forecast.playstyle_alerts.map((a: any, i: number) => (
+      {forecast.playstyle_alerts.map((a, i: number) => (
         <Alert key={i} status="warning" variant="solid" bg="orange.600" borderRadius="md" py={1}>
           <AlertIcon as={FiAlertTriangle} />
           <Box flex="1">
@@ -344,6 +346,7 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
   onExport,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
+  const { authenticated, requireLogin } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -593,6 +596,10 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
           </Box>
         </Box>
       </TacticalCard>
+      {suggestion.balance_prediction_id ? (
+        authenticated ? <SelectedGameCapture key={suggestion.balance_prediction_id} suggestion={suggestion} />
+          : <Button mt={4} onClick={() => requireLogin()}>Sign in to record this game</Button>
+      ) : <Text mt={4} fontSize="sm" color="gray.400">Game tracking requires a saved suggestion with registered players. Regenerate teams if tracking was unavailable.</Text>}
     </Box>
   );
 };

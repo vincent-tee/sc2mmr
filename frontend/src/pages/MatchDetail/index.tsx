@@ -23,6 +23,8 @@ import { useQuery } from '@tanstack/react-query';
 import { FiArrowLeft, FiUsers, FiZap, FiTarget, FiDownload, FiMonitor } from 'react-icons/fi';
 import { replaysApi, impactApi } from '@/api/endpoints';
 import LoadingState from '@/components/LoadingState';
+import MatchBalanceFeedback from '@/components/MatchBalanceFeedback';
+import { useAuth } from '@/components/AuthGate';
 import MatchHeader from './MatchHeader';
 import OperativesTab from './OperativesTab';
 import CommentaryTab from './CommentaryTab';
@@ -39,6 +41,7 @@ import type { MatchDetail as MatchDetailType } from '@/types/api';
 const MatchDetail: React.FC = () => {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate = useNavigate();
+  const { authEnabled, authenticated, requireLogin } = useAuth();
 
   // Reserved for future card styling
   void useColorModeValue('white', 'rgba(17, 25, 40, 0.8)');
@@ -198,6 +201,16 @@ const MatchDetail: React.FC = () => {
               <Button
                 as="a"
                 href={replaysApi.getMatchDownloadUrl(matchId!)}
+                onClick={(e: React.MouseEvent) => {
+                  // Downloads are a raw browser navigation (not axios), so a
+                  // 401 would dump raw JSON instead of the login screen. When
+                  // auth is on and we're not signed in, prompt for the squad
+                  // password instead of navigating.
+                  if (authEnabled && !authenticated) {
+                    e.preventDefault();
+                    requireLogin();
+                  }
+                }}
                 leftIcon={<FiDownload />}
                 variant="outline"
                 colorScheme="brand"
@@ -211,6 +224,7 @@ const MatchDetail: React.FC = () => {
 
           {/* Match Header */}
           <MatchHeader matchData={matchData} team1Won={team1Won} />
+          {authenticated && <MatchBalanceFeedback key={matchId} matchId={Number(matchId)} />}
 
           {/* Tabs for different views */}
           <Tabs

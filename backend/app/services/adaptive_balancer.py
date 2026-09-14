@@ -186,6 +186,12 @@ class MLMetricsBalancer:
 
         return 0.0
 
+    # Per ComponentAccuracyTracker.DEFAULT_WEIGHTS' validated regression, only
+    # "teamwork" (avg_overall_impact) improved prediction; the other weight
+    # keys calculate_ml_rating accepts (combat/economic/efficiency/session_mmr)
+    # are kept for caller backward-compatibility but don't affect the result.
+    ACTIVE_WEIGHT_KEYS = frozenset({"teamwork"})
+
     @staticmethod
     def calculate_ml_rating(
         player: Player,
@@ -196,20 +202,51 @@ class MLMetricsBalancer:
         """
         Calculate a player's predictive rating based on ML weights.
         Refined for 10/10: Uses Unified MMR as the high-fidelity base.
+
+        See ACTIVE_WEIGHT_KEYS for which `weights` entries this actually uses.
         """
         # Base stats - Using Unified MMR as the gold standard for skill
         # It already includes Handicap Correction, Combat Bonus, and Inactivity Decay
-        base_mmr = player.unified_mmr or player.mmr or 2000
+        if player.unified_mmr is not None:
+            base_mmr = player.unified_mmr
+        elif player.mmr is not None:
+            base_mmr = player.mmr
+        else:
+            base_mmr = 2000
 
         # We still look at session/recency for weighting current momentum
-        recency_mmr = player.recency_weighted_mmr or player.mmr or 2000
-        session_mmr = player.session_weighted_mmr or base_mmr
+        if player.recency_weighted_mmr is not None:
+            recency_mmr = player.recency_weighted_mmr
+        elif player.mmr is not None:
+            recency_mmr = player.mmr
+        else:
+            recency_mmr = 2000
 
-        combat = player.avg_combat_score or 24
-        economic = player.avg_economic_score or 60
-        efficiency = player.avg_efficiency_score or 55
-        impact = player.avg_overall_impact or 60
-        total_games = player.total_games or 0
+        session_mmr = (
+            player.session_weighted_mmr
+            if player.session_weighted_mmr is not None
+            else base_mmr
+        )
+
+        combat = (
+            player.avg_combat_score if player.avg_combat_score is not None else 24
+        )
+        economic = (
+            player.avg_economic_score
+            if player.avg_economic_score is not None
+            else 60
+        )
+        efficiency = (
+            player.avg_efficiency_score
+            if player.avg_efficiency_score is not None
+            else 55
+        )
+        impact = (
+            player.avg_overall_impact
+            if player.avg_overall_impact is not None
+            else 60
+        )
+        total_games = player.total_games if player.total_games is not None else 0
 
         map_bonus = 0.0
         if map_name:
@@ -276,6 +313,15 @@ class MLMetricsBalancer:
             weights = ComponentAccuracyTracker.get_optimal_weights(db)
         else:
             weights = manual_weights
+
+        # weights_used only reports ACTIVE_WEIGHT_KEYS, not the full `weights`
+        # dict passed to calculate_ml_rating below, so it never advertises
+        # control the caller doesn't actually have.
+        advertised_weights = {
+            k: v
+            for k, v in weights.items()
+            if k in MLMetricsBalancer.ACTIVE_WEIGHT_KEYS
+        }
 
         # Get players
         players = db.query(Player).filter(Player.id.in_(player_ids)).all()
@@ -346,7 +392,7 @@ class MLMetricsBalancer:
                     team1_synergy=round(team1_synergy, 1),
                     team2_synergy=round(team2_synergy, 1),
                     balance_score=round(balance_score, 3),
-                    weights_used=weights,
+                    weights_used=advertised_weights,
                 )
             )
 

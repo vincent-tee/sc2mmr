@@ -17,10 +17,35 @@ def test_empty_database_upgrade_is_repeatable(engine):
     upgrade_schema(engine)
     upgrade_schema(engine)
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0002"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
     indexes = inspect(engine).get_indexes("matches")
     assert any(index["name"] == "uq_matches_game_fingerprint" and index["unique"] for index in indexes)
+
+
+def test_selection_migration_preserves_existing_judgments_and_feedback(engine):
+    from alembic import command
+    from alembic.config import Config
+    config = Config()
+    config.set_main_option('script_location', str(Path(__file__).parents[1] / 'migrations'))
+    with engine.begin() as connection:
+        config.attributes['connection'] = connection
+        command.upgrade(config, '0003')
+        connection.exec_driver_sql("""
+            INSERT INTO pregame_judgments
+            (id, created_at, team1_player_ids_key, team2_player_ids_key,
+             human_estimate, confidence, reason, author, is_locked)
+            VALUES (5, '2026-09-01', '1,2', '3,4', 'EVEN', 'MEDIUM', 'OTHER', 'Organizer', 1)
+        """)
+        connection.exec_driver_sql("""
+            INSERT INTO postgame_feedback (id, created_at, judgment_id, feedback, author)
+            VALUES (8, '2026-09-01', 5, 'FELT_BALANCED', 'Organizer')
+        """)
+    upgrade_schema(engine)
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql('SELECT id, author, selection_id FROM pregame_judgments').one() == (5, 'Organizer', None)
+        assert connection.exec_driver_sql('SELECT id, judgment_id FROM postgame_feedback').one() == (8, 5)
+        assert connection.exec_driver_sql('PRAGMA foreign_key_check').all() == []
 
 
 def test_legacy_database_gains_columns_without_losing_history(engine):

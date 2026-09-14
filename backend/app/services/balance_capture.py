@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from ..models import BalancePrediction, Match, MatchPlayer
+from ..config import settings
+from ..rating_policy import POLICY_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,7 @@ class BalancePredictionService:
         method: str,
         suggestions: List[Any],
         max_rank: int = 3,
+        map_name: Optional[str] = None,
     ) -> int:
         """
         Log the top suggestions from a balance request.
@@ -82,9 +85,15 @@ class BalancePredictionService:
         swallowed so capture can never break a balance request.
         """
         recorded = 0
+        captured = []
         try:
             for rank, s in enumerate(suggestions[:max_rank], start=1):
                 features = {
+                    "map_name": map_name,
+                    "rating_policy": POLICY_VERSION,
+                    "beta": settings.trueskill_beta,
+                    "ratings": {str(p.id): {"mu": p.mu, "sigma": p.sigma}
+                                for p in s.team_1 + s.team_2},
                     "impact_balance_score": getattr(s, "impact_balance_score", None),
                     "playstyle_balance_score": getattr(
                         s, "playstyle_balance_score", None
@@ -95,7 +104,7 @@ class BalancePredictionService:
                     "synergy_imbalance": getattr(s, "synergy_imbalance", None),
                     "ml_win_probability": getattr(s, "ml_win_probability", None),
                 }
-                BalancePredictionService.record_suggestion(
+                prediction = BalancePredictionService.record_suggestion(
                     db,
                     method=method,
                     rank=rank,
@@ -107,11 +116,17 @@ class BalancePredictionService:
                     mmr_difference=s.mmr_difference,
                     features={k: v for k, v in features.items() if v is not None},
                 )
+                captured.append((s, prediction))
                 recorded += 1
+            db.flush()
+            ids = [(s, p.id) for s, p in captured]
             db.commit()
+            for suggestion, prediction_id in ids:
+                suggestion.balance_prediction_id = prediction_id
         except Exception as e:
             db.rollback()
             logger.warning(f"Failed to record balance predictions: {e}")
+            return 0
         return recorded
 
     @staticmethod
@@ -140,6 +155,10 @@ class BalancePredictionService:
             db.query(BalancePrediction)
             .filter(
                 BalancePrediction.resolved == 0,
+                # New predictions require explicit selection/match confirmation.
+                # Legacy clock-skew inference can assign a fresh suggestion to
+                # an earlier game uploaded late; never apply it to v2 capture.
+                BalancePrediction.method.notin_(["mmr_v2", "composite_v2"]),
                 BalancePrediction.players_key == players_key,
                 BalancePrediction.created_at >= window_start,
                 BalancePrediction.created_at <= window_end,
@@ -239,9 +258,10 @@ class BalancePredictionService:
     def get_calibration(
         db: Session, method: Optional[str] = None, days: Optional[int] = None
     ) -> Dict[str, Any]:
-        """
-        Calibration metrics for resolved balancer predictions, grouped by method.
-        Only rank-1 suggestions are scored (the pick the balancer recommended).
+        """Legacy inferred rank-1 diagnostics, one earliest prediction per game.
+
+        Use /judgments/selections/calibration for explicitly selected games,
+        including lower-ranked suggestions and organizer swaps.
         """
         query = db.query(BalancePrediction).filter(
             BalancePrediction.resolved == 1, BalancePrediction.rank == 1
@@ -252,16 +272,29 @@ class BalancePredictionService:
             cutoff = datetime.utcnow() - timedelta(days=days)
             query = query.filter(BalancePrediction.created_at >= cutoff)
 
-        predictions = query.all()
+        # match_id is ON DELETE SET NULL (see BalancePrediction), so a
+        # resolved row can survive its match being deleted; drop those
+        # rather than let them all collapse into one (method, None) bucket.
+        predictions = [
+            p for p in query.all() if p.team1_won is not None and p.match_id is not None
+        ]
 
-        by_method: Dict[str, List[tuple]] = {}
+        # Legacy inferred matches remain a diagnostic, not prospective selection
+        # evidence. A later human judgment must never change their canonical pick.
+        canonical: Dict[tuple, BalancePrediction] = {}
         for pred in predictions:
-            # team1_won is stored relative to the prediction's team 1 at
-            # resolve time, so the pair reads directly.
-            if pred.team1_won is not None:
-                by_method.setdefault(pred.method, []).append(
-                    (pred.predicted_team1_win_prob, pred.team1_won)
-                )
+            key = (pred.method, pred.match_id)
+            current = canonical.get(key)
+            if current is None or (pred.created_at, pred.id) < (current.created_at, current.id):
+                canonical[key] = pred
+
+        # team1_won is stored relative to each prediction's own team 1 at
+        # resolve time, so the pair reads directly.
+        by_method: Dict[str, List[tuple]] = {}
+        for pred in canonical.values():
+            by_method.setdefault(pred.method, []).append(
+                (pred.predicted_team1_win_prob, pred.team1_won)
+            )
 
         return {
             m: BalancePredictionService._calibration_from_pairs(pairs)

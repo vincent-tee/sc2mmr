@@ -9,6 +9,7 @@ import type {
   DuoLeaderboardEntry,
   TrioLeaderboardEntry,
   LeaderboardCategoryKey,
+  MetaReportResponse,
 } from '@/types/leaderboard';
 
 // =============================================================================
@@ -65,7 +66,7 @@ export interface LeaderboardApi {
     sortBy?: 'wins' | 'winrate' | 'synergy'
   ) => Promise<AxiosResponse<TrioLeaderboardEntry[]>>;
 
-  getMetaReport: () => Promise<AxiosResponse<any>>;
+  getMetaReport: () => Promise<AxiosResponse<MetaReportResponse>>;
 
   /** Generic getter by category key */
   getByCategory: (
@@ -131,7 +132,7 @@ export const leaderboardApi: LeaderboardApi = {
   },
 
   getMetaReport: () => {
-    return apiClient.get('/leaderboard/meta-report');
+    return apiClient.get<MetaReportResponse>('/leaderboard/meta-report');
   },
 
   getByCategory: (category, options = {}) => {

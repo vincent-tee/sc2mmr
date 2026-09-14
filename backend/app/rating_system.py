@@ -39,19 +39,10 @@ RECENCY_ENABLED = settings.recency_enabled
 
 
 class RatingSystem:
-    """
-    Manages TrueSkill ratings for players.
+    """Manage rating persistence using the shared rating policy.
 
-    MMR Calculation Constants (Single Source of Truth from config):
-    - MMR_BASE: Base MMR value for all players (default 1000)
-    - MMR_MU_MULTIPLIER: How much each mu point affects MMR (default 100)
-    - MMR_SIGMA_MULTIPLIER: How much sigma affects conservative MMR (default 300)
-
-    Two MMR formulas exist for different purposes:
-    1. Display MMR: MMR_BASE + MMR_MU_MULTIPLIER*mu (used for player cards, leaderboards)
-       - Does NOT include sigma to avoid penalizing inactive players
-    2. Conservative MMR: MMR_BASE + MMR_MU_MULTIPLIER*mu - MMR_SIGMA_MULTIPLIER*sigma
-       - Includes sigma to give conservative estimate for balanced matches
+    Official display MMR is base + mu_multiplier * mu - 200 * sigma.
+    The separate legacy conservative helper uses the configured sigma multiplier.
     """
 
     # MMR Calculation Constants - from centralized settings
@@ -135,176 +126,35 @@ class RatingSystem:
             Tuple of (team1_win_prob, team2_win_prob)
             Both values are between 0.0 and 1.0 and sum to 1.0
         """
-        import math
-        from scipy.stats import norm
+        from .rating_policy import win_probability
 
-        # Calculate team strengths (sum of mu values)
-        team1_mu = sum(r.mu for r in team1_ratings)
-        team2_mu = sum(r.mu for r in team2_ratings)
-
-        # Calculate team uncertainties (sum of sigma squared, then sqrt)
-        team1_sigma_sq = sum(r.sigma**2 for r in team1_ratings)
-        team2_sigma_sq = sum(r.sigma**2 for r in team2_ratings)
-
-        # Total variance, including per-player performance variance (beta).
-        # Omitting beta makes probabilities overconfident
-        # (backtest 2026-07-03: Brier 0.272 -> 0.239 on 614 matches).
-        n_players = len(team1_ratings) + len(team2_ratings)
-        total_sigma = math.sqrt(
-            n_players * trueskill.BETA**2 + team1_sigma_sq + team2_sigma_sq
-        )
-
-        # Difference in team strengths
-        delta_mu = team1_mu - team2_mu
-
-        # Calculate win probability using cumulative distribution function
-        # P(team1 wins) = P(team1_strength > team2_strength)
-        import numpy as np
-
-        result = norm.cdf(delta_mu / total_sigma)
-        team1_win_prob = (
-            float(result)
-            if not isinstance(result, np.ndarray)
-            else float(result.item())
-        )
-        team2_win_prob = 1.0 - team1_win_prob
-
-        return (team1_win_prob, team2_win_prob)
+        probability = win_probability(team1_ratings, team2_ratings)
+        return probability, 1.0 - probability
 
     @staticmethod
     def apply_skill_decay(
-        player: Player, days_since_last_game: int, db: Optional[Session] = None
+        player: Player, days_since_last_game: int, db: Optional[Session] = None,
+        reference_date: Optional[datetime] = None,
     ) -> None:
-        """
-        Apply adaptive skill decay based on player's typical session gaps.
+        from .rating_policy import decayed_sigma
 
-        Instead of penalizing all inactive players equally, this method:
-        1. Calculates player's typical gap between sessions
-        2. Only starts decaying after 2x their normal gap
-        3. Uses a gentler decay rate for infrequent players
-
-        This prevents unfair penalties for players who naturally play
-        less frequently (e.g., weekly vs daily players).
-
-        Args:
-            player: Player to apply decay to
-            days_since_last_game: Number of days since last game
-            db: Database session (required for adaptive decay)
-        """
-        # Base decay rate (tau per day)
-        base_decay_per_day = 0.0833
-
-        # Use adaptive decay if enabled and we have enough data
-        if (
-            settings.adaptive_decay_enabled
-            and db
-            and player.total_games >= settings.min_games_for_adaptive_decay
-        ):
-            typical_gap = RatingSystem.calculate_typical_session_gap(db, player)
-
-            if typical_gap > 0:
-                # Only start decaying after 2x their normal gap
-                decay_threshold = typical_gap * settings.adaptive_decay_multiplier
-
-                if days_since_last_game <= decay_threshold:
-                    # Within normal range - no decay
-                    logger.debug(
-                        f"Player {player.name}: {days_since_last_game} days inactive, "
-                        f"within threshold ({decay_threshold:.1f} days) - no decay"
-                    )
-                    return
-
-                # Days beyond the threshold
-                excess_days = days_since_last_game - decay_threshold
-
-                # Use a gentler decay rate for infrequent players
-                # Players with longer typical gaps get slower decay
-                decay_multiplier = min(1.0, 7.0 / typical_gap)  # Cap at daily players
-                adjusted_decay = base_decay_per_day * decay_multiplier
-
-                sigma_increase = adjusted_decay * excess_days
-
-                logger.info(
-                    f"Adaptive decay for {player.name}: "
-                    f"typical_gap={typical_gap:.1f}d, threshold={decay_threshold:.1f}d, "
-                    f"excess={excess_days:.1f}d, sigma_increase={sigma_increase:.4f}"
-                )
-            else:
-                # Fallback to standard decay
-                sigma_increase = base_decay_per_day * days_since_last_game
-        else:
-            # Standard decay for new players or when adaptive is disabled
-            sigma_increase = base_decay_per_day * days_since_last_game
-
-        # Cap sigma at initial value (8.333)
-        old_sigma = player.sigma
-        player.sigma = min(player.sigma + sigma_increase, 8.333)
-
-        if player.sigma != old_sigma:
-            logger.debug(
-                f"Decay applied to {player.name}: sigma {old_sigma:.4f} -> {player.sigma:.4f}"
-            )
+        gap = RatingSystem.calculate_typical_session_gap(db, player, reference_date) if db else 0.0
+        player.sigma = decayed_sigma(player.sigma, days_since_last_game, player.total_games, gap)
 
     @staticmethod
-    def calculate_typical_session_gap(db: Session, player: Player) -> float:
-        """
-        Calculate a player's typical gap between gaming sessions.
+    def calculate_typical_session_gap(
+        db: Session, player: Player, reference_date: Optional[datetime] = None,
+    ) -> float:
+        from .rating_policy import typical_session_gap
 
-        Uses the median gap between matches to represent typical behavior,
-        ignoring outliers (very long breaks).
-
-        Args:
-            db: Database session
-            player: Player to analyze
-
-        Returns:
-            Typical gap in days (0 if not enough data)
-        """
-        # Get player's match history ordered by date
-        match_players = (
-            db.query(MatchPlayer)
-            .filter(MatchPlayer.player_id == player.id)
-            .join(Match)
-            .order_by(Match.played_at)
-            .all()
+        query = db.query(Match.played_at).join(MatchPlayer).filter(
+            MatchPlayer.player_id == player.id, Match.played_at.isnot(None)
         )
-
-        if len(match_players) < settings.min_games_for_adaptive_decay:
-            return 0.0
-
-        # Calculate gaps between matches
-        gaps = []
-        previous_match_time = None
-
-        for mp in match_players:
-            match = db.query(Match).filter(Match.id == mp.match_id).first()
-            if match and match.played_at:
-                if previous_match_time:
-                    gap_days = (
-                        match.played_at - previous_match_time
-                    ).total_seconds() / 86400
-                    # Only count gaps > 4 hours as session gaps (ignore matches within same session)
-                    if gap_days >= settings.session_gap_hours / 24:
-                        gaps.append(gap_days)
-                previous_match_time = match.played_at
-
-        if not gaps:
-            return 0.0
-
-        # Use median to ignore outliers (long vacations, etc.)
-        gaps.sort()
-        median_idx = len(gaps) // 2
-        if len(gaps) % 2 == 0:
-            typical_gap = (gaps[median_idx - 1] + gaps[median_idx]) / 2
-        else:
-            typical_gap = gaps[median_idx]
-
-        logger.debug(
-            f"Player {player.name}: typical session gap = {typical_gap:.1f} days "
-            f"(from {len(gaps)} session gaps)"
-        )
-
-        return typical_gap
+        # The current game's timestamp is available, but future backfilled
+        # history must never influence an earlier game's inactivity policy.
+        if reference_date is not None:
+            query = query.filter(Match.played_at <= reference_date)
+        return typical_session_gap([row[0] for row in query.all()])
 
     @staticmethod
     def calculate_recency_weight(
@@ -462,7 +312,7 @@ class RatingSystem:
             if player.last_played:
                 days_since = (current_date - player.last_played).days
                 if days_since > 0:
-                    RatingSystem.apply_skill_decay(player, days_since, db)
+                    RatingSystem.apply_skill_decay(player, days_since, db, current_date)
 
         # Create TrueSkill Rating objects for each team
         team_1_ratings = [
@@ -483,13 +333,10 @@ class RatingSystem:
 
         # Determine winner (ranks: 0 for winner, 1 for loser)
         team_1_won = team_1_players[0].won
-        if team_1_won:
-            ranks = [0, 1]  # Team 1 wins
-        else:
-            ranks = [1, 0]  # Team 2 wins
-
         # Calculate new ratings
-        new_ratings = trueskill.rate([team_1_ratings, team_2_ratings], ranks=ranks)
+        from .rating_policy import rate_teams
+
+        new_ratings = rate_teams(team_1_ratings, team_2_ratings, team_1_won)
 
         new_team_1_ratings = new_ratings[0]
         new_team_2_ratings = new_ratings[1]

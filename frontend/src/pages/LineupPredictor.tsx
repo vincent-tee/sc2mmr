@@ -227,14 +227,18 @@ const LineupPredictor: React.FC = () => {
     },
   });
 
-  // Calculate prediction when lineups change
+  // Depend on `mutate` (react-query keeps this reference stable across
+  // renders) rather than the whole `predictionMutation` object, which is
+  // reconstructed every render and would otherwise reset the debounce
+  // timer below on unrelated re-renders (e.g. isLoading toggling).
+  const { mutate: runPrediction } = predictionMutation;
   const calculatePrediction = useCallback(() => {
     if (team1Players.length > 0 && team2Players.length > 0) {
-      predictionMutation.mutate({ team1Ids: team1Players, team2Ids: team2Players });
+      runPrediction({ team1Ids: team1Players, team2Ids: team2Players });
     } else {
       setPrediction(null);
     }
-  }, [team1Players, team2Players]);
+  }, [team1Players, team2Players, runPrediction]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

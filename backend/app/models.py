@@ -1022,6 +1022,169 @@ class LiveMatchFeed(Base):
     is_active: Mapped[bool] = mapped_column(Integer, default=1)
 
 
+class HumanEstimate(str, enum.Enum):
+    """An organizer's pre-game read on which side is favored."""
+
+    EVEN = "even"
+    TEAM1_FAVORED = "team1_favored"
+    TEAM2_FAVORED = "team2_favored"
+
+
+class JudgmentConfidence(str, enum.Enum):
+    """How sure the organizer is in their pre-game estimate."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class JudgmentReason(str, enum.Enum):
+    """Why the organizer's read differs (or might differ) from the model's."""
+
+    OFF_RACE = "off_race"
+    RETURNING_PLAYER = "returning_player"
+    CURRENT_FORM = "current_form"
+    COMMUNICATION = "communication"
+    MAP = "map"
+    KNOWN_SYNERGY = "known_synergy"
+    OTHER = "other"
+
+
+class PostgameFeedbackType(str, enum.Enum):
+    """A short, structured tag for how a match actually played out."""
+
+    FELT_BALANCED = "felt_balanced"
+    ONE_SIDED = "one_sided"
+    SNOWBALLED_EARLY = "snowballed_early"
+    DISCONNECT = "disconnect"
+    OTHER = "other"
+
+
+class BalanceSelection(Base):
+    """Immutable final teams recorded when the organizer starts a game."""
+
+    __tablename__ = "balance_selections"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    balance_prediction_id: Mapped[int] = mapped_column(
+        ForeignKey("balance_predictions.id"), nullable=False, unique=True
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    team1_ids_key: Mapped[str] = mapped_column(String, nullable=False)
+    team2_ids_key: Mapped[str] = mapped_column(String, nullable=False)
+    map_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    predicted_team1_win_prob: Mapped[float] = mapped_column(Float, nullable=False)
+    match_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("matches.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
+    team1_won: Mapped[Optional[bool]] = mapped_column(Integer, nullable=True)
+
+
+class PregameJudgment(Base):
+    """
+    An organizer's pre-game team-balance judgment, recorded alongside (not
+    instead of) the model's suggestion, for later comparison.
+
+    This is purely observational: nothing here feeds mu/sigma, any other
+    rating column, or ML training. It exists so a human estimate and the
+    model's estimate can be compared against the eventual match outcome.
+
+    Team rosters are snapshotted as immutable comma-separated player-ID keys
+    (matching BalancePrediction's team1_ids_key/team2_ids_key convention)
+    rather than live relationships, because a later player merge or roster
+    correction must not silently rewrite what was actually judged. The same
+    reasoning applies to model_version/model_predicted_team1_win_prob: they
+    are copied from the balance response at submission time, not joined live
+    from balance_predictions, so a judgment's record of "what the model said"
+    can never drift out from under it.
+
+    Once locked (locked_at set), the judgment content is immutable; only
+    post-game feedback (a separate table) or attaching match_id afterward can
+    follow.
+    """
+
+    __tablename__ = "pregame_judgments"
+    __table_args__ = (Index("uq_judgment_selection", "selection_id", unique=True),)
+
+    selection_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("balance_selections.id"), nullable=True
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+
+    # match_id is typically unknown at judgment time: matches are only
+    # created post-upload, after the game this judgment is about was played.
+    balance_prediction_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("balance_predictions.id", ondelete="SET NULL"), nullable=True
+    )
+    match_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("matches.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    team1_player_ids_key: Mapped[str] = mapped_column(String, nullable=False)
+    team2_player_ids_key: Mapped[str] = mapped_column(String, nullable=False)
+
+    map_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # [{"player_id": int, "race": str}, ...] snapshot, one entry per player.
+    team1_context_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    team2_context_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+    model_version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    model_predicted_team1_win_prob: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+
+    human_estimate: Mapped[HumanEstimate] = mapped_column(
+        SQLEnum(HumanEstimate), nullable=False
+    )
+    human_win_prob: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    confidence: Mapped[JudgmentConfidence] = mapped_column(
+        SQLEnum(JudgmentConfidence), nullable=False
+    )
+    reason: Mapped[JudgmentReason] = mapped_column(
+        SQLEnum(JudgmentReason), nullable=False
+    )
+    reason_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    author: Mapped[str] = mapped_column(String, nullable=False)
+
+    is_locked: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+    locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class PostgameFeedback(Base):
+    """
+    Free-form-ish post-game feedback about how a match actually played out.
+
+    Deliberately a separate table from PregameJudgment, never merged into
+    it: the pre-game estimate is a prediction that gets locked, this is an
+    after-the-fact observation. Both can reference the same match/judgment
+    but each row here is its own independent, append-only record.
+    """
+
+    __tablename__ = "postgame_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+
+    judgment_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("pregame_judgments.id", ondelete="SET NULL"), nullable=True
+    )
+    match_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("matches.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    feedback: Mapped[PostgameFeedbackType] = mapped_column(
+        SQLEnum(PostgameFeedbackType), nullable=False
+    )
+    note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    author: Mapped[str] = mapped_column(String, nullable=False)
+
+
 ACHIEVEMENT_DEFINITIONS = [
     # =======================================================================
     # MILESTONE ACHIEVEMENTS (Games & Wins)

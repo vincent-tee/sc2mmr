@@ -75,6 +75,7 @@ class TeamSuggestion:
     component_imbalance: float = 0.0
     synergy_imbalance: float = 0.0
     composite_score: float = 0.0
+    balance_prediction_id: Optional[int] = None
 
 
 # Composite objective weights. Positive terms reward, penalty terms subtract.
@@ -108,22 +109,11 @@ class TeamBalancer:
     def calculate_win_probability(
         team_1: List[PlayerInfo], team_2: List[PlayerInfo]
     ) -> float:
-        team_1_mu, team_1_sigma = TeamBalancer.get_team_rating(team_1)
-        team_2_mu, team_2_sigma = TeamBalancer.get_team_rating(team_2)
-        delta_mu = team_1_mu - team_2_mu
-        # Include per-player performance variance (beta) alongside rating
-        # uncertainty — omitting it makes probabilities overconfident
-        # (backtest 2026-07-03: Brier 0.272 -> 0.239 on 614 matches).
-        n_players = len(team_1) + len(team_2)
-        denom = (
-            n_players * trueskill.BETA**2
-            + team_1_sigma**2
-            + team_2_sigma**2
-        ) ** 0.5
-        from math import erf, sqrt
-
-        win_prob = 0.5 * (1 + erf(delta_mu / (denom * sqrt(2))))
-        return win_prob
+        from .rating_policy import win_probability
+        return win_probability(
+            [trueskill.Rating(mu=p.mu, sigma=p.sigma) for p in team_1],
+            [trueskill.Rating(mu=p.mu, sigma=p.sigma) for p in team_2],
+        )
 
     @staticmethod
     def snake_draft(

@@ -308,7 +308,7 @@ const PlayerDetail: React.FC = () => {
                       contentStyle={{ backgroundColor: '#1A202C', borderColor: '#2D3748', borderRadius: '8px' }}
                       itemStyle={{ color: '#00FF88' }}
                       labelStyle={{ color: '#A0AEC0' }}
-                      formatter={(value: any) => [Math.round(value), 'MMR']}
+                      formatter={(value: number) => [Math.round(value), 'MMR']}
                       labelFormatter={(label, payload) => {
                         if (payload && payload[0]) {
                           return `Match #${payload[0].payload.match_id} on ${payload[0].payload.map_name}`;

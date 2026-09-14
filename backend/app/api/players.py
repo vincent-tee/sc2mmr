@@ -10,13 +10,12 @@ from datetime import datetime, timedelta
 
 from ..auth import require_admin
 from ..database import get_db
-from ..models import Player, MatchPlayer, Match, PlayerMatchMetrics
+from ..models import Player, MatchPlayer, Match
 from ..rating_system import RatingSystem
-from ..performance_rating import PerformanceRatingAdjuster
 from ..impact_service import ImpactService
 from ..replay_parser import ReplayData, PlayerData
+from ..services.rating_recalculation import recalculate_ratings_in_place
 from pydantic import BaseModel
-import time
 
 
 router = APIRouter(prefix="/players", tags=["players"])
@@ -498,19 +497,9 @@ def calibrate_player(request: CalibratePlayerRequest, db: Session = Depends(get_
 
 
 class RecalculationStats(BaseModel):
-    """Statistics from rating recalculation."""
-
-    total_players: int
-    total_matches: int
-    processing_time_ms: float
     players_updated: int
     matches_processed: int
-    matches_with_performance_adjustments: int
-    matches_without_metrics: int
-    avg_performance_multiplier: float
-    min_performance_multiplier: float
-    max_performance_multiplier: float
-    total_adjustments_applied: int
+    matches_skipped: int
 
 
 @router.post(
@@ -519,288 +508,15 @@ class RecalculationStats(BaseModel):
     dependencies=[Depends(require_admin)],
 )
 def recalculate_all_ratings(db: Session = Depends(get_db)):
+    """Recalculate every player's TrueSkill mu/sigma/display-MMR from scratch,
+    in chronological order, using the same policy as live ingestion.
+
+    Updates existing match_players rows by primary key -- never deletes or
+    recreates them, so child tables (metrics, performance features) can
+    never be orphaned by this running. See app/services/rating_recalculation.py.
     """
-    Recalculate all player ratings from scratch using TrueSkill + Performance Adjustments.
-
-    This endpoint:
-    1. Resets all player ratings to default values (mu=25, sigma=8.333)
-    2. Resets all player statistics (wins, losses, games)
-    3. Gets all matches ordered chronologically
-    4. Re-processes each match with TrueSkill algorithm
-    5. Applies performance-based rating adjustments (living model)
-    6. Applies recency bias - recent matches have stronger performance impact
-    7. Updates MatchPlayer records with new ratings
-
-    Recency Bias:
-    - Oldest matches: 30% of performance adjustment strength
-    - Newest matches: 100% of performance adjustment strength
-    - This ensures recent performance has more impact on final ratings
-
-    This is useful for:
-    - After merging players
-    - Testing algorithm changes
-    - Fixing rating inconsistencies
-
-    Args:
-        db: Database session
-
-    Returns:
-        RecalculationStats with processing information and validation metrics
-    """
-    import trueskill
-    from ..performance_rating import PerformanceRatingAdjuster
-
-    start_time = time.time()
-
-    # Get all players and matches
-    all_players = db.query(Player).all()
-    all_matches = db.query(Match).order_by(Match.played_at.asc()).all()
-
-    # Reset all players to default ratings
-    player_ratings = {}  # player_id -> trueskill.Rating
-    for player in all_players:
-        player.mu = 25.0
-        player.sigma = 8.333
-        player.wins = 0
-        player.losses = 0
-        player.total_games = 0
-        player.last_played = None
-        player.terran_games = 0
-        player.protoss_games = 0
-        player.zerg_games = 0
-        player.random_games = 0
-        player_ratings[player.id] = trueskill.Rating(mu=25.0, sigma=8.333)
-
-    db.commit()
-
-    matches_processed = 0
-    players_updated = set()
-
-    # Track performance adjustment statistics
-    matches_with_performance_adjustments = 0
-    matches_without_metrics = 0
-    all_multipliers = []
-    total_adjustments_applied = 0
-
-    # Calculate recency weights (recent matches have more impact)
-    total_matches_count = len(all_matches)
-
-    # Re-process each match chronologically
-    for match_index, match in enumerate(all_matches):
-        # Get all match_players for this match
-        match_players = (
-            db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
-        )
-
-        if not match_players:
-            continue
-
-        # Group by team
-        team_1_mps = [mp for mp in match_players if mp.team_number == 1]
-        team_2_mps = [mp for mp in match_players if mp.team_number == 2]
-
-        if not team_1_mps or not team_2_mps:
-            continue
-
-        # Get current ratings for each team
-        team_1_ratings = [player_ratings[mp.player_id] for mp in team_1_mps]
-        team_2_ratings = [player_ratings[mp.player_id] for mp in team_2_mps]
-
-        # Determine winner (check team 1's first player)
-        team_1_won = team_1_mps[0].won == 1
-
-        # Calculate new TrueSkill ratings
-        if team_1_won:
-            new_team_1_ratings, new_team_2_ratings = trueskill.rate(
-                [team_1_ratings, team_2_ratings],
-                ranks=[0, 1],  # Team 1 won (rank 0 beats rank 1)
-            )
-        else:
-            new_team_1_ratings, new_team_2_ratings = trueskill.rate(
-                [team_1_ratings, team_2_ratings],
-                ranks=[1, 0],  # Team 2 won
-            )
-
-        # Update match_player records with TrueSkill ratings
-        for i, mp in enumerate(team_1_mps):
-            old_rating = player_ratings[mp.player_id]
-            new_rating = new_team_1_ratings[i]
-
-            # Update MatchPlayer with before/after ratings
-            mp.mu_before = old_rating.mu
-            mp.sigma_before = old_rating.sigma
-            mp.mu_after = new_rating.mu
-            mp.sigma_after = new_rating.sigma
-
-            players_updated.add(mp.player_id)
-
-        for i, mp in enumerate(team_2_mps):
-            old_rating = player_ratings[mp.player_id]
-            new_rating = new_team_2_ratings[i]
-
-            mp.mu_before = old_rating.mu
-            mp.sigma_before = old_rating.sigma
-            mp.mu_after = new_rating.mu
-            mp.sigma_after = new_rating.sigma
-
-            players_updated.add(mp.player_id)
-
-        # Apply performance-based adjustments (living model)
-        # Fetch all metrics for this match in one query
-        match_player_ids = [mp.id for mp in match_players]
-        metrics_list = (
-            db.query(PlayerMatchMetrics)
-            .filter(PlayerMatchMetrics.match_player_id.in_(match_player_ids))
-            .all()
-        )
-
-        # Create mapping: match_player_id -> metrics
-        player_metrics_map = {m.match_player_id: m for m in metrics_list}
-
-        # Get metrics for each team
-        team_1_metrics = [
-            player_metrics_map[mp.id]
-            for mp in team_1_mps
-            if mp.id in player_metrics_map
-        ]
-        team_2_metrics = [
-            player_metrics_map[mp.id]
-            for mp in team_2_mps
-            if mp.id in player_metrics_map
-        ]
-
-        # Track if this match has metrics
-        match_has_metrics = len(player_metrics_map) > 0
-        if match_has_metrics:
-            matches_with_performance_adjustments += 1
-        else:
-            matches_without_metrics += 1
-
-        # Apply performance adjustments to each player
-        for mp in match_players:
-            if mp.id not in player_metrics_map:
-                # No metrics for this player, use TrueSkill rating as-is
-                player_ratings[mp.player_id] = trueskill.Rating(
-                    mu=mp.mu_after, sigma=mp.sigma_after
-                )
-                continue
-
-            metrics = player_metrics_map[mp.id]
-
-            # Determine team and opponent metrics
-            if mp.team_number == 1:
-                team_metrics = team_1_metrics
-                opponent_metrics = team_2_metrics
-            else:
-                team_metrics = team_2_metrics
-                opponent_metrics = team_1_metrics
-
-            # Calculate performance multiplier
-            base_multiplier = (
-                PerformanceRatingAdjuster.calculate_performance_multiplier(
-                    metrics, team_metrics, opponent_metrics, bool(mp.won)
-                )
-            )
-
-            # Apply recency bias: recent matches have stronger performance adjustments
-            # Recency weight ranges from 0.3 (oldest match) to 1.0 (newest match)
-            recency_weight = 0.3 + 0.7 * (match_index / max(1, total_matches_count - 1))
-
-            # Blend multiplier toward 1.0 based on recency weight
-            # Old matches: multiplier closer to 1.0 (less performance impact)
-            # Recent matches: full multiplier effect
-            multiplier = 1.0 + (base_multiplier - 1.0) * recency_weight
-
-            # Track multiplier statistics (using final multiplier after recency)
-            all_multipliers.append(multiplier)
-            total_adjustments_applied += 1
-
-            # Apply multiplier to the rating change (not the final value)
-            base_mu_change = mp.mu_after - mp.mu_before
-            adjusted_mu_change = base_mu_change * multiplier
-            adjusted_mu_after = mp.mu_before + adjusted_mu_change
-
-            # Validation: Ensure multiplier is within expected bounds
-            if multiplier < 0.5 or multiplier > 1.5:
-                print(
-                    f"WARNING: Multiplier {multiplier} outside expected bounds for player {mp.player_id} in match {match.id}"
-                )
-
-            # Validation: Ensure rating change is reasonable
-            if abs(base_mu_change) > 10:  # TrueSkill changes should rarely exceed 10
-                print(
-                    f"INFO: Large TrueSkill change {base_mu_change:.2f} for player {mp.player_id} in match {match.id}"
-                )
-
-            # Update the match_player record with adjusted rating
-            mp.mu_after = adjusted_mu_after
-
-            # Update in-memory rating with adjusted value
-            player_ratings[mp.player_id] = trueskill.Rating(
-                mu=adjusted_mu_after, sigma=mp.sigma_after
-            )
-
-        # Update player statistics
-        for mp in match_players:
-            player = db.query(Player).filter(Player.id == mp.player_id).first()
-            if player:
-                player.total_games += 1
-                if mp.won:
-                    player.wins += 1
-                else:
-                    player.losses += 1
-                player.last_played = match.played_at
-
-                # Update race stats
-                if mp.race.value == "Terran":
-                    player.terran_games += 1
-                elif mp.race.value == "Protoss":
-                    player.protoss_games += 1
-                elif mp.race.value == "Zerg":
-                    player.zerg_games += 1
-                elif mp.race.value == "Random":
-                    player.random_games += 1
-
-        matches_processed += 1
-
-        # Commit every 50 matches to avoid huge transactions
-        if matches_processed % 50 == 0:
-            db.commit()
-
-    # Final commit
-    db.commit()
-
-    # Update all player ratings to their final values
-    for player in all_players:
-        if player.id in player_ratings:
-            final_rating = player_ratings[player.id]
-            player.mu = final_rating.mu
-            player.sigma = final_rating.sigma
-
-    db.commit()
-
-    processing_time_ms = (time.time() - start_time) * 1000
-
-    # Calculate statistics about performance adjustments
-    avg_multiplier = (
-        sum(all_multipliers) / len(all_multipliers) if all_multipliers else 1.0
-    )
-    min_multiplier = min(all_multipliers) if all_multipliers else 1.0
-    max_multiplier = max(all_multipliers) if all_multipliers else 1.0
-
-    return RecalculationStats(
-        total_players=len(all_players),
-        total_matches=len(all_matches),
-        processing_time_ms=round(processing_time_ms, 2),
-        players_updated=len(players_updated),
-        matches_processed=matches_processed,
-        matches_with_performance_adjustments=matches_with_performance_adjustments,
-        matches_without_metrics=matches_without_metrics,
-        avg_performance_multiplier=round(avg_multiplier, 3),
-        min_performance_multiplier=round(min_multiplier, 3),
-        max_performance_multiplier=round(max_multiplier, 3),
-        total_adjustments_applied=total_adjustments_applied,
-    )
+    stats = recalculate_ratings_in_place(db)
+    return RecalculationStats(**stats)
 
 
 class MergePlayersRequest(BaseModel):

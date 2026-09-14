@@ -25,6 +25,8 @@ const TacticalCard: React.FC<TacticalCardProps> = ({
   const bgColor = useColorModeValue('white', 'space.800');
   const borderColor = useColorModeValue('space.900', 'space.900');
   const hoverBorderColor = useColorModeValue('brand.500', 'brand.400');
+  const isCommand = variant === 'command';
+  const isAngled = variant === 'angled';
 
   // Handle keyboard navigation for accessibility
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
@@ -48,11 +50,14 @@ const TacticalCard: React.FC<TacticalCardProps> = ({
       transition={`all ${transitions.base} ${transitions.easing.bounce}`}
       border="3px solid"
       borderColor={borderColor}
+      borderLeftWidth={isCommand ? '6px' : '4px'}
+      borderLeftColor={glowColor}
       borderRadius="2xl"
-      boxShadow={shadows.comic}
+      boxShadow={isCommand ? shadows.comicLarge : shadows.comic}
+      transform={isAngled ? 'rotate(-1deg)' : undefined}
       overflow="visible"
       _hover={onClick ? {
-        transform: 'translateY(-4px) rotate(0.5deg)',
+        transform: isAngled ? 'translateY(-4px) rotate(-0.5deg)' : 'translateY(-4px) rotate(0.5deg)',
         borderColor: hoverBorderColor,
         boxShadow: shadows.comicHover,
       } : {}}

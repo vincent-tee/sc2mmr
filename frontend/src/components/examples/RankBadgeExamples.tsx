@@ -268,7 +268,10 @@ export const RankBadgeExamplesGallery = () => (
   </Container>
 );
 
-// Export individual examples for use in storybook or other contexts
+// Export individual examples for use in storybook or other contexts.
+// This file is documentation/reference only (never imported by the app),
+// so breaking Vite's fast-refresh component-only boundary is harmless.
+// eslint-disable-next-line react-refresh/only-export-components
 export const examples = [
   { name: 'All Rank Tiers', component: AllRankTiers },
   { name: 'Size Variants', component: SizeVariants },

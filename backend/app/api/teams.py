@@ -112,6 +112,8 @@ class TeamInfo(BaseModel):
 
 
 class TeamSuggestionResponse(BaseModel):
+    balance_prediction_id: Optional[int] = None
+    map_name: Optional[str] = None
     """Team suggestion response."""
 
     team_1: TeamInfo
@@ -450,7 +452,7 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
 
         # Capture predictions for calibration tracking (resolved on upload)
         BalancePredictionService.record_suggestions(
-            db, "mmr_v1", suggestions, max_rank=3
+            db, "mmr_v2", suggestions, max_rank=len(suggestions), map_name=request.map_name
         )
 
         # Convert to response format
@@ -500,6 +502,8 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
             # Create response
             responses.append(
                 TeamSuggestionResponse(
+                    balance_prediction_id=suggestion.balance_prediction_id,
+                    map_name=request.map_name,
                     team_1=team_1_info,
                     team_2=team_2_info,
                     mmr_difference=analysis["balance"]["mmr_difference"],
@@ -625,7 +629,7 @@ def balance_teams_composite(
         )
 
         BalancePredictionService.record_suggestions(
-            db, "composite_v1", suggestions, max_rank=3
+            db, "composite_v2", suggestions, max_rank=len(suggestions), map_name=request.map_name
         )
 
         responses = []
@@ -651,6 +655,8 @@ def balance_teams_composite(
 
             responses.append(
                 CompositeTeamSuggestionResponse(
+                    balance_prediction_id=suggestion.balance_prediction_id,
+                    map_name=request.map_name,
                     team_1=to_team_info(suggestion.team_1, "team_1"),
                     team_2=to_team_info(suggestion.team_2, "team_2"),
                     mmr_difference=analysis["balance"]["mmr_difference"],

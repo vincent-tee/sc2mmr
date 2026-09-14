@@ -34,7 +34,7 @@ export interface PlayersApi {
     recentMatchesOffset?: number
   ) => Promise<AxiosResponse<PlayerDetail>>;
   getHistory: (playerId: number, limit?: number) => Promise<AxiosResponse<PlayerHistoryResponse>>;
-  getCoaching: (playerId: number) => Promise<AxiosResponse<any>>;
+  getCoaching: (playerId: number) => Promise<AxiosResponse<{ player_id: number; player_name: string; tips: string[] }>>;
   create: (name: string, isCorePlayer?: boolean) => Promise<AxiosResponse<Player>>;
   calibrate: (name: string, similarToPlayerId: number) => Promise<AxiosResponse<Player>>;
 }

@@ -39,6 +39,8 @@ _PROTECTED_READ_EXACT = {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redir
 
 
 def _is_protected_read(path: str) -> bool:
+    if path == "/judgments" or path.startswith("/judgments/"):
+        return True
     if path in _PROTECTED_READ_EXACT:
         return True
     # GET /replays/matches/{id}/download

@@ -87,9 +87,9 @@ The existing custom-player, swap-suggestion, and captain-draft paths are possibl
 ## Follow-up decisions and data repair
 
 - **DragonKing → ShadowDragon rating reconciliation:** match history, statistics, and alias were merged; TrueSkill mu/sigma were intentionally not recombined. ShadowDragon retains its own rating. A full chronological recalculation to incorporate DragonKing's history is a separate decision. Do not perform it automatically.
-- **Existing referential-integrity issues:** a read-only check of the local database found 375 foreign-key violations and zero duplicate nonempty game fingerprints. Migration preserves these existing records and rejects newly introduced violations. Identify ownership and repair on a copy before any live changes. This is not a claim about the deployed database.
-- Review the losing-player multiplier and reconcile the two rating update paths before authorizing any historical recalculation.
-- Add TypeScript-aware ESLint coverage; the existing lint configuration targets JS/JSX, while `tsc` currently supplies TypeScript checking.
+- **Existing referential-integrity issues — REPAIRED 2026-09-14.** All 375 violations traced to a single category: `player_match_metrics.match_player_id` rows pointing at `match_players.id` values deleted by earlier winner-determination and game-fingerprint-dedup cleanups without cascading (`PRAGMA foreign_keys` most likely off during those raw deletes). `player_match_metrics` is a leaf table — nothing references it — so the orphaned rows carried no recoverable match/player context. Backed up to `backend/data/sc2mmr.db.backup_20260914_172941_pre_fk_repair`, then deleted the 375 orphaned rows (`player_match_metrics`: 5,177 → 4,802). `PRAGMA foreign_key_check` now returns zero violations; full backend suite unaffected (234 passed / 5 skipped / 1 pre-existing failure). This is a local-database repair only — not a claim about, or action on, the deployed database.
+- ~~Review the losing-player multiplier and reconcile the two rating update paths before authorizing any historical recalculation.~~ Done 2026-09-14 — see Session 8 in `docs/superpowers/campaign/rating-consolidation-log.md`.
+- ~~Add TypeScript-aware ESLint coverage; the existing lint configuration targets JS/JSX, while `tsc` currently supplies TypeScript checking.~~ Done 2026-09-14 — `@typescript-eslint` wired into `frontend/eslint.config.js`; surfaced and fixed pre-existing issues (see git history for details).
 - Reduce the large frontend bundle if startup performance warrants it.
 
 ## Operational boundaries

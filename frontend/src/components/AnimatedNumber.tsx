@@ -55,7 +55,6 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, duration, decimals]);
 
   return (

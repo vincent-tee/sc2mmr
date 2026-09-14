@@ -10,7 +10,17 @@ from contextlib import asynccontextmanager
 import logging
 
 from .database import init_db
-from .api import replays, players, teams, impact, adaptive, achievements, leaderboard, headtohead
+from .api import (
+    replays,
+    players,
+    teams,
+    impact,
+    adaptive,
+    achievements,
+    leaderboard,
+    headtohead,
+    judgments,
+)
 from .auth import RequireSessionMiddleware
 from .auth import router as auth_router
 from .config import settings
@@ -71,6 +81,7 @@ app.include_router(adaptive.router)
 app.include_router(achievements.router)
 app.include_router(leaderboard.router)
 app.include_router(headtohead.router)
+app.include_router(judgments.router)
 
 
 @app.get("/")

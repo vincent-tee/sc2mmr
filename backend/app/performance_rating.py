@@ -85,15 +85,17 @@ class PerformanceRatingAdjuster:
                 deficit = (1.0 - performance_score) * PerformanceRatingAdjuster.PERFORMANCE_WEIGHT
                 multiplier = 1.0 - deficit
         else:
-            # Losing: cushion strong performance, amplify weak performance
+            # Losing: cushion strong performance, amplify weak performance.
+            # mu delta is already negative here, so this branch's above/below-1.0
+            # multiplier direction is inverted from the winning branch above.
             if performance_score > 1.0:
                 # Performed above team average despite loss
                 excess = (performance_score - 1.0) * PerformanceRatingAdjuster.PERFORMANCE_WEIGHT
-                multiplier = 1.0 + (excess * 0.5)  # Reduce loss less
+                multiplier = 1.0 - (excess * 0.5)  # Reduce loss magnitude
             else:
                 # Performed below team average and lost
                 deficit = (1.0 - performance_score) * PerformanceRatingAdjuster.PERFORMANCE_WEIGHT
-                multiplier = 1.0 - (deficit * 0.5)  # Increase loss more
+                multiplier = 1.0 + (deficit * 0.5)  # Increase loss magnitude
 
         # Clamp to configured bounds
         multiplier = max(

@@ -127,7 +127,6 @@ def ingest_match(
     failed_upload_id: Optional[int] = None,
 ) -> tuple[Match, bool]:
     from ..impact_service import ImpactService
-    from ..performance_rating import PerformanceRatingAdjuster
 
     validate_result(replay_data)
     with ingestion_transaction(db) as work:
@@ -153,8 +152,6 @@ def ingest_match(
             work.flush()
         if created:
             RatingSystem.update_ratings_from_match(work, replay_data, match)
-            if save_metrics:
-                PerformanceRatingAdjuster.adjust_ratings_for_match(work, int(match.id))
             ImpactService.update_synergies(work, int(match.id))
         if failed_upload_id is not None:
             failed = work.get(FailedUpload, failed_upload_id)

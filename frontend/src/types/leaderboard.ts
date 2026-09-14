@@ -68,6 +68,17 @@ export interface TrioLeaderboardEntry {
   synergy_score: number;
 }
 
+/** Squad-wide meta report: race win rates and the archetypes that win most */
+export interface MetaReportResponse {
+  squad_win_rate_by_race: Record<string, number>;
+  top_compositions: Record<string, unknown>[];
+  most_effective_archetypes: Array<{
+    type: string;
+    win_rate: number;
+    games: number;
+  }>;
+}
+
 export interface LeaderboardCategory {
   key: LeaderboardCategoryKey;
   name: string;

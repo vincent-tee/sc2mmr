@@ -21,7 +21,7 @@ import { FiZap } from 'react-icons/fi';
 import { keyframes } from '@emotion/react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { playersApi, teamsApi, replaysApi } from '../../api/endpoints';
-import apiClient from '../../api/client';
+import apiClient, { ApiClientError } from '../../api/client';
 import { Player, TeamSuggestionWithImpact } from '../../types/api';
 import PageHeader from '../../components/PageHeader';
 import AnimatedNumber from '../../components/AnimatedNumber';
@@ -141,10 +141,10 @@ const TeamGenerator: React.FC = () => {
         }
       }, 100);
     },
-    onError: (error: any) => {
+    onError: (error: ApiClientError) => {
       toast({
         title: 'Failed to generate teams',
-        description: error.response?.data?.detail || 'An unexpected error occurred',
+        description: error.userMessage || 'An unexpected error occurred',
         status: 'error',
         duration: 5000,
         isClosable: true,

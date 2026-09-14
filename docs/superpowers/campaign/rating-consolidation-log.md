@@ -300,3 +300,219 @@ surface, keep the pipeline as an explicit labeled lab, decouple the balancer
 from it entirely). Re-entry condition for HC-MMR specifically: a genuinely
 new mechanism or substantially more data - not re-running this same test
 again without either.
+
+---
+
+## 2026-09-14 — Session 7: leak-free walk-forward evaluation harness (Brier/log-loss/calibration, session-grouped)
+
+Executor: Claude (Sonnet 5) session. Context: `tests/test_balance_regression.py`
+predicts past matches using `players.mmr` (present-day rating), which leaks
+every later match's outcome into the prediction. Prior sessions (2/3/6) already
+established this qualitatively for winner-accuracy using stored `mu_before` /
+`sigma_before` and separately for HC-MMR; this session builds a reusable,
+general-purpose harness that (a) derives pre-match state from a fresh in-memory
+TrueSkill simulation rather than trusting stored `mu_before` (verified: DB
+insertion order does not match `played_at` order — 854/860 positions differ,
+because replays are backfilled/reprocessed out of chronological order), (b)
+scores full probability calibration (Brier, log loss, reliability table), not
+just winner accuracy, and (c) groups results by inferred gaming session.
+
+**Hypothesis:** the live TrueSkill win-probability formula
+(`RatingSystem.calculate_win_probability`, includes the beta variance term)
+should be at least competitive with, and ideally beat, the naive "higher
+summed display MMR wins" baseline once every trace of lookahead is removed.
+
+**Setup:** New script `backend/scripts/walkforward_session_eval.py` (read-only,
+`mode=ro`, never touches `data/sc2mmr.db`). Walks all 837 usable matches
+(2-team, real winner, `played_at` known) in chronological order; maintains an
+in-memory `trueskill.Rating` per player starting at the config defaults
+(mu=25.0, sigma=8.333, beta=5.0, tau=0.25); for each match, predicts P(team1
+wins) from the pre-match ratings only, records the prediction, then calls
+`trueskill.rate()` with the real outcome to advance state (matches
+`sc2mmr-proof-and-analysis-toolkit` Recipe 9 exactly). The naive baseline uses
+the SAME in-memory chronological state fed through the settled display-MMR
+formula (1000+100mu-200sigma), summed per team — never `players.mmr`. Gaming
+sessions inferred from `played_at` gaps (>4h = new session; gap histogram is
+cleanly bimodal — 758/859 consecutive gaps <1h, only 1 between 6h-48h, 100 are
+>48h, so any threshold in that range gives an identical partition); 102
+sessions found, 98 with >=3 matches.
+
+**Correctness note caught before finalizing:** the first draft of the script
+called module-level `trueskill.rate()` without first calling
+`trueskill.setup()`, so state ADVANCEMENT silently ran on the trueskill
+library's own defaults (beta=4.166, tau=0.0833, draw_probability=0.1) while
+PREDICTION used the app's real params (beta=5.0) — an internal inconsistency,
+and draw_probability=0.1 is simply wrong for SC2 (no draws). Fixed by calling
+`trueskill.setup(mu=25.0, sigma=8.333, beta=5.0, tau=0.25,
+draw_probability=0.0)` once at the top of `main()`, mirroring the exact call
+`app/rating_system.py` makes at import time. All numbers below are from the
+corrected run.
+
+**Observed** (n=837, `python3 backend/scripts/walkforward_session_eval.py`):
+
+| Metric | TrueSkill win-probability | Naive baseline (sum display-MMR, leak-free) | Old leaky number (for contrast) |
+|---|---|---|---|
+| Winner accuracy | 541/834 = **64.9%** (3 ties excluded) | 551/834 = **66.1%** (3 ties excluded) | 66.3% (`test_balance_regression.py` standalone run, uses present-day `players.mmr` for every historical match) |
+| Brier score | 0.2367 | — (not a probabilistic model) | — |
+| Log loss | 0.7022 | — | — |
+| Bootstrap (1000 resamples), TrueSkill − baseline delta | mean **−1.2%**, 95% CI **[−3.1%, +0.7%]** (spans zero), positive in only 11% of resamples | | |
+| Per-session (n>=3, 98 sessions) | TrueSkill beat the baseline in only **18/98** sessions | | |
+
+Calibration table (predicted P(team1 wins) vs actual team1 win rate, 10
+buckets): reasonably well calibrated in the middle (0.5-0.8 buckets track
+actual rate within ~6pp) but overconfident at the extremes — the [0.9,1.0)
+bucket predicts a mean of 0.961 but the actual rate is only 0.803, and
+[0.8,0.9) predicts 0.847 vs actual 0.653. The model is too sure of itself on
+lopsided-looking matchups.
+
+**Verdict: Refuted (again) — the rating system's win-probability formula does
+NOT beat the naive baseline once lookahead is removed; the two are
+statistically indistinguishable and the naive baseline is nominally ahead
+(and slightly more so than the pre-fix run — the corrected, higher tau/draw
+params make the model's sigma trajectory wider and its predictions less
+sharp).** This is consistent with, and now extends with proper probabilistic
+scoring, every prior no-lookahead finding in this campaign (Sessions 2/3/6:
+unified/HC MMR components don't survive; here the base TrueSkill
+win-probability formula itself doesn't clearly beat "just sum the display
+MMR" either). The gap between the leaky number (66.3%) and the leak-free
+numbers (64.9%/66.1%) is smaller than intuition suggests (~0.2-1.4pp) at the
+current dataset size, but the leaky number is still inadmissible as a
+forward-looking accuracy claim per house rule 3 — the direction of the bias
+(leaky ≥ leak-free) is exactly what the no-lookahead doctrine predicts, even
+if the magnitude here is modest.
+
+**Next:** `tests/test_balance_regression.py` now documents this limitation
+in its module docstring and points here rather than being rewritten in place
+(its existing loose assertions — TrueSkill > 50%, ML-metrics within 5% of
+TrueSkill — still hold and remain useful as a coarse catastrophic-regression
+tripwire). This change adds zero new pytest failures: a full-suite run the
+same session showed 202 passed / 2 failed / 5 skipped, but the 2nd failure
+(`test_schema_migrations.py::test_empty_database_upgrade_is_repeatable`) and
+the extra passing tests both come from a different, parallel in-flight
+change (new `backend/migrations/versions/0003_add_judgment_tables.py` and
+`backend/tests/test_performance_rating.py`, neither touched by this session)
+— not from anything in this entry. `test_ml_pipeline_e2e` remains the one
+failure attributable to pre-existing, tracked debt (section 3b of
+`sc2mmr-validation-and-qa`). Open follow-up if anyone wants to push on this:
+the overconfidence at the [0.8,1.0) probability range is a concrete,
+falsifiable target — a beta/tau retune or a shrinkage correction on extreme
+probabilities is a candidate next experiment, not yet attempted.
+
+---
+
+## 2026-09-14 — Session 8: retire the un-validated mu-level performance adjuster; reconcile ingestion vs. recalculation
+
+Executor: Claude (Sonnet 5) session, owner present.
+
+**Trigger:** owner asked to reconcile the two divergent rating-transition
+implementations flagged in `docs/reviews/2026-09-14-codebase-and-balancing.md`
+finding 3 (live ingestion vs. `scripts/recalculate_all_mmrs.py`). A same-session
+parallel agent had just fixed a sign bug in
+`PerformanceRatingAdjuster.calculate_performance_multiplier` (the loss branch
+cushioned bad performances and punished good ones — backwards). Investigating
+*why* the two paths diverged, rather than just merging code, surfaced that the
+adjuster itself was the actual fork, not a copy-paste accident.
+
+**Findings (all read-only until the fix below):**
+
+1. `PerformanceRatingAdjuster` was added 2025-11-13 (commit `2fda4f0`,
+   "Add performance-based rating adjustments and AI-powered match
+   commentary") — nine months before this campaign started 2026-07-02. It has
+   never appeared in this log, never been run through the Phase 2 shoot-out,
+   and has never been called anywhere in `scripts/recalculate_all_mmrs.py`'s
+   history (`git log -p --follow` on the script returns zero hits for the
+   class name). It mutates `mu` directly, distinct from the (already
+   deprioritized) display-level combat/handicap bonuses this campaign
+   retired in Phase 2/6 — a separate un-validated formula component had been
+   quietly compounding in parallel the whole time.
+2. It applies to any match with advanced/parsed metrics attached —
+   789 of 860 matches (92%) qualify, not a corner case.
+3. Only 4 matches (1146-1149, the most recent by `played_at`, all
+   2026-07-05) showed measurable drift from pure TrueSkill at investigation
+   time, purely because the 2026-07-02 Phase 3 recalc reset everyone to pure
+   TrueSkill and no recalc had run since — the small blast radius was a
+   timing accident, not evidence the adjuster is harmless; left alone it
+   would have kept compounding on every future advanced upload.
+4. A **third**, previously uncatalogued rating-transition implementation was
+   found live: `POST /players/recalculate-ratings`
+   (`app/api/players.py:520`, admin-gated). It re-derives TrueSkill from
+   scratch chronologically like the script, but also applies the same
+   adjuster plus its own recency-weighted blend (0.3x at the oldest match,
+   1.0x at the newest) that exists nowhere else in the codebase. Grep against
+   `frontend/src` and `tests/` for `recalculate-ratings` /
+   `recalculate_all_ratings` returned zero hits — unreachable from the UI and
+   completely untested, i.e. safe to change without a visible behavior
+   change for any real user.
+5. Ordering divergence (Session 7 already found DB insertion order disagrees
+   with `played_at` order for 854/860 matches) means a byte-identical shared
+   transition function still cannot guarantee live ingestion and a full
+   recalc converge to the same intermediate history for backfilled data —
+   only a full recalc run is authoritative. Recorded as a permanent,
+   accepted limitation, not something this session attempted to solve.
+
+**Decision (owner, this session):** strip the mu-level performance adjuster
+from the rating of record entirely — pure TrueSkill mu/sigma, matching what
+`recalculate_all_mmrs.py` has always computed. Rationale given: every
+"smarter" adjustment this campaign has ever measured (Phase 2's unified D/E
+variants, Session 7's leak-free win-probability check) has lost to or tied
+the simpler baseline; there is zero measured evidence for this specific
+adjuster either way since it was never run through Phase 2; and the project
+already has a dedicated, separately-tracked channel for individual
+performance signal (`hybrid_mmr`/PIM) — mutating the core TrueSkill state
+directly would recreate the "eighth rating variant" anti-pattern (fenced
+path 1) this campaign exists to prevent. `performance_rating.py` and
+`tests/test_performance_rating.py` are kept in the repo, correct and tested,
+but disconnected from both live paths — if anyone wants to try this again,
+it goes through the walk-forward harness (Session 7,
+`scripts/walkforward_session_eval.py`) as a new candidate arm first.
+
+**Changes made:**
+
+- `app/services/ingestion.py`: removed the `PerformanceRatingAdjuster` import
+  and the `adjust_ratings_for_match` call in `ingest_match` (previously fired
+  whenever `save_metrics` was supplied — i.e. every advanced upload, retry,
+  and observer-ingested match).
+- `app/api/players.py` (`POST /players/recalculate-ratings`): removed the
+  performance-adjustment-plus-recency-blend block entirely; the endpoint now
+  does the same pure-TrueSkill re-derivation as the script. Simplified
+  `RecalculationStats` to drop the now-meaningless
+  `matches_with_performance_adjustments` / `avg_performance_multiplier` /
+  etc. fields (unused by any frontend code or test — confirmed by grep
+  before removing).
+- Full backend suite before and after: 220 passed / 5 skipped / 1
+  pre-existing failure (`test_ml_pipeline_e2e`), unchanged.
+
+**Live recalculation executed (house rule 1 + 2):**
+
+```
+cp data/sc2mmr.db data/sc2mmr.db.backup_20260914_171132
+python3 scripts/recalculate_all_mmrs.py
+```
+
+Counts unchanged (860 matches / 159 players / 5,476 match_players — the
+159-player count reflects earlier session work in this same conversation,
+not this recalc). Top-10 leaderboard by `mmr` shifted by at most ~3.3 MMR
+(DragonKing 2982.1 → 2978.8, the largest mover) since only 4 matches had ever
+carried the adjuster's effect — consistent with finding 3 above. Spot-check:
+re-derived pure `trueskill.rate()` on stored `mu_before/sigma_before` for
+matches 1144-1149 now matches stored `mu_after` for all 36 `match_players`
+rows to within 1e-6 (previously 20/36 of those rows deviated). Full suite
+re-run post-recalc: 220 passed / 5 skipped / 1 pre-existing failure,
+unchanged.
+
+**Verdict:** ingestion, the recalculation script, and the admin
+recalculation endpoint now compute the identical mathematical rating
+transition (pure TrueSkill). The remaining, accepted gap is ordering only
+(finding 5) — resolved by running a full recalc after any bulk historical
+backfill, not by this change. This is a local-only recalculation
+(`backend/data/sc2mmr.db`), not a production deployment; see
+`reference-live-deployment` — nothing here has touched Cloud Run.
+
+**Open follow-up:** the third-implementation discovery (finding 4) means
+`POST /players/recalculate-ratings` is now functionally redundant with
+`scripts/recalculate_all_mmrs.py` except that it doesn't touch
+`hybrid_mmr`/`recency_weighted_mmr`/`unified_mmr`/`handicap_corrected_mmr`
+the way the script does. Not resolved this session — a real fix is either
+deleting the endpoint (it's unreachable from the UI) or making it delegate
+to the same underlying logic as the script instead of maintaining a fourth
+partial reimplementation.

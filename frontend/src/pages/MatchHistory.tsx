@@ -433,7 +433,6 @@ const MatchHistory: React.FC = () => {
   // Keep the input in sync when the URL changes underneath us (back button).
   useEffect(() => {
     setSearchText(urlSearch);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSearch]);
 
   const hasFilters = Boolean(urlSearch || modeFilter);

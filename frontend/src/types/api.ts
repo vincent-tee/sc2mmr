@@ -244,6 +244,30 @@ export interface MatchPlayerMetrics {
 // Team Balance Types
 // =============================================================================
 
+/** A player identified as a map specialist (strong or weak) on the target map */
+export interface TacticalMapSpecialist {
+  player_name: string;
+  type: 'Expert' | 'Struggler';
+  win_rate: number;
+  games: number;
+}
+
+/** A playstyle-driven risk flag (e.g. cheese-prone, over-greedy macro) */
+export interface TacticalPlaystyleAlert {
+  player_name: string;
+  alert: string;
+  confidence: number;
+}
+
+/** Pre-match strategic insights: map form, playstyle risks, synergy/matchup notes */
+export interface TacticalForecast {
+  map_specialists: TacticalMapSpecialist[];
+  playstyle_alerts: TacticalPlaystyleAlert[];
+  // Reserved for future use by the backend forecast service; always empty today.
+  synergy_warnings: unknown[];
+  key_matchups: unknown[];
+}
+
 export interface TeamInfo {
   players: TeamPlayer[];
   avg_mmr: number;
@@ -265,6 +289,8 @@ export interface TeamPlayer {
 }
 
 export interface TeamSuggestion {
+  balance_prediction_id?: number | null;
+  map_name?: string | null;
   team_1: TeamInfo;
   team_2: TeamInfo;
   win_probability_team_1: number;
@@ -275,7 +301,7 @@ export interface TeamSuggestion {
   impact_balance_score?: number;
   impact_difference?: number;
   total_synergy?: number;
-  tactical_forecast?: any;
+  tactical_forecast?: TacticalForecast;
 }
 
 export interface TeamBalanceRequest {

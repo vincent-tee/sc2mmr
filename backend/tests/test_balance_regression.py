@@ -10,6 +10,29 @@ Compares prediction accuracy of different balance methods against historical mat
 Also performs component-level regression on ML-metrics weights.
 
 Run with: pytest tests/test_balance_regression.py -v -s
+
+KNOWN LIMITATION -- LOOKAHEAD (documented 2026-09-14, not yet fixed here):
+This test predicts the outcome of PAST matches using each player's CURRENT
+`Player.mmr` / `Player.session_weighted_mmr` row (see `_get_player` and the
+`predict_*` methods below). Those columns already reflect the outcome of the
+match being "predicted" and every match that happened after it, so the
+accuracy numbers here are contaminated by information the rating system did
+not actually have at match time -- they are not evidence of real prospective
+(forward-looking) prediction quality. They ARE useful as a coarse regression
+tripwire (catastrophic breakage would still show up here) but must not be
+cited as an accuracy claim.
+
+For genuine leak-free, walk-forward (chronological, no-lookahead) evaluation
+-- in-memory TrueSkill state that only ever sees matches strictly before the
+one being predicted, Brier score, log loss, calibration, and per-gaming-
+-session breakdown -- see `backend/scripts/walkforward_session_eval.py` and
+the "2026-09-14: leak-free walk-forward evaluation" entry in
+`docs/superpowers/campaign/rating-consolidation-log.md`. Headline finding
+there: leak-free TrueSkill win-probability accuracy (64.9%) does NOT beat a
+leak-free naive "higher summed display MMR wins" baseline (66.1%) at n=837
+(bootstrap 95% CI on the delta [-3.1%, +0.7%] spans zero, positive in only
+11% of resamples) -- consistent with this project's prior no-lookahead
+findings (rating-consolidation-log.md Sessions 2/3/6).
 """
 
 import pytest

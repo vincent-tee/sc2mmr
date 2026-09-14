@@ -30,12 +30,13 @@ import {
   FiRefreshCw,
 } from 'react-icons/fi';
 import { useDropzone, type FileRejection } from 'react-dropzone';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { replaysApi } from '../api/endpoints';
 import PageHeader from '../components/PageHeader';
 import type { ApiClientError } from '../api/client';
 import { useToast } from '../hooks/useToast';
+import { useAuth } from '../components/AuthGate';
 import { parseErrorMessage } from '../utils/formatting';
 import type { ReplayUploadResponse } from '../types/api';
 import type { IconType } from 'react-icons';
@@ -86,6 +87,19 @@ const UploadReplays: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { authEnabled, authenticated, requireLogin } = useAuth();
+  const navigate = useNavigate();
+
+  // Uploading is a write - in public-read mode it stays gated. Prompt for the
+  // squad password the moment someone lands on this route rather than letting
+  // them pick files and hit a 401 on submit. Unlike the download-button
+  // prompt, dismissing this one sends them home - this whole page is useless
+  // without a session, so "Go back" shouldn't just reveal the dead form.
+  useEffect(() => {
+    if (authEnabled && !authenticated) {
+      requireLogin(() => navigate('/'));
+    }
+  }, [authEnabled, authenticated, requireLogin, navigate]);
 
   // Check if any files are currently uploading
   const hasUploadsInProgress = files.some(
