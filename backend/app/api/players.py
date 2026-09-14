@@ -15,6 +15,7 @@ from ..rating_system import RatingSystem
 from ..impact_service import ImpactService
 from ..replay_parser import ReplayData, PlayerData
 from ..services.rating_recalculation import recalculate_ratings_in_place
+from ..services.fk_repair import repair_orphaned_metrics
 from pydantic import BaseModel
 
 
@@ -517,6 +518,26 @@ def recalculate_all_ratings(db: Session = Depends(get_db)):
     """
     stats = recalculate_ratings_in_place(db)
     return RecalculationStats(**stats)
+
+
+class RepairStats(BaseModel):
+    repaired: int
+    remaining_violations: Optional[int] = None
+    skipped_unknown_categories: Optional[List[str]] = None
+    note: Optional[str] = None
+
+
+@router.post(
+    "/repair-orphaned-metrics",
+    response_model=RepairStats,
+    dependencies=[Depends(require_admin)],
+)
+def repair_orphaned_metrics_endpoint(db: Session = Depends(get_db)):
+    """Delete player_match_metrics rows whose match_players parent no longer
+    exists (leaf table, safe to delete -- see app/services/fk_repair.py).
+    Refuses to touch anything if an uncharacterized violation shape is found.
+    """
+    return RepairStats(**repair_orphaned_metrics(db))
 
 
 class MergePlayersRequest(BaseModel):
