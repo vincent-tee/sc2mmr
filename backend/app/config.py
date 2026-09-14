@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     trueskill_tau: float = 0.25  # Dynamics factor (increased from 0.0833)
     trueskill_draw_probability: float = 0.0  # No draws in SC2
 
+    # Win-probability PREDICTION only, not trueskill.rate() updates above.
+    # Out-of-sample-validated, see rating-consolidation-log.md Session 9.
+    win_probability_variance_scale: float = 11.0
+
     # ==========================================================================
     # MMR Display Configuration
     # ==========================================================================

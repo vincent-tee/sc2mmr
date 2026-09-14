@@ -38,11 +38,25 @@ def test_walkforward_matches_ingestion_across_inactivity(db_session, monkeypatch
             assert (player.mu, player.sigma) == pytest.approx((expected.mu, expected.sigma))
 
 
-def test_probability_uses_configured_beta_not_library_constant(monkeypatch):
-    monkeypatch.setattr(settings, "trueskill_beta", 9.0)
+def test_probability_uses_configured_variance_scale(monkeypatch):
+    monkeypatch.setattr(settings, "win_probability_variance_scale", 9.0)
     first, second = [trueskill.Rating(30, 2)], [trueskill.Rating(20, 2)]
-    expected = .5 * (1 + math.erf(10 / math.sqrt(2 * (2 * 81 + 8))))
+    expected = .5 * (1 + math.erf(10 / math.sqrt(2 * 8 * (1 + 9.0))))
     assert win_probability(first, second) == pytest.approx(expected)
+
+
+def test_variance_scale_shrinks_variance_for_converged_players(monkeypatch):
+    """The whole point of this formula: two equally-uncertain teams get
+    equally wide predictions; a converged (low-sigma) team's edge should
+    come through more sharply than a fixed, sigma-independent noise floor
+    would allow."""
+    monkeypatch.setattr(settings, "win_probability_variance_scale", 11.0)
+    converged = [trueskill.Rating(30, 2)]
+    unconverged = [trueskill.Rating(30, 8)]
+    weaker = [trueskill.Rating(20, 2)]
+    p_converged = win_probability(converged, weaker)
+    p_unconverged = win_probability(unconverged, weaker)
+    assert p_converged > p_unconverged
 
 
 def test_holdout_outcomes_cannot_change_fitted_temperature():

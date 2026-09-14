@@ -516,3 +516,78 @@ the way the script does. Not resolved this session — a real fix is either
 deleting the endpoint (it's unreachable from the UI) or making it delegate
 to the same underlying logic as the script instead of maintaining a fourth
 partial reimplementation.
+
+---
+
+## 2026-09-15 — Session 9: skill-dependent variance fix for win_probability (ADOPTED)
+
+Executor: Claude (Sonnet 5) session, owner present.
+
+**Trigger:** while running `named_player_effect_eval.py`'s full-population
+residual scan (every player with >=50 games, not just pre-registered names),
+the owner noticed the highest-residual players were also the highest-mu
+players. Checked properly: Pearson r=+0.610 (local dev, 837 matches) and
++0.563 (prod, 851 matches) between a player's final chronological mu and
+their team's mean signed prediction residual, both 95% bootstrap CIs
+excluding zero ([+0.312,+0.803] and [+0.308,+0.784]), and unmoved by
+removing the top outlier (Stephan) from either dataset (+0.616 / +0.559).
+Mechanism: `win_probability`'s extra performance-noise term was
+`n_players * beta^2` — fixed regardless of how converged a player's own
+sigma is, so it under-predicts confident/converged teams and over-predicts
+uncertain ones.
+
+**Fix tested:** replace the fixed term with one that scales off each
+player's own sigma: `variance = sum(sigma_i^2) * (1 + k)`, k fit by grid
+search on log loss on the earlier 75% of sessions only. First grid search
+(0-5.0) hit the search boundary at k=5.0 — caught before trusting it,
+widened to confirm log loss actually bottoms out (it does, around k=10-12,
+then rises back toward the "always predict 50%" floor as k→∞ for k in the
+thousands) before refining. True optimum: **k=11 in both datasets,
+independently.**
+
+**Held-out (last 25% of sessions, never used for fitting) results:**
+
+| | Local dev | Prod |
+|---|---|---|
+| Log-loss improvement vs fixed beta=5.0 | +0.0924 | +0.0963 |
+| Session-block bootstrap 95% CI | [+0.0402, +0.1507] | [+0.0415, +0.1532] |
+| Resamples favoring the fix | 100% | 100% |
+| Held-out mu-residual correlation | +0.007 → **-0.004** | +0.011 → **-0.001** |
+
+Both datasets converge on the same k independently, the CI excludes zero by
+a wide margin, and the correlation that motivated the fix is eliminated on
+data the fit never saw. This clears the bar every other candidate this
+session failed to clear.
+
+**Caveat on process:** the motivating correlation was found by looking at
+the full dataset, not a blind pre-registration from the start — but the fix
+itself was then fit on train and scored on strictly held-out test in two
+independent datasets, which is real out-of-sample evidence, not just a
+good-looking full-sample number.
+
+**Adopted:** `app/rating_policy.py::win_probability` now takes
+`variance_scale` (default `settings.win_probability_variance_scale = 11.0`)
+instead of `beta`; `POLICY_VERSION` bumped to `trueskill-decay-v3`. Does
+NOT touch `trueskill.rate()` / `environment()` — `trueskill_beta` still
+governs actual rating updates unchanged; this is prediction-only. Updated
+the one other call site that snapshotted the old parameter name
+(`balance_capture.py`'s suggestion capture now stores `variance_scale`
+instead of `beta`; `judgments.py`'s swap-recompute reads the new key). Old
+snapshots using the old key can't be affected — the 2-hour freshness check
+on suggestion swaps already expires anything from before this deploy.
+
+**Verification:** `pytest -q` → 264 passed / 5 skipped / 1 pre-existing
+failure (`test_ml_pipeline_e2e`), up from 263 (one new test asserting the
+new formula shape, one rewritten to test `variance_scale` instead of the
+retired `beta` parameter). Re-ran `walkforward_session_eval.py` against the
+real, wired-in code (not the scratch candidate script) post-change: held-out
+raw log loss 0.6591 — better than even Session 7/8's *temperature-corrected*
+number (0.6626), and the holdout fitted temperature is now exactly 1.0
+(no further post-hoc correction wanted), suggesting this fixes the root
+cause the temperature hack was papering over rather than adding a second
+patch on top of it.
+
+**Not touched:** display MMR / mu / sigma (rating of record unaffected),
+the balancer's default objective (still unchanged pending its own
+evidence), `scripts/walkforward_session_eval.py` and
+`scripts/skill_dependent_variance_eval.py` remain as the analysis record.

@@ -7,7 +7,7 @@ import trueskill
 
 from .config import settings
 
-POLICY_VERSION = "trueskill-decay-v2"
+POLICY_VERSION = "trueskill-decay-v3"
 
 
 def environment():
@@ -39,12 +39,12 @@ def decayed_sigma(sigma, days, total_games, typical_gap=0.0):
     return min(sigma + rate * days, settings.trueskill_sigma)
 
 
-def win_probability(team1, team2, *, beta=None):
+def win_probability(team1, team2, *, variance_scale=None):
     if not team1 or not team2:
         raise ValueError("Both teams must contain players")
     delta = sum(r.mu for r in team1) - sum(r.mu for r in team2)
-    variance = sum(r.sigma ** 2 for r in team1 + team2)
-    variance += (len(team1) + len(team2)) * (settings.trueskill_beta if beta is None else beta) ** 2
+    scale = settings.win_probability_variance_scale if variance_scale is None else variance_scale
+    variance = sum(r.sigma ** 2 for r in team1 + team2) * (1 + scale)
     return 0.5 * (1 + math.erf(delta / math.sqrt(2 * variance)))
 
 

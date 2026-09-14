@@ -226,7 +226,7 @@ def create_judgment(request: CreateJudgmentRequest, db: Session = Depends(get_db
             from ..rating_policy import win_probability
             teams = [[trueskill.Rating(**snapshots[str(pid)]) for pid in team]
                      for team in (request.team1_player_ids, request.team2_player_ids)]
-            probability = win_probability(*teams, beta=features.get('beta'))
+            probability = win_probability(*teams, variance_scale=features.get('variance_scale'))
         request.model_predicted_team1_win_prob = probability
         request.model_version = prediction.method
         request.map_name = features.get('map_name') or request.map_name

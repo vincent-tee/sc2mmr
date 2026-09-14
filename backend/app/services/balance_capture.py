@@ -91,7 +91,7 @@ class BalancePredictionService:
                 features = {
                     "map_name": map_name,
                     "rating_policy": POLICY_VERSION,
-                    "beta": settings.trueskill_beta,
+                    "variance_scale": settings.win_probability_variance_scale,
                     "ratings": {str(p.id): {"mu": p.mu, "sigma": p.sigma}
                                 for p in s.team_1 + s.team_2},
                     "impact_balance_score": getattr(s, "impact_balance_score", None),
