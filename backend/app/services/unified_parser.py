@@ -95,12 +95,16 @@ class UnifiedParser:
     }
 
     def __init__(self):
-        pass
+        # Unit type name -> times seen in UnitBornEvent with no UNIT_COSTS
+        # entry; reset each parse(). Excluded from army_value_built rather
+        # than priced at a guess.
+        self._unknown_unit_cost_counts: Dict[str, int] = {}
 
     def parse(
         self, file_path: str, manual_winner_team: Optional[int] = None
     ) -> ProcessedMatchResult:
         """Execute unified parsing."""
+        self._unknown_unit_cost_counts = {}
         try:
             replay = sc2reader.load_replay(file_path, load_level=4)
             played_at = getattr(replay, "utc_date", None) or getattr(
@@ -175,6 +179,15 @@ class UnifiedParser:
 
             self._calculate_derived_metrics(results_list)
 
+            if self._unknown_unit_cost_counts:
+                total_unknown = sum(self._unknown_unit_cost_counts.values())
+                logger.warning(
+                    "army_value_built: skipped %d unit(s) with unknown cost "
+                    "(not counted as 0, not guessed as 100): %s",
+                    total_unknown,
+                    self._unknown_unit_cost_counts,
+                )
+
             # Calculate game fingerprint for same-game detection
             player_names = [p.name for p in results_list]
             game_fp = calculate_game_fingerprint(map_name, played_at, player_names)
@@ -234,9 +247,13 @@ class UnifiedParser:
                 pid = getattr(event, "control_pid", None)
                 if pid in player_results:
                     utype = getattr(event, "unit_type_name", "Unknown")
-                    player_results[pid].army_value_built += self.UNIT_COSTS.get(
-                        utype, 100
-                    )
+                    cost = self.UNIT_COSTS.get(utype)  # None (unknown) is excluded below, not guessed or zeroed
+                    if cost is None:
+                        self._unknown_unit_cost_counts[utype] = (
+                            self._unknown_unit_cost_counts.get(utype, 0) + 1
+                        )
+                    else:
+                        player_results[pid].army_value_built += cost
                     if utype in {"SCV", "Probe", "Drone"}:
                         player_results[pid].workers_created += 1
                     else:
@@ -268,21 +285,46 @@ class UnifiedParser:
                 pid = getattr(event, "pid", None)
                 if pid in player_results:
                     r = player_results[pid]
+                    # Estimate, not a certified ledger -- PlayerStatsEvent has
+                    # no direct "total collected" counter, so this sums bank +
+                    # invested + destroyed + queued. Refunds, cancellations,
+                    # morphs, and starting resources aren't separately
+                    # accounted for (2026-09-15 replay metrics review, drift #3).
                     r.minerals_collected = (
-                        getattr(event, "minerals_used_current", 0)
+                        getattr(event, "minerals_current", 0)
+                        + getattr(event, "minerals_used_current", 0)
                         + getattr(event, "minerals_lost", 0)
-                        + getattr(event, "minerals_current", 0)
+                        + getattr(event, "minerals_used_in_progress", 0)
                     )
                     r.vespene_collected = (
-                        getattr(event, "vespene_used_current", 0)
+                        getattr(event, "vespene_current", 0)
+                        + getattr(event, "vespene_used_current", 0)
                         + getattr(event, "vespene_lost", 0)
-                        + getattr(event, "vespene_current", 0)
+                        + getattr(event, "vespene_used_in_progress", 0)
                     )
                     r.total_resources_collected = (
                         r.minerals_collected + r.vespene_collected
                     )
-                    r.army_value_lost = getattr(event, "resources_lost", 0)
-                    r.army_value_killed = getattr(event, "resources_killed", 0)
+                    # PlayerStatsEvent.resources_lost/killed aggregate army +
+                    # economy + technology value; sum only the *_army
+                    # components so these fields mean army value.
+                    r.army_value_lost = getattr(
+                        event, "minerals_lost_army", 0
+                    ) + getattr(event, "vespene_lost_army", 0)
+                    r.army_value_killed = getattr(
+                        event, "minerals_killed_army", 0
+                    ) + getattr(event, "vespene_killed_army", 0)
+                    # `lost` must appear here AND in total_resources_collected
+                    # above -- otherwise spending everything then losing it in
+                    # a fight would score spending_efficiency as 0, backwards.
+                    r.resources_spent = (
+                        getattr(event, "minerals_used_current", 0)
+                        + getattr(event, "minerals_used_in_progress", 0)
+                        + getattr(event, "minerals_lost", 0)
+                        + getattr(event, "vespene_used_current", 0)
+                        + getattr(event, "vespene_used_in_progress", 0)
+                        + getattr(event, "vespene_lost", 0)
+                    )
                     if (
                         getattr(event, "food_used", 0) >= getattr(event, "food_made", 0)
                         and getattr(event, "food_made", 0) < 200
@@ -314,8 +356,7 @@ class UnifiedParser:
             if r.total_resources_collected > 0:
                 r.spending_efficiency = min(
                     1.0,
-                    (r.army_value_killed + r.army_value_lost)
-                    / r.total_resources_collected,
+                    r.resources_spent / r.total_resources_collected,
                 )
 
     def _calculate_derived_metrics(self, results):

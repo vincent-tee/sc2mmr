@@ -47,9 +47,14 @@ class PlayerMetrics:
     minerals_collected: int = 0
     vespene_collected: int = 0
     total_resources_collected: int = 0
-    resources_spent: int = 0
-    spending_efficiency: float = 0.0  # Spent / Collected
+    resources_spent: int = 0  # See _process_tracker_events docstring for exact definition
+    spending_efficiency: float = 0.0  # See _process_tracker_events docstring for exact definition
+    # Increment-only production count, from UnitBornEvent.
     workers_created: int = 0
+    # Highest workers_active_count seen across any PlayerStatsEvent snapshot
+    # -- a peak, not a running total; workers_created can exceed it once
+    # losses are replaced.
+    peak_active_workers: int = 0
     workers_killed: int = 0
     early_workers_killed: int = 0  # < 5 min
     mid_workers_killed: int = 0  # 5-10 min
@@ -82,8 +87,13 @@ class PlayerMetrics:
     supply_block_seconds: int = 0
     lethality_score: float = 0.0
 
-    # Unit composition (top 5 units by count)
+    # Unit composition: every observed unit type name -> count. Not
+    # truncated -- rare counter-units matter for coordination analysis.
     unit_composition: Optional[Dict[str, int]] = None
+
+    # Unit type name -> times seen with no UNIT_COSTS entry. Excluded from
+    # army-value sums rather than priced at a guess; this is that coverage record.
+    unknown_unit_types: Optional[Dict[str, int]] = None
 
     # Impact scores (calculated)
     economic_score: float = 0.0
@@ -111,6 +121,8 @@ class PlayerMetrics:
     def __post_init__(self):
         if self.unit_composition is None:
             self.unit_composition = {}
+        if self.unknown_unit_types is None:
+            self.unknown_unit_types = {}
 
 
 @dataclass
@@ -192,7 +204,7 @@ UNIT_COSTS = {
 }
 
 
-def get_unit_cost(unit_name: str) -> int:
+def get_unit_cost(unit_name: str) -> Optional[int]:
     """
     Get resource cost for a unit (minerals + vespene).
 
@@ -200,9 +212,12 @@ def get_unit_cost(unit_name: str) -> int:
         unit_name: Name of the unit
 
     Returns:
-        Total resource cost
+        Total resource cost, or None if the unit isn't in UNIT_COSTS. Callers
+        must not treat None as zero or substitute a guessed default -- unknown
+        costs should be excluded from sums and separately counted (see
+        PlayerMetrics.unknown_unit_types) so coverage gaps stay visible.
     """
-    return UNIT_COSTS.get(unit_name, 100)  # Default 100 for unknown units
+    return UNIT_COSTS.get(unit_name)
 
 
 # Single source of truth for K/D — also used by the backfill script and tests.
@@ -312,9 +327,10 @@ def parse_replay_advanced(
                 if hasattr(stats, "killed_unit_count"):
                     metrics.units_killed = stats.killed_unit_count
 
-                # Workers
+                # workers_active_count is sc2reader's time series of active-
+                # worker samples; take the max, not the latest, for a peak.
                 if hasattr(stats, "workers_active_count"):
-                    metrics.workers_created = (
+                    metrics.peak_active_workers = (
                         max(stats.workers_active_count)
                         if stats.workers_active_count
                         else 0
@@ -473,6 +489,19 @@ def _process_tracker_events(
             event's raw frame to a real second (see app/replay_clock.py --
             event.second itself assumes a fixed 16 loops/second and reads
             wrong on faster-than-default replays)
+
+    Spending efficiency definition: at every PlayerStatsEvent snapshot,
+    `invested = minerals_used_current + minerals_used_in_progress +
+    vespene_used_current + vespene_used_in_progress` (resources this player
+    has actually committed to units/structures/research, or has queued to
+    be) is divided by that same snapshot's collected-resources proxy
+    (banked + invested). `spending_efficiency` is the mean of this ratio
+    across every snapshot in the game -- i.e. "what fraction of what you'd
+    amassed by each checkpoint was actually put to use, on average", not
+    "spent vs. total ever collected" and NOT related to combat outcomes.
+    `resources_spent` is the `invested` value from the final snapshot only
+    (a point-in-time stock, consistent with how total_resources_collected
+    is also last-snapshot-wins rather than summed over the game).
     """
     def event_second(event) -> int:
         return int(frame_to_real_second(event.frame, game_duration, total_frames))
@@ -492,6 +521,14 @@ def _process_tracker_events(
     unit_died_count = {}
     unit_compositions = {}
     base_timings = {}
+
+    # Per-snapshot ratio = invested-or-queued resources / collected-resources
+    # proxy. spending_efficiency averages these across the game;
+    # resources_spent takes the last snapshot, matching
+    # total_resources_collected's own last-snapshot-wins convention.
+    spending_ratio_sum: Dict[int, float] = {}
+    spending_ratio_count: Dict[int, int] = {}
+    last_invested: Dict[int, int] = {}
 
     for event in events:
         # Supply Block Detection
@@ -580,7 +617,12 @@ def _process_tracker_events(
             # Track Kills
             if hasattr(event, "killer_pid") and event.killer_pid in player_metrics:
                 k_pid = event.killer_pid
-                player_metrics[k_pid].army_value_killed += unit_cost
+                if unit_cost is not None:
+                    player_metrics[k_pid].army_value_killed += unit_cost
+                else:
+                    player_metrics[k_pid].unknown_unit_types[unit_name] = (
+                        player_metrics[k_pid].unknown_unit_types.get(unit_name, 0) + 1
+                    )
                 player_metrics[k_pid].units_killed += 1
 
                 if is_worker:
@@ -595,7 +637,12 @@ def _process_tracker_events(
                 owner = event.unit.owner
                 if hasattr(owner, "pid") and owner.pid in player_metrics:
                     o_pid = owner.pid
-                    player_metrics[o_pid].army_value_lost += unit_cost
+                    if unit_cost is not None:
+                        player_metrics[o_pid].army_value_lost += unit_cost
+                    else:
+                        player_metrics[o_pid].unknown_unit_types[unit_name] = (
+                            player_metrics[o_pid].unknown_unit_types.get(unit_name, 0) + 1
+                        )
                     player_metrics[o_pid].units_lost += 1
 
                     if is_worker:
@@ -631,15 +678,16 @@ def _process_tracker_events(
                     min_collected + vesp_collected
                 )
 
-                # Army value lost
+                # PlayerStatsEvent.resources_lost/killed aggregate army +
+                # economy + technology value (sc2reader.events.tracker); sum
+                # only the *_army components so these fields mean army value.
                 player_metrics[pid].army_value_lost = getattr(
-                    event, "resources_lost", 0
-                )
+                    event, "minerals_lost_army", 0
+                ) + getattr(event, "vespene_lost_army", 0)
 
-                # Army value killed
                 player_metrics[pid].army_value_killed = getattr(
-                    event, "resources_killed", 0
-                )
+                    event, "minerals_killed_army", 0
+                ) + getattr(event, "vespene_killed_army", 0)
 
                 # Supply Block Detection
                 # food_used >= food_made and not at 200 supply (max)
@@ -649,18 +697,31 @@ def _process_tracker_events(
                 ):
                     player_metrics[pid].supply_block_seconds += 10
 
-                # Workers active
                 workers = getattr(event, "workers_active_count", 0)
-                if workers > player_metrics[pid].workers_created:
-                    player_metrics[pid].workers_created = workers
+                if workers > player_metrics[pid].peak_active_workers:
+                    player_metrics[pid].peak_active_workers = workers
 
-    # Set unit compositions (top 5 units)
+                invested = (
+                    getattr(event, "minerals_used_current", 0)
+                    + getattr(event, "minerals_used_in_progress", 0)
+                    + getattr(event, "vespene_used_current", 0)
+                    + getattr(event, "vespene_used_in_progress", 0)
+                )
+                collected_snapshot = min_collected + vesp_collected
+                if collected_snapshot > 0:
+                    ratio = min(1.0, invested / collected_snapshot)
+                    spending_ratio_sum[pid] = spending_ratio_sum.get(pid, 0.0) + ratio
+                    spending_ratio_count[pid] = spending_ratio_count.get(pid, 0) + 1
+                last_invested[pid] = invested
+
+    # Set unit compositions: every observed unit type, sorted by count
+    # descending for readability, but not truncated -- rare counter-units
+    # matter for coordination/counter-play analysis.
     for pid, composition in unit_compositions.items():
         if pid in player_metrics:
-            # Sort by count and take top 5
             sorted_units = sorted(
                 composition.items(), key=lambda x: x[1], reverse=True
-            )[:5]
+            )
             player_metrics[pid].unit_composition = dict(sorted_units)
 
     # Calculate derived metrics
@@ -685,14 +746,12 @@ def _process_tracker_events(
             metrics.units_killed, metrics.units_lost
         )
 
-        # Spending efficiency (how much of collected resources were spent)
-        # Approximate as: units built * avg cost
-        if metrics.total_resources_collected > 0:
-            estimated_spending = metrics.army_value_killed + metrics.army_value_lost
-            metrics.resources_spent = estimated_spending
-            metrics.spending_efficiency = min(
-                1.0, estimated_spending / metrics.total_resources_collected
+    for pid, metrics in player_metrics.items():
+        if spending_ratio_count.get(pid, 0) > 0:
+            metrics.spending_efficiency = (
+                spending_ratio_sum[pid] / spending_ratio_count[pid]
             )
+        metrics.resources_spent = last_invested.get(pid, 0)
 
 
 @dataclass
@@ -853,10 +912,13 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
     """
     # ==========================================================================
     # ECONOMIC SCORE (0-100) - Resource management
-    # Metrics: total_resources_collected, workers_created, spending_efficiency
+    # Metrics: total_resources_collected, peak_active_workers, spending_efficiency
     # ==========================================================================
     resource_score = min(100, metrics.total_resources_collected / 1000)  # Cap at 100k
-    worker_score = min(100, metrics.workers_created / 0.8)  # Cap at 80 workers
+    # peak_active_workers, not workers_created: sustained economic capacity
+    # shouldn't depend on every worker-birth event having been captured
+    # (e.g. starting workers present at game start rather than "born").
+    worker_score = min(100, metrics.peak_active_workers / 0.8)  # Cap at 80 workers
     spending_score = metrics.spending_efficiency * 100  # 0-100 from 0-1.0
 
     metrics.economic_score = (resource_score + worker_score + spending_score) / 3
@@ -900,7 +962,7 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
         metrics.player_archetype = "The Reaper (Aggressor)"
     elif metrics.lethality_score >= 20 and metrics.kill_death_ratio > 1.5:
         metrics.player_archetype = "The Assassin (Micro)"
-    elif metrics.workers_created >= 60 and metrics.spending_efficiency > 0.8:
+    elif metrics.peak_active_workers >= 60 and metrics.spending_efficiency > 0.8:
         metrics.player_archetype = "The Titan (Macro)"
     elif metrics.early_workers_lost == 0 and metrics.team_fight_participation > 0.7:
         metrics.player_archetype = "The Wall (Defender)"
