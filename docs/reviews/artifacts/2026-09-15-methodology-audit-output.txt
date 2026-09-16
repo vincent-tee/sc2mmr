@@ -1,0 +1,35 @@
+Database paths: {'local': '/home/vtee/projects/sc2mmr/backend/data/sc2mmr.db', 'prod': '/home/vtee/.claude/jobs/969106c5/tmp/prod-before.db'}
+
+ local usable 837 sessions 102 train/test 565 272 test sessions 26 test start 2024-10-13 10:23:37.000000
+k grid train losses [(0, 0.8924059), (5, 0.6325894), (8, 0.6248223), (10, 0.6237338), (11, 0.6236896), (12, 0.6238444), (15, 0.6249859), (20, 0.6277243), (30, 0.6331916), (100, 0.652564), (1000, 0.678164)]
+baseline train/test 0.689077471052861 0.7515226349311033
+k fit 10.677230688126247 train/test LL 0.6236785290223217 0.659558988068333 LL improvement CI [0.0919636468627702, 0.038249309948463636, 0.14797704940427966] Brier 0.23399305371145762
+beta fit 13.540894239096504 train/test LL 0.6228457501223109 0.6561776690700647 LL improvement CI [0.09534496586103847, 0.03986034791670606, 0.15660410928258459] Brier 0.23299327294651562
+temperature fit 4.505734877654995 train/test LL 0.6222953856557821 0.6571157800087247 LL improvement CI [0.09440685492237849, 0.039859713827588975, 0.1533381160717257] Brier 0.23336461714649656
+baseline Brier 0.25578069205901155
+k advantage over fitted beta [-0.0033813189982682683, -0.014491087874376448, 0.004140686194796853]
+k advantage over fitted temperature [-0.0024432080596082798, -0.01065411583333308, 0.0031157454545770887]
+baseline actual heldout player correlation n>=10 (19, 0.40540508169361633) script correlation 0.006684511338544272
+k11 actual heldout player correlation n>=10 (19, 0.539281795845941) script correlation -0.003901314899359738
+metrics coverage (4802, 789, 4707, 1470, 4802, 4611, 4752)
+exposure DragonKing matches 387 sessions 42 switch sessions 38 receiver-session switches 178 receivers >=10 with and against 14
+exposure Stephan matches 708 sessions 91 switch sessions 81 receiver-session switches 371 receivers >=10 with and against 20
+
+ prod usable 851 sessions 104 train/test 584 267 test sessions 26 test start 2024-11-03 10:38:35.000000
+k grid train losses [(0, 0.8874915), (5, 0.6301569), (8, 0.6224451), (10, 0.6213853), (11, 0.6213561), (12, 0.6215262), (15, 0.622716), (20, 0.625537), (30, 0.6311574), (100, 0.6511147), (1000, 0.6776001)]
+baseline train/test 0.6852717849860237 0.7641321935028587
+k fit 10.610458290944166 train/test LL 0.6213396159318246 0.6684048222123025 LL improvement CI [0.09572737129055611, 0.04214628959332761, 0.15363298248888857] Brier 0.2372421879711784
+beta fit 13.369645455365045 train/test LL 0.6201736637606186 0.6657709208209845 LL improvement CI [0.09836127268187413, 0.04168934849314561, 0.1600544910523451] Brier 0.2367736364397918
+temperature fit 4.4333636599482755 train/test LL 0.6197163932232789 0.6665989543326553 LL improvement CI [0.09753323917020332, 0.04196765251222667, 0.157083745387197] Brier 0.23699228383445292
+baseline Brier 0.25975105549001004
+k advantage over fitted beta [-0.0026339013913179955, -0.01365049811724284, 0.005326501047244724]
+k advantage over fitted temperature [-0.0018058678796472056, -0.010003356534113234, 0.004057067030588161]
+baseline actual heldout player correlation n>=10 (19, 0.2494857206715654) script correlation 0.010965630273620854
+k11 actual heldout player correlation n>=10 (19, 0.500739414916845) script correlation -0.0011468392334398072
+metrics coverage (4906, 803, 4811, 1508, 4906, 4715, 4856)
+exposure ShadowDragon matches 401 sessions 44 switch sessions 40 receiver-session switches 186 receivers >=10 with and against 14
+exposure Stephan matches 722 sessions 93 switch sessions 83 receiver-session switches 380 receivers >=10 with and against 20
+OVERLAP all 837 851 837 local only 0 prod only 14
+OVERLAP train 565 584 565 local only 0 prod only 19
+OVERLAP test 272 267 253 local only 19 prod only 14
+new production matches 14 sessions 2

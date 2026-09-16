@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 import sc2reader
 
+from .replay_clock import event_real_second
+
 
 class PlayerArchetype(str, Enum):
     """Player playstyle archetype based on timing analysis."""
@@ -145,7 +147,7 @@ class TimingAnalyzer:
         # Process tracker events
         if hasattr(replay, 'tracker_events'):
             for event in replay.tracker_events:
-                game_second = event.second
+                game_second = int(event_real_second(event, replay))
 
                 # Unit died events (damage proxy)
                 if event.name == 'UnitDiedEvent':

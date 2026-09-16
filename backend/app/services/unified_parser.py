@@ -14,6 +14,7 @@ from sc2reader.events import TrackerEvent
 
 from app.models import GameMode, Race
 from app.types.results import PlayerMatchResult, ProcessedMatchResult
+from app.replay_clock import frame_to_real_second
 from app.replay_parser import (
     calculate_replay_hash,
     calculate_game_fingerprint,
@@ -143,7 +144,10 @@ class UnifiedParser:
                 self._extract_basic_stats(p, player_results[pid])
 
             if hasattr(replay, "tracker_events"):
-                self._process_tracker_events(replay.tracker_events, player_results)
+                self._process_tracker_events(
+                    replay.tracker_events, player_results,
+                    duration_seconds=duration_seconds, total_frames=getattr(replay, "frames", None),
+                )
 
             if hasattr(replay, "game_events"):
                 self._process_game_events(replay, player_results)
@@ -164,6 +168,7 @@ class UnifiedParser:
                     result.first_damage_timing = first_dmg
 
             results_list = list(player_results.values())
+            self._calculate_damage_metrics(results_list)
             engagements = self._detect_team_engagements(results_list)
             for r in results_list:
                 self._calculate_team_fight_metrics(r, engagements)
@@ -223,7 +228,7 @@ class UnifiedParser:
                 return t2
         return None
 
-    def _process_tracker_events(self, events, player_results):
+    def _process_tracker_events(self, events, player_results, duration_seconds=0, total_frames=None):
         for event in events:
             if event.name == "UnitBornEvent":
                 pid = getattr(event, "control_pid", None)
@@ -257,7 +262,7 @@ class UnifiedParser:
                         else "Unknown"
                     )
                     if utype in {"SCV", "Probe", "Drone"}:
-                        if event.second < 300:
+                        if frame_to_real_second(event.frame, duration_seconds, total_frames) < 300:
                             player_results[vpid].early_worker_losses += 1
             elif event.name == "PlayerStatsEvent":
                 pid = getattr(event, "pid", None)
@@ -299,7 +304,9 @@ class UnifiedParser:
                         player_results[p.pid].ability_usage.get(aname, 0) + 1
                     )
 
-    def _calculate_derived_metrics(self, results):
+    def _calculate_damage_metrics(self, results):
+        """Must run before _calculate_team_fight_metrics: that method divides
+        by damage_dealt, which is set here."""
         for r in results:
             r.damage_dealt = r.army_value_killed
             r.damage_taken = r.army_value_lost
@@ -310,6 +317,11 @@ class UnifiedParser:
                     (r.army_value_killed + r.army_value_lost)
                     / r.total_resources_collected,
                 )
+
+    def _calculate_derived_metrics(self, results):
+        """Must run after _calculate_team_fight_metrics: impact scores use
+        its team_fight_damage_ratio/team_fight_participation output."""
+        for r in results:
             self._calculate_impact_scores(r)
 
     def _calculate_impact_scores(self, r):
@@ -361,6 +373,16 @@ class UnifiedParser:
             r.player_archetype = "Tactical Balanced"
 
     def _detect_team_engagements(self, results):
+        def flush(group):
+            if len(group) < 3:
+                return
+            active = [
+                r.name for r in results
+                if sum(v for k, v in r.damage_timeline.items() if group[0] <= k <= group[-1]) > 0
+            ]
+            if len(active) >= 3:
+                engagements.append({"start": group[0], "end": group[-1]})
+
         all_seconds = set()
         for r in results:
             all_seconds.update(r.damage_timeline.keys())
@@ -371,21 +393,9 @@ class UnifiedParser:
             if not current or s - current[-1] <= 10:
                 current.append(s)
             else:
-                if len(current) >= 3:
-                    active = []
-                    for r in results:
-                        if (
-                            sum(
-                                v
-                                for k, v in r.damage_timeline.items()
-                                if current[0] <= k <= current[-1]
-                            )
-                            > 0
-                        ):
-                            active.append(r.name)
-                    if len(active) >= 3:
-                        engagements.append({"start": current[0], "end": current[-1]})
+                flush(current)
                 current = [s]
+        flush(current)  # the last group never hits the gap branch above, so it needs flushing here too
         return engagements
 
     def _calculate_team_fight_metrics(self, r, engagements):

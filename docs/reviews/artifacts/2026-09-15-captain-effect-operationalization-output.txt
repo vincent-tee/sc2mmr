@@ -1,0 +1,25 @@
+=== captain_effect_coverage.py ===
+Local DB. Usable 2-team decided matches: 837, sessions: 102
+
+-- Y variance decomposition (all receiver-appearances, no captain conditioning) --
+  n: 4802
+  n_sessions: 102
+  grand_mean: -0.07127448196464371
+  total_var: 1.8013010892498036
+  between_session_var: 0.01890364150000204
+  within_session_var: 1.7823974477498015
+  total_sd: 1.3421255862436285
+
+-- Exact-roster (session, full-roster) switching strata per candidate --
+  Stephan:
+    raw_switch_sessions: 62
+    raw_receiver_pairs: 265
+    metric_complete_switch_sessions: 57
+    metric_complete_receiver_pairs: 227
+  DragonKing:
+    raw_switch_sessions: 30
+    raw_receiver_pairs: 139
+    metric_complete_switch_sessions: 29
+    metric_complete_receiver_pairs: 125
+
+=== captain_effect_power_sim.py ===

@@ -27,6 +27,8 @@ from pathlib import Path
 
 import sc2reader  # type: ignore
 
+from ..replay_clock import event_real_second
+
 # Dynamic ability discovery (Option B integration)
 import os
 import sys
@@ -378,7 +380,7 @@ class EnhancedReplayParser:
             return
 
         build_event = BuildOrderEvent(
-            second=event.second,
+            second=int(event_real_second(event, self.replay)),
             unit_type=unit_type,
             is_building=False,
             is_worker=unit_type in {"SCV", "Probe", "Drone"},
@@ -396,7 +398,7 @@ class EnhancedReplayParser:
             return
 
         build_event = BuildOrderEvent(
-            second=event.second, unit_type=unit_type, is_building=True
+            second=int(event_real_second(event, self.replay)), unit_type=unit_type, is_building=True
         )
         self._player_features[pid].build_order.append(build_event)
 
@@ -427,7 +429,7 @@ class EnhancedReplayParser:
                 category = self._categorize_upgrade(upgrade_name)
 
                 upgrade_event = UpgradeEvent(
-                    second=event.second,
+                    second=int(event_real_second(event, self.replay)),
                     upgrade_name=upgrade_name,
                     upgrade_category=category,
                 )
@@ -528,7 +530,7 @@ class EnhancedReplayParser:
         for event in self.replay.tracker_events:
             if event.name == "UnitDiedEvent":
                 unit_type = self._get_unit_type(event)
-                if unit_type in {"SCV", "Probe", "Drone"} and event.second < 300:
+                if unit_type in {"SCV", "Probe", "Drone"} and event_real_second(event, self.replay) < 300:
                     owner_pid = getattr(event, "unit_pid", None)
                     if owner_pid in self._player_features:
                         self._player_features[owner_pid].early_worker_losses += 1

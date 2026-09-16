@@ -14,6 +14,8 @@ from collections import defaultdict
 import json
 import sc2reader  # type: ignore
 
+from .replay_clock import event_real_second
+
 
 @dataclass
 class DamageEvent:
@@ -295,7 +297,7 @@ class DamageTimelineExtractor:
                     if unit_name == "Unknown":
                         continue
 
-                    second = event.second
+                    second = int(event_real_second(event, replay))
                     unit_cost = _get_unit_cost(unit_name)
                     damage_by_second[second] += unit_cost
 

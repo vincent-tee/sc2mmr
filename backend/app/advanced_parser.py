@@ -24,6 +24,7 @@ from .replay_parser import (
     WinnerDeterminationError,
 )
 from .damage_timeline import DamageTimelineExtractor, DamageTimeline
+from .replay_clock import frame_to_real_second
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +329,8 @@ def parse_replay_advanced(
         # Process tracker events for detailed metrics
         if hasattr(replay, "tracker_events"):
             _process_tracker_events(
-                replay.tracker_events, player_metrics_dict, replay.game_length.seconds
+                replay.tracker_events, player_metrics_dict, replay.game_length.seconds,
+                total_frames=getattr(replay, "frames", None),
             )
 
         # Extract damage timelines for each player
@@ -457,15 +459,24 @@ def parse_replay_advanced(
         raise ReplayParseError(f"Failed to parse advanced replay data: {str(e)}") from e
 
 
-def _process_tracker_events(events: List, player_metrics: Dict, game_duration: int):
+def _process_tracker_events(
+    events: List, player_metrics: Dict, game_duration: int, total_frames: Optional[int] = None
+):
     """
     Process tracker events to extract detailed metrics.
 
     Args:
         events: List of tracker events
         player_metrics: Dictionary of player metrics to update
-        game_duration: Game duration in seconds
+        game_duration: Game duration in seconds (real time, adjusted for game speed)
+        total_frames: Replay's total game-loop count, for converting each
+            event's raw frame to a real second (see app/replay_clock.py --
+            event.second itself assumes a fixed 16 loops/second and reads
+            wrong on faster-than-default replays)
     """
+    def event_second(event) -> int:
+        return int(frame_to_real_second(event.frame, game_duration, total_frames))
+
     # Log sc2reader version and event overview for debugging
     logger.info(
         f"🔍 Processing {len(events)} tracker events. sc2reader version: {sc2reader.__version__ if hasattr(sc2reader, '__version__') else 'unknown'}"
@@ -545,7 +556,7 @@ def _process_tracker_events(events: List, player_metrics: Dict, game_duration: i
                         player_metrics[pid].first_expansion_timing is None
                         and player_metrics[pid].bases_created == 2
                     ):
-                        player_metrics[pid].first_expansion_timing = event.second
+                        player_metrics[pid].first_expansion_timing = event_second(event)
 
         # Unit died events - Track worker kills/losses and timing
         elif event.name == "UnitDiedEvent":
