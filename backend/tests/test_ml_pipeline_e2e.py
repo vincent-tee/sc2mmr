@@ -93,7 +93,8 @@ def test_ml_pipeline_e2e(client, db_session_e2e: Session):
     ]
 
     # We need to mock it throughout the test
-    with patch("app.services.ml_predictor.MLPredictor.predict") as mock_predict:
+    with patch("app.services.ml_predictor.MLPredictor.predict") as mock_predict, \
+            patch("app.services.ingestion.validate_team_experience"):
         mock_predict.return_value = {
             "predicted_winner": 1,
             "team_1_win_probability": 65.0,

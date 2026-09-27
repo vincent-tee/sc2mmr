@@ -72,6 +72,21 @@ def load_matches(con):
     return usable
 
 
+def duplicated_game_ids(con, max_start_gap_seconds=120):
+    rosters = defaultdict(set)
+    for mid, pid in con.execute("SELECT match_id, player_id FROM match_players"):
+        rosters[mid].add(pid)
+    games = sorted((datetime.fromisoformat(played_at), map_name, mid) for mid, played_at, map_name
+                   in con.execute("SELECT id, played_at, map_name FROM matches WHERE played_at IS NOT NULL"))
+    duplicated = set()
+    for i, (t, map_name, mid) in enumerate(games):
+        for t2, map2, mid2 in games[i + 1:i + 6]:
+            if ((t2 - t).total_seconds() <= max_start_gap_seconds and map2 == map_name
+                    and rosters[mid] == rosters[mid2]):
+                duplicated |= {mid, mid2}
+    return duplicated
+
+
 def assign_sessions(usable, gap_hours=SESSION_GAP_HOURS):
     """Assign a session id per match based on a wall-clock gap threshold."""
     session_ids = []

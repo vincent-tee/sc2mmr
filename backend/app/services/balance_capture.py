@@ -6,9 +6,6 @@ with its predicted win probability at balance time, then resolved against
 the actual match outcome when the replay is uploaded. This gives real
 calibration metrics (Brier score, log loss, reliability bins) per balancing
 method, instead of only tracking directional accuracy after the fact.
-
-Resolution matches a prediction to a match by the sorted set of all player
-IDs (players_key) within a time window around the match's played_at.
 """
 
 import json
@@ -25,11 +22,8 @@ from ..rating_policy import POLICY_VERSION
 
 logger = logging.getLogger(__name__)
 
-# A balance suggestion is only matched to games played within this window
-# after it was generated (plus small backward skew tolerance for clock drift
-# between the server and the game client writing played_at).
-MATCH_WINDOW_HOURS = 24
-CLOCK_SKEW_HOURS = 6
+MAX_WAIT_FROM_SUGGESTION_TO_GAME_START = timedelta(minutes=10)
+GAME_START_CLOCK_SKEW_TOLERANCE = timedelta(minutes=2)
 
 
 def _ids_key(player_ids: List[int]) -> str:
@@ -148,20 +142,19 @@ class BalancePredictionService:
         players_key = _ids_key(list(team1_ids | team2_ids))
         team1_won = 1 if any(mp.won for mp in participants if mp.team_number == 1) else 0
 
-        window_start = match.played_at - timedelta(hours=MATCH_WINDOW_HOURS)
-        window_end = match.played_at + timedelta(hours=CLOCK_SKEW_HOURS)
+        if not match.duration_seconds:
+            return 0
+        game_started_at = match.played_at - timedelta(seconds=match.duration_seconds)
 
         candidates = (
             db.query(BalancePrediction)
             .filter(
                 BalancePrediction.resolved == 0,
-                # New predictions require explicit selection/match confirmation.
-                # Legacy clock-skew inference can assign a fresh suggestion to
-                # an earlier game uploaded late; never apply it to v2 capture.
-                BalancePrediction.method.notin_(["mmr_v2", "composite_v2"]),
                 BalancePrediction.players_key == players_key,
-                BalancePrediction.created_at >= window_start,
-                BalancePrediction.created_at <= window_end,
+                BalancePrediction.created_at
+                >= game_started_at - MAX_WAIT_FROM_SUGGESTION_TO_GAME_START,
+                BalancePrediction.created_at
+                <= game_started_at + GAME_START_CLOCK_SKEW_TOLERANCE,
             )
             .all()
         )

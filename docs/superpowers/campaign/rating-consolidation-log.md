@@ -591,3 +591,156 @@ patch on top of it.
 the balancer's default objective (still unchanged pending its own
 evidence), `scripts/walkforward_session_eval.py` and
 `scripts/skill_dependent_variance_eval.py` remain as the analysis record.
+
+---
+
+## 2026-09-28 — Session 10: per-race offsets and faster dynamics (NOT ADOPTED)
+
+**Trigger:** owner asked to recalibrate Stephan (recent Zerg "unstoppable and
+indicative of his current skill") and ShadowDragon (now plays random).
+
+**Data:** fresh `litestream restore` of prod (878 matches, 855 usable, to
+2026-09-27). The walk-forward state at tau=0.25 reproduces prod's stored
+`players.mmr` exactly for all 16 players with >=50 games.
+
+**Residual scan, live formula (`all_players_residual_scan.scan`):** Stephan
++0.022 [-0.012, +0.057], ShadowDragon +0.008 [-0.041, +0.052]; 1/16 players
+clear zero (ChrisO), ~0.8 expected by chance. Stephan's recent-Zerg half
+(`stephan_race_recency_eval.py`) is +0.119 [+0.016, +0.222], but that is a
+post-hoc slice. ShadowDragon's random era is ~30 games since 2026-07: too few
+to resolve anything for him specifically.
+
+**Experiment:** `backend/scripts/race_offset_eval.py [DB_URI]` (s0=0
+reproduces the live `win_probability` path to 2e-15).
+
+*Model (arms B/C):* each player has a base rating N(mu_b, sigma_b^2) plus,
+per race played, an offset N(mu_o, sigma_o^2) with prior N(0, s0^2). A match
+is rated on the composite (mu_b + mu_o, sigma_b^2 + sigma_o^2), and the
+posterior shift is split between components in proportion to their variance
+(exact for a sum of independent Gaussians; the induced base/offset covariance
+is dropped). Inactivity decay and tau apply to the base only.
+
+*Arms:* A incumbent (tau 0.25, k 11). B per-race, predicting with the race
+actually played (an oracle: the balancer can't know it). C per-race,
+predicting with the expectation over the player's race mix in their last 20
+games (what the balancer could use). D single rating, tau fit on train.
+s0, tau and k are fit by log loss on the earlier 75% of sessions only.
+
+*Kill criterion (pre-registered):* adopt only if held-out log-loss gain over
+A has a session-block bootstrap 95% CI excluding zero on both gates. Gate 1
+scores `win_probability`; gate 2 scores the summed display-MMR difference
+the default balancer sorts by (logistic scale fit on train). Gate 2 was added
+after gate 1 had run, because a win-probability gain alone doesn't show the
+balancer's ranking improved. B passing while C fails would mean per-race
+ratings only help if the balancer is told each player's race.
+
+Session-grouped 75/25 split, params fit on train only. Games stored twice
+(`walkforward_session_eval.duplicated_game_ids`, see Session 11) are rated
+in every walk but never scored: the second copy's "pre-match" prediction
+already contains the first copy's outcome. Held-out n=215 (from 2024-11-03).
+Numbers below are that leak-free rerun (the first run scored duplicates;
+same verdicts).
+
+| Arm | Fit | Gate 1: win_probability gain | Gate 2: display-MMR gain |
+|---|---|---|---|
+| B per-race, oracle race | s0=3, k=9 | +0.0037 [-0.0041, +0.0106] | +0.0066 [-0.0004, +0.0131] |
+| C per-race, recent race mix | s0=2, k=10 | +0.0028 [-0.0008, +0.0065] | +0.0035 [-0.0000, +0.0073] |
+| D tau 0.25 -> 0.5 | tau=0.5, k=10 | +0.0070 [+0.0008, +0.0138] | +0.0028 [-0.0031, +0.0095] |
+
+B and C fail both gates, even with the oracle race (C's gate 2 lower bound
+is at zero: the closest near-miss, worth retesting as data grows). D passes
+gate 1 (monotone over tau 0.35-0.6, so not a spike) but fails gate 2, the
+balancer's own sort key. Winner accuracy is flat across all arms.
+
+**What D would do if adopted anyway:** Stephan +205 display MMR, Sirhc +116,
+Cyrexg -208, INterprime -175, Cendol -169, Redevilz -133, ShadowDragon -4.
+
+**Verdict:** no change to the rating of record. Tau is the lead worth
+retesting as the held-out window grows.
+
+---
+
+## 2026-09-28 — Session 11: data audit, closeness-scored objective, suggestion resolution fix
+
+**Replay ground truth** (`backend/scripts/replay_outcome_sweep.py`, all 858
+local replays parsed): 555 record an in-game result, 300 do not. On the 555,
+the DB winner matches the replay 555/555.
+
+**Findings (recorded, not acted on; each needs owner sign-off):**
+
+All comparisons below score only ground-truth (recorded-result) matches
+that are not part of a duplicated game; the first pass scored duplicate
+copies, which leaks outcomes and flipped the dedup conclusion.
+
+1. **Disputed winners.** On the 300 no-result replays, final supply, resources
+   killed and first-team-to-leave agree with each other ~95%, and each is
+   95-99% accurate on the 555 recorded ones. They unanimously contradict the
+   stored winner on 92 matches (83 ingested in 2026-01). Re-rating with those
+   92 flipped predicts ground-truth games WORSE (n=465: 68.2% -> 64.7%,
+   log loss -0.0230, CI [-0.0383, -0.0076]). The stored labels beat the
+   replay-state signals there (these replays end when the recorder leaves, so
+   their final state isn't the final result). Not relabeled. Open question for
+   the owner: how were winners set for the 2026-01 batch?
+2. **68 games are stored twice** (local and prod): same map and roster,
+   starts seconds apart, two players' replays, different hashes;
+   `game_fingerprint` never matched them. 16 pairs store opposite winners.
+   Dropping the second copy is prediction-neutral (log loss -0.0007, CI
+   [-0.0042, +0.0032]), so removing them is a pure correctness fix. It needs
+   owner sign-off (match deletion) and a fingerprint rule that tolerates a
+   few seconds of start-time difference.
+3. **`player_match_metrics` is unreliable at the team level.** On ground-truth
+   matches, team `army_value_killed` picks the winner 61.3%; the replay's own
+   `resources_killed` picks it 94.6%. This feeds `avg_combat_score`, the
+   composite objective's `components` term, and the ML features. Parser and
+   backfill project.
+4. The parser's no-result fallback compares unspent bank
+   (`minerals_current`), not resources collected. Left alone: the
+   supply-advantage branch makes it 92.1% on recorded replays, but final
+   supply alone is 98.9%.
+
+**Objective shoot-out on a realized outcome**
+(`backend/scripts/closeness_objective_eval.py SWEEP.json [DB_URI]`).
+Earlier comparisons scored each objective on its own yardstick; this one
+scores both against how lopsided the game actually was. Margin = team1
+replay `resources_killed` share, ground-truth (recorded-result) replays
+only, duplicated games excluded; closeness = |share - 0.5|. Predictors from
+leak-free walk-forward state: |summed display-MMR gap| vs
+|win_probability - 0.5|. *Kill criterion (pre-registered):* switch the
+default only if Spearman(WP) exceeds Spearman(MMR) with a session-block 95%
+CI on the difference excluding zero. The trade share picks the recorded winner 95.0% (n=461).
+Spearman with realized lopsidedness: MMR gap +0.038, win-prob gap -0.002;
+WP - MMR = -0.040, CI [-0.104, +0.018]. **Default stays summed display
+MMR.** Neither pre-match gap meaningfully predicts blowouts among
+played games.
+
+**Changed: suggestion-to-match resolution** (`app/services/balance_capture.py`).
+v2 suggestions were never resolved: the old +/-24h window let a late-uploaded
+earlier game claim a fresh suggestion, so v2 was excluded outright. On prod,
+`played_at` is the game's END (suggestions are made 1-2 min after a game
+ends), and played games start 1-5 min after their suggestion. New rule: link
+only if the game's start (played_at - duration) is within 10 min after the
+suggestion (2 min clock skew), exact split only, all methods. A same-roster
+rematch can't start inside that window because the previous game has to
+finish first, and a late-uploaded earlier game starts before the suggestion.
+Matches with no recorded duration are never linked, since their start can't
+be derived. This reverses the Session 9-era decision to keep v2 out of
+inferred resolution; the explicit selection flow (`balance_selection.py`) is
+untouched and remains the prospective-evidence path. Only 4 of ~14 games
+since 2026-07 used a suggested split: the owner uses the balancer
+occasionally and picks teams by hand otherwise, but uploads every replay, so
+most matches have no suggestion to link. `get_calibration` still
+counts rank-1 suggestions only, so a played rank-2/3 suggestion resolves but
+only shows up in selection calibration. On prod it reproduces the 4 correct
+historical links and drops 2 wrong ones.
+
+**Fixed: `tests/test_ml_pipeline_e2e.py`.** Its long-standing failure was test
+setup, not the pipeline: it uploads into an empty DB, so the team-experience
+upload gate rejected every replay. The test now patches that gate (as it
+already mocks the predictor). The pipeline it covers is live: build orders
+are produced for recent prod uploads and the frontend reads the commentary /
+SHAP endpoint.
+
+Tests: `tests/test_balance_capture.py` (+4 timing regressions; helpers now
+set `played_at` as the end time), `tests/test_composite_balancer.py`
+helper, `tests/test_ml_pipeline_e2e.py` gate patch. Suite: 300 passed /
+5 skipped / 0 failed.

@@ -174,12 +174,14 @@ class TestCompositeObjectiveRanking:
 
 
 class TestBalancePredictionCapture:
-    def _make_match(self, db: Session, team1_ids, team2_ids, team1_won: bool, played_at=None):
+    def _make_match(self, db: Session, team1_ids, team2_ids, team1_won: bool):
+        game_length = timedelta(minutes=10)
+        started_just_after_suggestion = datetime.utcnow() + timedelta(minutes=1)
         match = Match(
-            played_at=played_at or datetime.utcnow(),
+            played_at=started_just_after_suggestion + game_length,
             game_mode=GameMode.TWO_V_TWO,
             map_name="TestMap",
-            duration_seconds=600,
+            duration_seconds=int(game_length.total_seconds()),
         )
         db.add(match)
         db.flush()

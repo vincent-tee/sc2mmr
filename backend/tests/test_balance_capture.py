@@ -14,12 +14,15 @@ from app.models import GameMode, Match, MatchPlayer, Race
 from app.services.balance_capture import BalancePredictionService
 
 
-def _make_match(db_session, team1_ids, team2_ids, team1_won, played_at):
+GAME_LENGTH = timedelta(minutes=10)
+
+
+def _make_match(db_session, team1_ids, team2_ids, team1_won, started_at):
     match = Match(
-        played_at=played_at,
+        played_at=started_at + GAME_LENGTH,
         game_mode=GameMode.TWO_V_TWO,
         map_name="TestMap",
-        duration_seconds=600,
+        duration_seconds=int(GAME_LENGTH.total_seconds()),
     )
     db_session.add(match)
     db_session.flush()
@@ -57,7 +60,7 @@ def _make_match(db_session, team1_ids, team2_ids, team1_won, played_at):
 
 
 def _suggested_then_played_game(
-    db_session, player_factory, name_prefix, num_suggest_clicks, win_prob, played_at
+    db_session, player_factory, name_prefix, num_suggest_clicks, win_prob, started_at
 ):
     """Record `num_suggest_clicks` identical suggestions for a freshly-created
     4-player game, then play and resolve it. Returns (match, resolved_count)."""
@@ -75,7 +78,7 @@ def _suggested_then_played_game(
         )
     db_session.commit()
 
-    match = _make_match(db_session, team1_ids, team2_ids, team1_won=True, played_at=played_at)
+    match = _make_match(db_session, team1_ids, team2_ids, team1_won=True, started_at=started_at)
     resolved_count = BalancePredictionService.resolve_for_match(db_session, match)
     return match, resolved_count
 
@@ -87,16 +90,18 @@ class TestCalibrationDeduplication:
         contribute the same calibration weight (1 scored pair) as a game
         suggested once.
         """
-        now = datetime.utcnow()
+        starts_shortly_after = datetime.utcnow() + timedelta(minutes=2)
         win_prob = 0.65
 
         _, resolved_a = _suggested_then_played_game(
-            db_session, player_factory, "A", num_suggest_clicks=3, win_prob=win_prob, played_at=now
+            db_session, player_factory, "A", num_suggest_clicks=3, win_prob=win_prob,
+            started_at=starts_shortly_after
         )
         assert resolved_a == 3  # every regenerate click resolves individually
 
         _, resolved_b = _suggested_then_played_game(
-            db_session, player_factory, "B", num_suggest_clicks=1, win_prob=win_prob, played_at=now
+            db_session, player_factory, "B", num_suggest_clicks=1, win_prob=win_prob,
+            started_at=starts_shortly_after
         )
         assert resolved_b == 1
 
@@ -126,7 +131,7 @@ class TestCalibrationDeduplication:
         regression that would resolve the wrong split.
         """
         p1, p2, p3, p4 = (player_factory(name=f"C{i}") for i in range(1, 5))
-        now = datetime.utcnow()
+        starts_shortly_after = datetime.utcnow() + timedelta(minutes=2)
 
         first_split = ([p1.id, p2.id], [p3.id, p4.id])
         played_split = ([p1.id, p3.id], [p2.id, p4.id])  # the regenerated one
@@ -150,7 +155,8 @@ class TestCalibrationDeduplication:
         db_session.commit()
 
         match = _make_match(
-            db_session, played_split[0], played_split[1], team1_won=False, played_at=now
+            db_session, played_split[0], played_split[1], team1_won=False,
+            started_at=starts_shortly_after,
         )
         resolved = BalancePredictionService.resolve_for_match(db_session, match)
         assert resolved == 1
@@ -162,3 +168,56 @@ class TestCalibrationDeduplication:
         assert calibration["mmr_v1"]["bins"][0]["avg_predicted"] == pytest.approx(
             0.60
         )
+
+
+class TestResolutionTiming:
+    def _suggest(self, db_session, player_factory, prefix, method="mmr_v2"):
+        players = [player_factory(name=f"{prefix}{i}") for i in range(1, 5)]
+        team1_ids, team2_ids = [players[0].id, players[1].id], [players[2].id, players[3].id]
+        prediction = BalancePredictionService.record_suggestion(
+            db_session, method=method, rank=1, team1_ids=team1_ids,
+            team2_ids=team2_ids, predicted_team1_win_prob=0.5,
+        )
+        db_session.commit()
+        return prediction, team1_ids, team2_ids
+
+    def test_current_capture_method_resolves_against_the_game_it_started(
+        self, db_session, player_factory
+    ):
+        prediction, team1_ids, team2_ids = self._suggest(db_session, player_factory, "D")
+        match = _make_match(db_session, team1_ids, team2_ids, team1_won=True,
+                            started_at=prediction.created_at + timedelta(minutes=3))
+
+        assert BalancePredictionService.resolve_for_match(db_session, match) == 1
+        assert prediction.match_id == match.id
+        assert prediction.team1_won == 1
+
+    def test_earlier_game_uploaded_late_cannot_claim_a_newer_suggestion(
+        self, db_session, player_factory
+    ):
+        prediction, team1_ids, team2_ids = self._suggest(db_session, player_factory, "E")
+        earlier_game = _make_match(db_session, team1_ids, team2_ids, team1_won=True,
+                                   started_at=prediction.created_at - GAME_LENGTH)
+
+        assert BalancePredictionService.resolve_for_match(db_session, earlier_game) == 0
+        assert not prediction.resolved
+
+    def test_rematch_after_the_suggested_game_is_not_attributed_to_it(
+        self, db_session, player_factory
+    ):
+        prediction, team1_ids, team2_ids = self._suggest(db_session, player_factory, "F")
+        rematch = _make_match(db_session, team1_ids, team2_ids, team1_won=False,
+                              started_at=prediction.created_at + GAME_LENGTH + timedelta(minutes=3))
+
+        assert BalancePredictionService.resolve_for_match(db_session, rematch) == 0
+        assert not prediction.resolved
+
+    def test_game_without_a_duration_is_never_attributed(self, db_session, player_factory):
+        prediction, team1_ids, team2_ids = self._suggest(db_session, player_factory, "G")
+        match = _make_match(db_session, team1_ids, team2_ids, team1_won=True,
+                            started_at=prediction.created_at + timedelta(minutes=3))
+        match.duration_seconds = 0
+        db_session.commit()
+
+        assert BalancePredictionService.resolve_for_match(db_session, match) == 0
+        assert not prediction.resolved
