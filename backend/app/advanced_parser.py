@@ -10,7 +10,7 @@ This module uses sc2reader to extract deep statistics:
 """
 
 from typing import Dict, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 import sc2reader  # type: ignore
 from sc2reader.events import TrackerEvent  # type: ignore
@@ -132,6 +132,7 @@ class AdvancedReplayData:
     basic_data: ReplayData
     player_metrics: List[PlayerMetrics]
     game_duration_seconds: int
+    kill_events: List[Dict] = field(default_factory=list)  # see docs/reviews/2026-09-16-parser-field-audit.md §3
 
     # Team aggregates
     team_1_total_damage: int = 0
@@ -148,11 +149,16 @@ UNIT_COSTS = {
     "Reaper": 50,
     "Ghost": 200,
     "Hellion": 100,
+    "HellionTank": 100,  # siege-mode name for the same unit as "Hellion"
     "Hellbat": 100,
     "WidowMine": 75,
     "SiegeTank": 150,
+    "SiegeTankSieged": 150,  # siege-mode name for the same unit as "SiegeTank"
     "Thor": 300,
+    "Cyclone": 150,
     "Viking": 150,
+    "VikingFighter": 150,  # flying-mode name for the same unit as "Viking"
+    "VikingAssault": 150,  # ground-mode name for the same unit as "Viking"
     "Medivac": 100,
     "Liberator": 150,
     "Raven": 100,
@@ -187,8 +193,10 @@ UNIT_COSTS = {
     "Ravager": 100,
     "Hydralisk": 100,
     "Lurker": 150,
+    "LurkerMP": 150,  # multiplayer internal name for the same unit as "Lurker"
     "Infestor": 100,
     "SwarmHost": 100,
+    "SwarmHostMP": 100,  # multiplayer internal name for the same unit as "SwarmHost"
     "Ultralisk": 300,
     "Queen": 150,
     "Overlord": 100,
@@ -202,6 +210,12 @@ UNIT_COSTS = {
     "Nexus": 400,
     "Hatchery": 300,
 }
+
+# Depleting these fires a UnitDiedEvent with a real killer_pid but is not
+# a kill (docs/reviews/2026-09-16-parser-field-audit.md section 4).
+NEUTRAL_RESOURCE_NODES = frozenset({
+    "MineralField", "MineralField750", "LabMineralField", "LabMineralField750",
+})
 
 
 def get_unit_cost(unit_name: str) -> Optional[int]:
@@ -343,10 +357,12 @@ def parse_replay_advanced(
             player_metrics_dict[player.pid] = metrics
 
         # Process tracker events for detailed metrics
+        kill_events: List[Dict] = []
         if hasattr(replay, "tracker_events"):
             _process_tracker_events(
                 replay.tracker_events, player_metrics_dict, replay.game_length.seconds,
                 total_frames=getattr(replay, "frames", None),
+                kill_events=kill_events,
             )
 
         # Extract damage timelines for each player
@@ -460,6 +476,7 @@ def parse_replay_advanced(
             team_2_total_damage=team_2_damage,
             team_1_total_resources=team_1_resources,
             team_2_total_resources=team_2_resources,
+            kill_events=kill_events,
         )
 
     except (ReplayParseError, WinnerDeterminationError):
@@ -476,7 +493,8 @@ def parse_replay_advanced(
 
 
 def _process_tracker_events(
-    events: List, player_metrics: Dict, game_duration: int, total_frames: Optional[int] = None
+    events: List, player_metrics: Dict, game_duration: int, total_frames: Optional[int] = None,
+    kill_events: Optional[List[Dict]] = None,
 ):
     """
     Process tracker events to extract detailed metrics.
@@ -607,12 +625,13 @@ def _process_tracker_events(
             except AttributeError:
                 unit_name = "Unknown"
 
-            if unit_name == "Unknown":
+            if unit_name == "Unknown" or unit_name in NEUTRAL_RESOURCE_NODES:
                 continue
 
             unit_cost = get_unit_cost(unit_name)
             is_worker = unit_name in ["SCV", "Probe", "Drone"]
             second = getattr(event, "second", 0)
+            k_pid = o_pid = None
 
             # Track Kills
             if hasattr(event, "killer_pid") and event.killer_pid in player_metrics:
@@ -649,6 +668,16 @@ def _process_tracker_events(
                         player_metrics[o_pid].workers_lost += 1
                         if second < 300:  # < 5 min
                             player_metrics[o_pid].early_workers_lost += 1
+
+            if kill_events is not None and k_pid is not None:  # killerless deaths (mostly morphs) aren't kills
+                kill_events.append({
+                    "killer_name": player_metrics[k_pid].player_name,
+                    "victim_name": player_metrics[o_pid].player_name if o_pid is not None else None,
+                    "unit_type": unit_name,
+                    "game_second": event_second(event),
+                    "x": getattr(event, "x", None),
+                    "y": getattr(event, "y", None),
+                })
 
         # Upgrade complete events could be tracked here
         # elif event.name == 'UpgradeCompleteEvent':

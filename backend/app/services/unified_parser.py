@@ -15,6 +15,7 @@ from sc2reader.events import TrackerEvent
 from app.models import GameMode, Race
 from app.types.results import PlayerMatchResult, ProcessedMatchResult
 from app.replay_clock import frame_to_real_second
+from app.advanced_parser import compute_kill_death_ratio
 from app.replay_parser import (
     calculate_replay_hash,
     calculate_game_fingerprint,
@@ -42,11 +43,16 @@ class UnifiedParser:
         "Reaper": 50,
         "Ghost": 200,
         "Hellion": 100,
+        "HellionTank": 100,  # siege-mode name for the same unit as "Hellion"
         "Hellbat": 100,
         "WidowMine": 75,
         "SiegeTank": 150,
+        "SiegeTankSieged": 150,  # siege-mode name for the same unit as "SiegeTank"
         "Thor": 300,
+        "Cyclone": 150,
         "Viking": 150,
+        "VikingFighter": 150,  # flying-mode name for the same unit as "Viking"
+        "VikingAssault": 150,  # ground-mode name for the same unit as "Viking"
         "Medivac": 100,
         "Liberator": 150,
         "Raven": 100,
@@ -79,8 +85,10 @@ class UnifiedParser:
         "Ravager": 100,
         "Hydralisk": 100,
         "Lurker": 150,
+        "LurkerMP": 150,  # multiplayer internal name for the same unit as "Lurker"
         "Infestor": 100,
         "SwarmHost": 100,
+        "SwarmHostMP": 100,  # multiplayer internal name for the same unit as "SwarmHost"
         "Ultralisk": 300,
         "Queen": 150,
         "Overlord": 100,
@@ -94,17 +102,26 @@ class UnifiedParser:
         "Hatchery": 300,
     }
 
+    # Depleting these fires a UnitDiedEvent with a real killer_pid but is
+    # not a kill (docs/reviews/2026-09-16-parser-field-audit.md section 4).
+    NEUTRAL_RESOURCE_NODES = frozenset({
+        "MineralField", "MineralField750", "LabMineralField", "LabMineralField750",
+    })
+
     def __init__(self):
         # Unit type name -> times seen in UnitBornEvent with no UNIT_COSTS
         # entry; reset each parse(). Excluded from army_value_built rather
         # than priced at a guess.
         self._unknown_unit_cost_counts: Dict[str, int] = {}
+        # Raw per-parse kill log; see docs/reviews/2026-09-16-parser-field-audit.md section 3.
+        self._kill_events: List[Dict[str, Any]] = []
 
     def parse(
         self, file_path: str, manual_winner_team: Optional[int] = None
     ) -> ProcessedMatchResult:
         """Execute unified parsing."""
         self._unknown_unit_cost_counts = {}
+        self._kill_events = []
         try:
             replay = sc2reader.load_replay(file_path, load_level=4)
             played_at = getattr(replay, "utc_date", None) or getattr(
@@ -172,6 +189,11 @@ class UnifiedParser:
                     result.first_damage_timing = first_dmg
 
             results_list = list(player_results.values())
+            for r in results_list:
+                if r.unit_composition:
+                    r.unit_composition = dict(
+                        sorted(r.unit_composition.items(), key=lambda x: x[1], reverse=True)
+                    )
             self._calculate_damage_metrics(results_list)
             engagements = self._detect_team_engagements(results_list)
             for r in results_list:
@@ -201,6 +223,7 @@ class UnifiedParser:
                 players=results_list,
                 replay_file_path=file_path,
                 game_fingerprint=game_fp,
+                kill_events=self._kill_events,
             )
         except Exception as e:
             logger.error(f"Unified parsing error: {e}")
@@ -258,7 +281,12 @@ class UnifiedParser:
                         player_results[pid].workers_created += 1
                     else:
                         player_results[pid].units_trained += 1
+                    comp = player_results[pid].unit_composition
+                    comp[utype] = comp.get(utype, 0) + 1
             elif event.name == "UnitDiedEvent":
+                died_utype = getattr(getattr(event, "unit", None), "name", None) or "Unknown"
+                if died_utype in self.NEUTRAL_RESOURCE_NODES:
+                    continue
                 kpid = getattr(event, "killer_pid", None)
                 if kpid in player_results:
                     player_results[kpid].units_killed += 1
@@ -273,14 +301,19 @@ class UnifiedParser:
                     vpid = event.unit.owner.pid
                 if vpid in player_results:
                     player_results[vpid].units_lost += 1
-                    utype = (
-                        getattr(event.unit, "name", "Unknown")
-                        if hasattr(event, "unit")
-                        else "Unknown"
-                    )
-                    if utype in {"SCV", "Probe", "Drone"}:
+                    if died_utype in {"SCV", "Probe", "Drone"}:
                         if frame_to_real_second(event.frame, duration_seconds, total_frames) < 300:
                             player_results[vpid].early_worker_losses += 1
+
+                if kpid in player_results:  # killerless deaths (mostly morphs) aren't kills
+                    self._kill_events.append({
+                        "killer_name": player_results[kpid].name,
+                        "victim_name": player_results[vpid].name if vpid in player_results else None,
+                        "unit_type": died_utype,
+                        "game_second": int(frame_to_real_second(event.frame, duration_seconds, total_frames)),
+                        "x": getattr(event, "x", None),
+                        "y": getattr(event, "y", None),
+                    })
             elif event.name == "PlayerStatsEvent":
                 pid = getattr(event, "pid", None)
                 if pid in player_results:
@@ -314,6 +347,9 @@ class UnifiedParser:
                     r.army_value_killed = getattr(
                         event, "minerals_killed_army", 0
                     ) + getattr(event, "vespene_killed_army", 0)
+                    workers = getattr(event, "workers_active_count", 0)
+                    if workers > r.peak_active_workers:
+                        r.peak_active_workers = workers
                     # `lost` must appear here AND in total_resources_collected
                     # above -- otherwise spending everything then losing it in
                     # a fight would score spending_efficiency as 0, backwards.
@@ -367,7 +403,7 @@ class UnifiedParser:
 
     def _calculate_impact_scores(self, r):
         res_score = min(100, r.total_resources_collected / 1000)
-        worker_score = min(100, r.workers_created / 0.8)
+        worker_score = min(100, r.peak_active_workers / 0.8)
         spending_score = r.spending_efficiency * 100
         r.economic_score = (res_score + worker_score + spending_score) / 3
 
@@ -397,6 +433,7 @@ class UnifiedParser:
                 + min(10, r.damage_ratio * 2)
             ),
         )
+        r.kill_death_ratio = compute_kill_death_ratio(r.units_killed, r.units_lost)
 
         if (
             r.early_worker_losses < 2

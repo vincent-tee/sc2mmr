@@ -12,7 +12,7 @@ import json
 import math
 from datetime import datetime, timedelta
 
-from .models import Player, MatchPlayer, PlayerMatchMetrics, PlayerSynergy, Match
+from .models import Player, MatchPlayer, PlayerMatchMetrics, PlayerSynergy, Match, KillEvent
 from .advanced_parser import PlayerMetrics, calculate_player_synergy
 from .config import settings
 
@@ -78,6 +78,7 @@ class ImpactService:
         match_metrics.resources_spent = metrics.resources_spent
         match_metrics.spending_efficiency = metrics.spending_efficiency
         match_metrics.workers_created = metrics.workers_created
+        match_metrics.peak_active_workers = metrics.peak_active_workers
         match_metrics.units_trained = metrics.units_trained
         match_metrics.units_lost = metrics.units_lost
         match_metrics.units_killed = metrics.units_killed
@@ -128,6 +129,30 @@ class ImpactService:
         db.flush()  # Flush to get ID, but don't commit yet (let caller commit)
 
         return match_metrics
+
+    @staticmethod
+    def save_kill_events(db: Session, match_id: int, kill_events: List[Dict]) -> int:
+        """See docs/reviews/2026-09-16-parser-field-audit.md section 3."""
+        if not kill_events:
+            return 0
+        name_to_player_id = dict(
+            db.query(Player.name, Player.id)
+            .join(MatchPlayer, MatchPlayer.player_id == Player.id)
+            .filter(MatchPlayer.match_id == match_id)
+            .all()
+        )
+        for ev in kill_events:
+            db.add(KillEvent(
+                match_id=match_id,
+                killer_player_id=name_to_player_id.get(ev["killer_name"]),
+                victim_player_id=name_to_player_id.get(ev["victim_name"]),
+                unit_type=ev["unit_type"],
+                game_second=ev["game_second"],
+                x=ev.get("x"),
+                y=ev.get("y"),
+            ))
+        db.flush()
+        return len(kill_events)
 
     @staticmethod
     def update_player_averages(db: Session, player_id: int):

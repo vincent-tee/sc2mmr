@@ -308,6 +308,7 @@ class MatchOrchestrator:
             pf.harassment_response_score = pr.harassment_response_score
             pf.detected_build_type = pr.detected_build_type
 
+        ImpactService.save_kill_events(db, int(match.id), result.kill_events)
         db.commit()
 
     def _trigger_post_processing(self, match: Match, result: ProcessedMatchResult):

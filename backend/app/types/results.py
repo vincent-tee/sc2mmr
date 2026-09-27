@@ -27,6 +27,7 @@ class PlayerMatchResult:
     resources_spent: int = 0
     spending_efficiency: float = 0.0
     workers_created: int = 0
+    peak_active_workers: int = 0
 
     # Army & Combat
     units_trained: int = 0
@@ -102,6 +103,7 @@ class ProcessedMatchResult:
     players: List[PlayerMatchResult]
     replay_file_path: Optional[str] = None
     game_fingerprint: Optional[str] = None  # Identifies same game from different observers
+    kill_events: List[Dict[str, Any]] = field(default_factory=list)  # see docs/reviews/2026-09-16-parser-field-audit.md §3
 
     @property
     def winners(self) -> List[PlayerMatchResult]:

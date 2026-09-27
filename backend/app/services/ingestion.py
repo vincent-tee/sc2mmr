@@ -174,6 +174,8 @@ def save_advanced_metrics(db: Session, match: Match, advanced_data) -> None:
             ImpactService.save_match_metrics(db, mp.id, metrics)
             ImpactService.update_player_averages(db, mp.player_id)
 
+    ImpactService.save_kill_events(db, int(match.id), getattr(advanced_data, "kill_events", []))
+
 
 def run_optional_processing(db: Session, name: str, action: Callable) -> None:
     try:

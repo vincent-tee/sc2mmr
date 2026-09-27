@@ -2,6 +2,8 @@
 
 Reviewed 2026-09-15 at the owner's request. This is a code review plus small read-only probes, not a deployed parser change or a full historical reparse. Read alongside the [methodology audit](2026-09-15-methodology-audit-and-coordination-plan.md).
 
+**Status update (2026-09-16):** the clock/timing bug and the metric-definition findings below (army-value contamination, unknown-unit-cost guessing, spending_efficiency, workers_created, unit_composition truncation, and the two UnifiedParser structural bugs) are now **fixed** — commits `b2c79b0` and `a5f9f22`. The durable record of what broke and how it was fixed lives in `.claude/skills/sc2mmr-failure-archaeology/SKILL.md` entries 16-18 (this file is a point-in-time review, not the doc of record — see `sc2mmr-docs-and-writing`). Two items from this review are still open, tracked in `.moai/docs/tech-debt-log.md` entry 7: the historical backfill (evidence gathered, not authorized) and the two parsers' now-divergent `spending_efficiency` formulas. The "directed/spatial kill events," "stable player identity," and "SC2 engine observations" recommendations below were not addressed this pass.
+
 ## Recommendation
 
 Improve measurement definitions, time alignment, and extraction consistency before adding composite scores. Keep a fast event decoder for routine ingestion; use SC2 engine observations as a separately versioned optional source where compatible. A parser-library replacement alone will not fix the present problems.

@@ -265,3 +265,46 @@ feature outside the currently-tracked metric set is added to the parser
 (e.g. build-order/timing data, synergy terms), or (c) someone wants to
 challenge this specific result — the script is saved and re-runnable
 (`backend/scripts/search_better_ml_features.py`).
+
+## 2026-09-16: Reparse dry-run — do the fixed parsers actually change stored metrics, and is old data explainable?
+
+**Hypothesis:** the Tier-4 parser fixes (army-value contamination, `spending_efficiency`
+redefinition — see `sc2mmr-failure-archaeology` entries 16-18 and
+`.moai/docs/tech-debt-log.md` entry 7) are arithmetically correct, and any large deltas
+between old stored values and freshly re-parsed values are explainable by the fix itself
+(old formula vs new formula), not by a parser bug in the new code.
+
+**Setup:** two read-only scripts, zero DB writes.
+1. `backend/scripts/reparse_dry_run.py` — re-parses all 858 locally-available replays with
+   the fixed `UnifiedParser`, compares `army_value_killed`, `army_value_built`, and
+   `spending_efficiency` against currently-stored `player_match_metrics` rows, run in
+   batches of 50.
+2. `backend/scripts/verify_outlier_sample.py` — for a random n=20 sample (seed=42) of the
+   outliers from (1), loads the raw replay with `sc2reader` directly and checks the new
+   parser's value against the raw `PlayerStatsEvent.*_army` fields (a pure code-correctness
+   check) and the old stored value against the raw full-aggregate fields (an
+   old-data-explainability check).
+
+**Observed:**
+- Full run: 851/858 replays parsed OK (7 failures are expected — 1v1 replays rejected by
+  `UnifiedParser`'s "2v2+ only" gate, not a bug). 1,247 player-rows had no matching stored
+  metric (pre-existing gap, not caused by this change). **571 outliers**
+  (`|army_value_killed delta| > 20000`) out of ~4,700 compared player-rows.
+- Hand-verification sample (n=20): new parser's `army_value_killed` matched the raw
+  `*_army` sc2reader fields exactly in **20/20** cases. Old stored value matched either the
+  old full-aggregate formula or was explainable as ~zero in only **2/20** cases — the other
+  **18/20** didn't match any formula that could be reconstructed from the codebase's history.
+
+**Verdict:** Confirmed (code correctness), but with an unplanned second finding. The new
+parser code is correct — 20/20 is about as strong as n=20 can show. The size of the
+old-vs-new deltas is **not** simply "old formula vs new formula" as hypothesized; most
+outliers trace to accumulated drift across 5+ historical parser generations that ingested
+different matches at different times, not a single reconstructable prior bug. This means a
+backfill would be overwriting genuinely inconsistent historical data, not un-doing one known
+formula — a stronger case for backfilling (the data is currently untrustworthy either way),
+but also a reminder that "why does old value X exist" may not have a clean answer per row.
+
+**Next:** evidence now supports a real backfill (re-parse + overwrite, backup-first), but
+this has **not been authorized** — open decision, tracked in
+`.moai/docs/tech-debt-log.md` entry 7. If a future session performs the backfill, come back
+and record the before/after here with the actual row counts touched.

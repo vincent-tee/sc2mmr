@@ -15,6 +15,93 @@ def _player(name, damage_timeline, army_value_killed=0):
     )
 
 
+class _FakeUnitBornEvent:
+    name = "UnitBornEvent"
+
+    def __init__(self, control_pid, unit_type_name):
+        self.control_pid = control_pid
+        self.unit_type_name = unit_type_name
+
+
+def test_unit_composition_is_populated_and_sorted_by_count():
+    """See docs/reviews/2026-09-16-parser-field-audit.md section 2."""
+    parser = UnifiedParser()
+    player_results = {1: _player("A", {})}
+    events = [
+        _FakeUnitBornEvent(1, "Marine"),
+        _FakeUnitBornEvent(1, "Marine"),
+        _FakeUnitBornEvent(1, "SCV"),
+        _FakeUnitBornEvent(1, "Marine"),
+    ]
+    parser._process_tracker_events(events, player_results)
+    assert player_results[1].unit_composition == {"Marine": 3, "SCV": 1}
+
+
+class _FakePlayerStatsEvent:
+    name = "PlayerStatsEvent"
+
+    def __init__(self, pid, workers_active_count):
+        self.pid = pid
+        self.workers_active_count = workers_active_count
+
+
+def test_peak_active_workers_tracks_max_across_snapshots():
+    """See .moai/docs/tech-debt-log.md entry 9."""
+    parser = UnifiedParser()
+    player_results = {1: _player("A", {})}
+    events = [
+        _FakePlayerStatsEvent(1, 40),
+        _FakePlayerStatsEvent(1, 65),
+        _FakePlayerStatsEvent(1, 58),
+    ]
+    parser._process_tracker_events(events, player_results)
+    assert player_results[1].peak_active_workers == 65
+
+
+class _FakeUnit:
+    def __init__(self, name, owner=None):
+        self.name = name
+        self.owner = owner
+
+
+class _FakeUnitDiedEvent:
+    name = "UnitDiedEvent"
+
+    def __init__(self, unit_name, killer_pid=None, frame=0):
+        self.unit = _FakeUnit(unit_name)
+        self.killer_pid = killer_pid
+        self.frame = frame
+
+
+def test_mineral_patch_depletion_is_not_counted_as_a_kill():
+    """See docs/reviews/2026-09-16-parser-field-audit.md section 4."""
+    parser = UnifiedParser()
+    player_results = {1: _player("A", {})}
+    events = [
+        _FakeUnitDiedEvent("MineralField750", killer_pid=1),
+        _FakeUnitDiedEvent("LabMineralField", killer_pid=1),
+        _FakeUnitDiedEvent("Zergling", killer_pid=1),
+    ]
+    parser._process_tracker_events(events, player_results)
+    assert player_results[1].units_killed == 1
+
+
+def test_kill_events_records_killer_victim_and_location():
+    """See docs/reviews/2026-09-16-parser-field-audit.md section 3."""
+    parser = UnifiedParser()
+    player_results = {1: _player("Killer", {}), 2: _player("Victim", {})}
+    events = [
+        _FakeUnitDiedEvent("Zergling", killer_pid=1, frame=160),
+        _FakeUnitDiedEvent("Larva", killer_pid=None, frame=320),  # morph, dropped
+    ]
+    parser._process_tracker_events(events, player_results, duration_seconds=600, total_frames=9600)
+    assert len(parser._kill_events) == 1
+    ev = parser._kill_events[0]
+    assert ev["killer_name"] == "Killer"
+    assert ev["unit_type"] == "Zergling"
+    assert ev["game_second"] == 10
+
+
 def test_final_engagement_group_is_not_dropped():
     """3+ players fighting at consecutive seconds with no trailing gap --
     the loop ends while still inside the group, which previously meant it

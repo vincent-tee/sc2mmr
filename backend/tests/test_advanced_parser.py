@@ -102,7 +102,7 @@ def unit_born_event(pid, unit_type_name, frame=0):
     )
 
 
-def unit_died_event(unit_type_name, killer_pid=None, owner_pid=None, second=0):
+def unit_died_event(unit_type_name, killer_pid=None, owner_pid=None, second=0, frame=None):
     owner = SimpleNamespace(pid=owner_pid) if owner_pid is not None else None
     unit = SimpleNamespace(name=unit_type_name, owner=owner) if owner is not None else None
     kwargs = dict(
@@ -110,6 +110,7 @@ def unit_died_event(unit_type_name, killer_pid=None, owner_pid=None, second=0):
         unit_type_name=unit_type_name,
         unit=unit,
         second=second,
+        frame=frame if frame is not None else second * 16,  # 16 loops/sec fallback rate
     )
     if killer_pid is not None:
         kwargs["killer_pid"] = killer_pid
@@ -237,6 +238,44 @@ class TestUnknownUnitCostsNotDefaulted:
         assert metrics[2].army_value_lost == 50
         assert metrics[1].unknown_unit_types == {}
         assert metrics[2].unknown_unit_types == {}
+
+
+class TestMineralPatchDepletionIsNotAKill:
+    """See docs/reviews/2026-09-16-parser-field-audit.md section 4."""
+
+    def test_mineral_field_depletion_excluded_from_units_killed(self):
+        metrics = make_player_metrics({1: "Miner"})
+        events = [
+            unit_died_event("MineralField750", killer_pid=1, second=100),
+            unit_died_event("LabMineralField", killer_pid=1, second=200),
+            unit_died_event("Zergling", killer_pid=1, owner_pid=1, second=300),
+        ]
+        _process_tracker_events(events, metrics, game_duration=600)
+        assert metrics[1].units_killed == 1
+
+
+class TestKillEventsRecordsKillerVictimAndLocation:
+    """See docs/reviews/2026-09-16-parser-field-audit.md section 3."""
+
+    def test_records_kill_with_killer_and_drops_killerless_deaths(self):
+        metrics = make_player_metrics({1: "Killer", 2: "Victim"})
+        events = [
+            unit_died_event("Zergling", killer_pid=1, owner_pid=2, second=42),
+            unit_died_event("Larva", killer_pid=None, second=99),  # morph, dropped
+        ]
+        kill_events = []
+        _process_tracker_events(events, metrics, game_duration=600, kill_events=kill_events)
+        assert len(kill_events) == 1
+        assert kill_events[0]["killer_name"] == "Killer"
+        assert kill_events[0]["victim_name"] == "Victim"
+        assert kill_events[0]["unit_type"] == "Zergling"
+        assert kill_events[0]["game_second"] == 42
+
+    def test_kill_events_none_by_default_is_backward_compatible(self):
+        metrics = make_player_metrics({1: "Killer"})
+        event = unit_died_event("Zergling", killer_pid=1, second=10)
+        _process_tracker_events([event], metrics, game_duration=600)
+        assert metrics[1].units_killed == 1
 
 
 class TestUnitCompositionKeepsAllUnits:

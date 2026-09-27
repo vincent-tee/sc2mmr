@@ -344,6 +344,7 @@ class PlayerMatchMetrics(Base):
     mid_workers_killed: Mapped[int] = mapped_column(Integer, default=0)
     workers_lost: Mapped[int] = mapped_column(Integer, default=0)
     early_workers_lost: Mapped[int] = mapped_column(Integer, default=0)
+    peak_active_workers: Mapped[int] = mapped_column(Integer, default=0)
 
     # Army metrics
     units_trained: Mapped[int] = mapped_column(Integer, default=0)
@@ -415,6 +416,28 @@ class PlayerMatchMetrics(Base):
     match_player: Mapped["MatchPlayer"] = relationship(
         "MatchPlayer", back_populates="metrics"
     )
+
+
+class KillEvent(Base):
+    """Raw per-kill observation: who killed what, when, and roughly where.
+    See docs/reviews/2026-09-16-parser-field-audit.md section 3."""
+
+    __tablename__ = "kill_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    match_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    killer_player_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("players.id"), nullable=True
+    )
+    victim_player_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("players.id"), nullable=True
+    )
+    unit_type: Mapped[str] = mapped_column(String, nullable=False)
+    game_second: Mapped[int] = mapped_column(Integer, nullable=False)
+    x: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    y: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class PlayerSynergy(Base):
