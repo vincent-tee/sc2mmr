@@ -24,10 +24,14 @@ DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{DATABASE_PATH}"
 os.makedirs(DATABASE_DIR, exist_ok=True)
 
 # Create engine
+SQLITE_WRITER_LOCK_WAIT_SECONDS = 30
 _is_sqlite = DATABASE_URL.startswith("sqlite")
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if _is_sqlite else {},
+    connect_args=(
+        {"check_same_thread": False, "timeout": SQLITE_WRITER_LOCK_WAIT_SECONDS}
+        if _is_sqlite else {}
+    ),
     echo=False,  # Set to True for SQL query logging
 )
 

@@ -191,19 +191,11 @@ def post_process_match(db: Session, match_id: int, created: bool, replay_path=No
     from .balance_capture import BalancePredictionService
     from .ml_features_service import MLFeaturesService
     from .rivalry_service import RivalryService
-    from ..online_learning import OnlineLearningEngine
     from ..auto_adaptive import trigger_auto_optimization
 
     def award_achievements(work):
         for mp in work.query(MatchPlayer).filter(MatchPlayer.match_id == match_id):
             AchievementService.check_and_award_all(work, mp.player_id, match_id)
-
-    def record_outcome(work):
-        team1_won = work.query(MatchPlayer).filter(
-            MatchPlayer.match_id == match_id, MatchPlayer.team_number == 1,
-            MatchPlayer.won == 1,
-        ).first() is not None
-        OnlineLearningEngine(work).record_outcome(match_id, team1_won)
 
     if replay_path:
         run_optional_processing(db, "ML feature extraction", lambda work:
@@ -212,7 +204,6 @@ def post_process_match(db: Session, match_id: int, created: bool, replay_path=No
                             BalancePredictionService.resolve_for_match(work, work.get(Match, match_id)))
     if created:
         run_optional_processing(db, "Achievements", award_achievements)
-        run_optional_processing(db, "Online learning", record_outcome)
         run_optional_processing(db, "Rivalry calculation", RivalryService.calculate_all_rivalries)
         if optimize:
             run_optional_processing(db, "Optimization", trigger_auto_optimization)

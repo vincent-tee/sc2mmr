@@ -10,7 +10,7 @@ from app.exceptions import ValidationError
 from app.models import Base, Match, MatchPlayer, Player, PlayerAlias, PlayerSynergy, Race, GameMode
 from app.replay_parser import ReplayData, PlayerData
 from app.rating_system import RatingSystem
-from app.services.ingestion import ingest_match, run_optional_processing
+from app.services.ingestion import ingest_match, post_process_match, run_optional_processing
 
 
 @pytest.fixture
@@ -98,6 +98,18 @@ def test_optional_failure_cannot_commit_partial_changes(db_session, replay):
         raise RuntimeError("optional failure")
     run_optional_processing(db_session, "test", fail)
     assert db_session.get(Match, match.id).map_name == replay.map_name
+
+
+def test_post_processing_a_new_match_does_not_raise(db_session, replay):
+    match, created = ingest_match(db_session, replay, require_experience=False)
+    post_process_match(db_session, match.id, created, optimize=True)
+
+
+def test_app_engine_waits_for_sqlite_writer_lock():
+    from app.database import engine
+    with engine.connect() as connection:
+        busy_timeout_ms = connection.exec_driver_sql("PRAGMA busy_timeout").scalar()
+    assert busy_timeout_ms >= 30_000
 
 
 def test_database_rejects_duplicate_fingerprints(db_session, replay):
