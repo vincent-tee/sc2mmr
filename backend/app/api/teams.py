@@ -508,7 +508,6 @@ class CompositeTeamSuggestionResponse(TeamSuggestionResponse):
     synergy_imbalance: float
     team_1_synergy: float
     team_2_synergy: float
-    ml_win_probability: Optional[float] = None
 
 
 class BalanceCompositeRequest(BaseModel):
@@ -517,11 +516,6 @@ class BalanceCompositeRequest(BaseModel):
     player_ids: List[int]
     top_n: int = 10
     map_name: Optional[str] = None
-    # Off by default: the ML re-rank has not been shown to beat plain MMR/
-    # TrueSkill balancing (see .moai/docs/ml-model-findings.md and
-    # docs/superpowers/campaign/rating-consolidation-log.md, 2026-07-06
-    # entries). Opt-in only, for experimentation.
-    use_ml: bool = False
 
 
 @router.post(
@@ -561,7 +555,6 @@ def balance_teams_composite(
             request.player_ids,
             top_n=request.top_n,
             map_name=request.map_name,
-            use_ml=request.use_ml,
         )
 
         BalancePredictionService.record_suggestions(
@@ -613,11 +606,6 @@ def balance_teams_composite(
                     synergy_imbalance=round(suggestion.synergy_imbalance, 2),
                     team_1_synergy=round(suggestion.team_1_synergy, 2),
                     team_2_synergy=round(suggestion.team_2_synergy, 2),
-                    ml_win_probability=(
-                        round(suggestion.ml_win_probability, 4)
-                        if suggestion.ml_win_probability is not None
-                        else None
-                    ),
                 )
             )
         return responses
@@ -1067,53 +1055,6 @@ def predict_match(request: PredictMatchRequest, db: Session = Depends(get_db)):
         match_quality=round(match_quality, 3),
         factors=factors if factors else ["Evenly matched teams"],
     )
-
-
-# =============================================================================
-# ML-Optimized Prediction Endpoint (81.1% Accuracy)
-# =============================================================================
-
-
-class MLPredictRequest(BaseModel):
-    """Request for ML-optimized prediction."""
-
-    team_1_ids: List[int]
-    team_2_ids: List[int]
-
-
-@router.post("/predict-ml")
-def predict_match_ml(request: MLPredictRequest, db: Session = Depends(get_db)):
-    """
-    Predict match outcome using ML-optimized model (81.1% accuracy).
-
-    This uses a Logistic Regression model trained on match history with
-    optimized feature weights. Features include:
-    - Recent win rate (most important: 1.85 weight)
-    - Win streak momentum (0.54 weight)
-    - Economic score (0.31 weight)
-    - Combat score (0.22 weight)
-    - Overall impact (0.13 weight)
-    - Efficiency (0.13 weight)
-    - Recency MMR (0.05 weight)
-
-    Args:
-        request: Teams to predict
-        db: Database session
-
-    Returns:
-        ML prediction with confidence and key factors
-    """
-    from ..services.ml_prediction_service import MLPredictionService
-
-    try:
-        prediction = MLPredictionService.predict_match(
-            db, request.team_1_ids, request.team_2_ids
-        )
-        return prediction
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
 
 class BalanceQualityMetrics(BaseModel):

@@ -1,8 +1,5 @@
 # Runtime state - never bake into the image (comes from GCS/Litestream).
-# Exception: the trained ML model artifact ships with the image (tiny, and
-# retrainable via POST /adaptive/train-ml-model).
 data/
-!data/xgboost_model.pkl
 replays/
 failed_replays/
 *.log

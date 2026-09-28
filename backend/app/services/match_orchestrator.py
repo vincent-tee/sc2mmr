@@ -312,33 +312,7 @@ class MatchOrchestrator:
         db.commit()
 
     def _trigger_post_processing(self, match: Match, result: ProcessedMatchResult):
-        from app.services.ingestion import post_process_match, run_optional_processing
+        from app.services.ingestion import post_process_match
 
-        match_id = int(match.id)
-        post_process_match(self.db, match_id, True, result.replay_file_path, optimize=True)
-        run_optional_processing(self.db, "ML retraining", self._retrain_if_due)
-        run_optional_processing(
-            self.db, "Live forecast", lambda work: self._publish_forecast(work, match_id)
-        )
+        post_process_match(self.db, int(match.id), True, result.replay_file_path, optimize=True)
 
-    @staticmethod
-    def _retrain_if_due(db: Session):
-        from .ml_predictor import train_ml_model
-
-        if db.query(Match).count() % 15 == 0:
-            train_ml_model(db)
-
-    @staticmethod
-    def _publish_forecast(db: Session, match_id: int):
-        from app.services.tactical_forecast import TacticalForecastService
-        from app.models import LiveMatchFeed
-
-        match = db.query(Match).filter(Match.id == match_id).one()
-        forecast = TacticalForecastService.get_forecast(
-            [p.player_id for p in match.participants], match.map_name, db
-        )
-        db.execute(text("UPDATE live_match_feed SET is_active = 0"))
-        db.add(LiveMatchFeed(
-            match_id=match_id, map_name=match.map_name,
-            forecast_json=forecast, is_active=True,
-        ))

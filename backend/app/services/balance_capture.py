@@ -96,7 +96,6 @@ class BalancePredictionService:
                     "skill_spread_diff": getattr(s, "skill_spread_diff", None),
                     "component_imbalance": getattr(s, "component_imbalance", None),
                     "synergy_imbalance": getattr(s, "synergy_imbalance", None),
-                    "ml_win_probability": getattr(s, "ml_win_probability", None),
                 }
                 prediction = BalancePredictionService.record_suggestion(
                     db,

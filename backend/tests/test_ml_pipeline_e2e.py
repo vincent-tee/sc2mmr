@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database import get_db, Base
 import app.models as models
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 # Setup test database
@@ -59,7 +59,7 @@ def client(db_session_e2e):
 def test_ml_pipeline_e2e(client, db_session_e2e: Session):
     """
     End-to-End test for the ML pipeline:
-    Replay Upload -> Feature Extraction -> ML Prediction -> SHAP Explanation -> Build Order Category
+    Replay Upload -> Feature Extraction -> Build Order Category -> Commentary
     """
     # 1. Prepare a real replay file for upload
     # Try multiple possible locations for replays
@@ -85,26 +85,7 @@ def test_ml_pipeline_e2e(client, db_session_e2e: Session):
     # Sort replays to be deterministic
     replays.sort()
 
-    # Mock the predictor to return SHAP impacts since we don't have a trained model
-    mock_shap_impacts = [
-        {"feature": "mmr_diff", "impact": 0.5, "magnitude": 0.5},
-        {"feature": "combat_diff", "impact": -0.2, "magnitude": 0.2},
-        {"feature": "economic_diff", "impact": 0.3, "magnitude": 0.3},
-    ]
-
-    # We need to mock it throughout the test
-    with patch("app.services.ml_predictor.MLPredictor.predict") as mock_predict, \
-            patch("app.services.ingestion.validate_team_experience"):
-        mock_predict.return_value = {
-            "predicted_winner": 1,
-            "team_1_win_probability": 65.0,
-            "team_2_win_probability": 35.0,
-            "confidence": "Medium",
-            "model": "MLPredictor (Mocked)",
-            "key_factors": ["Team 1 has better MMR"],
-            "shap_impacts": mock_shap_impacts,
-        }
-
+    with patch("app.services.ingestion.validate_team_experience"):
         for replay_filename in replays[:10]:  # Try first 10 replays
             replay_path = os.path.join(replay_dir, replay_filename)
 
@@ -161,14 +142,9 @@ def test_ml_pipeline_e2e(client, db_session_e2e: Session):
         has_build_order = any(pf.build_order_json is not None for pf in perf_features)
         assert has_build_order, "Build order JSON should be populated"
 
-        # 4. Verify SHAP Explanation via API
         commentary_response = client.get(f"/replays/matches/{match_id}/commentary")
         assert commentary_response.status_code == 200
-        commentary_data = commentary_response.json()
-
-        assert "shap_impacts" in commentary_data
-        assert len(commentary_data["shap_impacts"]) > 0
-        assert commentary_data["shap_impacts"][0]["feature"] == "mmr_diff"
+        assert "shap_impacts" not in commentary_response.json()
 
         # 5. Verify Build Order Category values
         for pf in perf_features:

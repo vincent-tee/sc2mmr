@@ -51,7 +51,6 @@ class TeamSuggestion:
     mmr_difference: float
     win_probability: float
     match_quality: float
-    ml_win_probability: Optional[float] = None
     team_1_avg_impact: float = 0.0
     team_2_avg_impact: float = 0.0
     impact_balance_score: float = 1.0
@@ -71,9 +70,8 @@ class TeamSuggestion:
 # Composite objective weights. Positive terms reward, penalty terms subtract.
 # Overridable at runtime via MLConfig key "composite_balance_weights".
 DEFAULT_COMPOSITE_WEIGHTS: Dict[str, float] = {
-    "closeness": 0.45,  # predicted win prob near 50% (TrueSkill)
+    "closeness": 0.55,  # predicted win prob near 50% (TrueSkill)
     "quality": 0.25,  # TrueSkill match quality (uncertainty-aware)
-    "ml_closeness": 0.10,  # XGBoost predicted win prob near 50% (when trained)
     "spread": 0.10,  # within-team MMR std-dev mismatch penalty
     "components": 0.05,  # per-metric team-profile imbalance penalty
     "synergy": 0.05,  # synergy imbalance penalty
@@ -300,7 +298,6 @@ class TeamBalancer:
         component_imbalance: float,
         synergy_imbalance: float,
         weights: Optional[Dict[str, float]] = None,
-        ml_win_probability: Optional[float] = None,
     ) -> float:
         """
         Composite balance objective in [0, 1], higher = better matchup.
@@ -313,21 +310,12 @@ class TeamBalancer:
 
         closeness = 1.0 - 2.0 * abs(win_probability - 0.5)
 
-        if ml_win_probability is not None:
-            ml_term = w["ml_closeness"] * (1.0 - 2.0 * abs(ml_win_probability - 0.5))
-            closeness_weight = w["closeness"]
-        else:
-            # No trained model: fold the ML weight into TrueSkill closeness
-            ml_term = 0.0
-            closeness_weight = w["closeness"] + w["ml_closeness"]
-
         spread_penalty = min(skill_spread_diff / 400.0, 1.0)
         synergy_penalty = min(synergy_imbalance / 40.0, 1.0)
 
         score = (
-            closeness_weight * closeness
+            w["closeness"] * closeness
             + w["quality"] * match_quality
-            + ml_term
             - w["spread"] * spread_penalty
             - w["components"] * component_imbalance
             - w["synergy"] * synergy_penalty
@@ -560,68 +548,18 @@ class TeamBalancer:
         player_ids: List[int],
         top_n: int = 10,
         map_name: Optional[str] = None,
-        use_ml: bool = False,
-        ml_rerank_top_k: int = 5,
     ) -> List[TeamSuggestion]:
-        """
-        Balance using the composite objective: predicted win prob near 50%,
-        TrueSkill quality, and penalties for skill spread, team-profile
-        imbalance, and one-sided synergy.
-
-        use_ml defaults off: the ML re-rank has not been shown to beat plain
-        MMR/TrueSkill balancing at current data scale (see
-        .moai/docs/ml-model-findings.md and
-        docs/superpowers/campaign/rating-consolidation-log.md, 2026-07-06
-        entries) - it is an experimental option, not a proven improvement.
-        When enabled and the predictor is trained, the top candidates are
-        re-scored with its win probability included (only top-k, since
-        feature extraction per split is DB-heavy).
-        """
         player_infos, synergy_map = TeamBalancer._load_balance_inputs(
             db, player_ids, map_name
         )
         weights = TeamBalancer._load_composite_weights(db)
         suggestions = TeamBalancer.generate_team_suggestions(
             player_infos,
-            top_n=max(top_n, ml_rerank_top_k),
+            top_n=top_n,
             synergy_data=synergy_map,
             objective="composite",
             composite_weights=weights,
         )
-
-        if use_ml:
-            try:
-                from .services.ml_predictor import get_ml_predictor
-
-                predictor = get_ml_predictor()
-                if predictor.is_trained:
-                    for s in suggestions[:ml_rerank_top_k]:
-                        result = predictor.predict(
-                            db,
-                            [p.id for p in s.team_1],
-                            [p.id for p in s.team_2],
-                        )
-                        s.ml_win_probability = (
-                            result["team_1_win_probability"] / 100.0
-                        )
-                        s.composite_score = TeamBalancer.compute_composite_score(
-                            win_probability=s.win_probability,
-                            match_quality=s.match_quality,
-                            skill_spread_diff=s.skill_spread_diff,
-                            component_imbalance=s.component_imbalance,
-                            synergy_imbalance=s.synergy_imbalance,
-                            weights=weights,
-                            ml_win_probability=s.ml_win_probability,
-                        )
-                    suggestions.sort(key=lambda x: x.composite_score, reverse=True)
-            except Exception:
-                # ML re-rank is best-effort; composite-without-ML still stands
-                import logging
-
-                logging.getLogger(__name__).warning(
-                    "ML re-rank failed; returning TrueSkill composite ranking",
-                    exc_info=True,
-                )
 
         return suggestions[:top_n]
 

@@ -66,32 +66,17 @@ class TestCompositeScore:
         )
         assert spread < flat
 
-    def test_ml_weight_folds_into_closeness_when_unavailable(self):
-        # With no ML prob, a perfect 50/50 should still be able to reach the
-        # same weight mass as with an ML prob of exactly 0.5
-        without_ml = TeamBalancer.compute_composite_score(
+    def test_perfect_matchup_scores_the_full_positive_weight(self):
+        perfect = TeamBalancer.compute_composite_score(
             win_probability=0.5,
             match_quality=1.0,
             skill_spread_diff=0.0,
             component_imbalance=0.0,
             synergy_imbalance=0.0,
         )
-        with_ml = TeamBalancer.compute_composite_score(
-            win_probability=0.5,
-            match_quality=1.0,
-            skill_spread_diff=0.0,
-            component_imbalance=0.0,
-            synergy_imbalance=0.0,
-            ml_win_probability=0.5,
+        assert perfect == pytest.approx(
+            DEFAULT_COMPOSITE_WEIGHTS["closeness"] + DEFAULT_COMPOSITE_WEIGHTS["quality"]
         )
-        assert without_ml == pytest.approx(with_ml)
-        # Max achievable = sum of positive weights (closeness+quality+ml)
-        positive_mass = (
-            DEFAULT_COMPOSITE_WEIGHTS["closeness"]
-            + DEFAULT_COMPOSITE_WEIGHTS["quality"]
-            + DEFAULT_COMPOSITE_WEIGHTS["ml_closeness"]
-        )
-        assert without_ml == pytest.approx(positive_mass)
 
     def test_score_clamped_to_unit_interval(self):
         score = TeamBalancer.compute_composite_score(

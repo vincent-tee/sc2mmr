@@ -96,12 +96,6 @@ class MLFeaturesService:
                     )
                     results[pid] = False
 
-            # Step 4: Calculate and save ML predictions (Win Prob & SHAP)
-            try:
-                MLFeaturesService.calculate_and_save_predictions(db, match_id)
-            except Exception as e:
-                logger.warning(f"Failed to calculate ML predictions: {e}")
-
             # Step 5: Commit all changes
             try:
                 db.commit()
@@ -314,44 +308,3 @@ class MLFeaturesService:
             .filter(PerformanceFeatures.match_player_id == match_player_id)
             .first()
         )
-
-    @staticmethod
-    def calculate_and_save_predictions(db: Session, match_id: int) -> None:
-        """Calculate and save ML win probability and SHAP values."""
-        try:
-            from .ml_predictor import get_ml_predictor
-
-            match_players = (
-                db.query(MatchPlayer).filter(MatchPlayer.match_id == match_id).all()
-            )
-
-            team1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
-            team2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]
-
-            if not team1_ids or not team2_ids:
-                return
-
-            predictor = get_ml_predictor()
-            prediction = predictor.predict(db, team1_ids, team2_ids)
-
-            team1_prob = prediction.get("team_1_win_probability", 50.0) / 100.0
-            shap_impacts = prediction.get("shap_impacts", [])
-
-            for mp in match_players:
-                perf_features = (
-                    db.query(PerformanceFeatures)
-                    .filter(PerformanceFeatures.match_player_id == mp.id)
-                    .first()
-                )
-                if perf_features:
-                    if mp.team_number == 1:
-                        perf_features.ml_win_probability = team1_prob
-                    else:
-                        perf_features.ml_win_probability = 1.0 - team1_prob
-
-                    # Store SHAP impacts as JSON
-                    perf_features.ml_shap_values = shap_impacts  # type: ignore
-
-            logger.info(f"Saved ML predictions for match {match_id}")
-        except Exception as e:
-            logger.error(f"Error in ML prediction calculation: {e}", exc_info=True)

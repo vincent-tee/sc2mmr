@@ -24,7 +24,6 @@ import {
   FiTrendingUp,
 } from 'react-icons/fi';
 import LoadingState from '@/components/LoadingState';
-import MatchSHAPExplainer from '@/components/MatchSHAPExplainer';
 import type { MatchCommentary } from './types';
 import type { MatchDetail as MatchDetailType } from '@/types/api';
 
@@ -59,7 +58,7 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
   return (
     <VStack spacing={6} align="stretch">
       {/* Match Overview */}
-      <Grid templateColumns={{ base: '1fr', lg: '3fr 2fr' }} gap={6}>
+      <Grid templateColumns="1fr" gap={6}>
         <GridItem>
           <Card bg={cardBg} border="2px solid" borderColor={borderColor} h="full">
             <CardBody>
@@ -74,11 +73,6 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({
               <Text lineHeight="tall">{commentary.overview}</Text>
             </CardBody>
           </Card>
-        </GridItem>
-        <GridItem>
-          {commentary.shap_impacts && (
-            <MatchSHAPExplainer impacts={commentary.shap_impacts} />
-          )}
         </GridItem>
       </Grid>
 

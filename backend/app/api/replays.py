@@ -190,7 +190,6 @@ class MatchResponse(BaseModel):
     replay_hash: Optional[str] = None
     predicted_team1_win_prob: Optional[float] = None
     predicted_team2_win_prob: Optional[float] = None
-    ml_predicted_win_prob: Optional[float] = None
 
     winner_team: int = 0
     players: List[MatchPlayerSummary] = []
@@ -685,24 +684,6 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
             )
         )
 
-    # Get ML win probability from PerformanceFeatures if available
-    ml_win_prob = None
-    first_mp = match_players[0][0] if match_players else None
-    if first_mp:
-        from ..models import PerformanceFeatures
-
-        perf = (
-            db.query(PerformanceFeatures)
-            .filter(PerformanceFeatures.match_player_id == first_mp.id)
-            .first()
-        )
-        if perf and perf.ml_win_probability is not None:
-            # ml_win_probability is stored as prob for THIS player's team
-            if first_mp.team_number == 1:
-                ml_win_prob = perf.ml_win_probability
-            else:
-                ml_win_prob = 1.0 - perf.ml_win_probability
-
     # Pre-match win probability. Most matches have this persisted from upload
     # time, but a handful of historical rows were never populated and would
     # otherwise render as a meaningless 50/50. For those, recompute the odds
@@ -739,7 +720,6 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
             replay_hash=str(match.replay_hash or ""),
             predicted_team1_win_prob=team1_prob,
             predicted_team2_win_prob=team2_prob,
-            ml_predicted_win_prob=ml_win_prob,
         ),
         players=players_data,
     )
@@ -856,7 +836,7 @@ def bulk_reprocess_replays(
                         .filter(PerformanceFeatures.match_player_id == mp.id)
                         .first()
                     )
-                    if existing and existing.ml_win_probability is not None:
+                    if existing is not None:
                         has_features = True
                         break
 

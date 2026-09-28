@@ -72,50 +72,9 @@ class MatchCommentaryGenerator:
             "match_summary": MatchCommentaryGenerator._generate_final_summary(
                 match, players_with_metrics
             ),
-            "shap_impacts": MatchCommentaryGenerator._get_shap_impacts(
-                db, match_players
-            ),
         }
 
         return commentary
-
-    @staticmethod
-    def _get_shap_impacts(db: Session, match_players: List[MatchPlayer]) -> List[Dict]:
-        """Get SHAP impacts from PerformanceFeatures if available, else recalculate."""
-        if not match_players:
-            return []
-
-        try:
-            from .models import PerformanceFeatures
-
-            # Try to get from stored features first (check any player in the match)
-            mp_ids = [mp.id for mp in match_players]
-            perf = (
-                db.query(PerformanceFeatures)
-                .filter(PerformanceFeatures.match_player_id.in_(mp_ids))
-                .filter(PerformanceFeatures.ml_shap_values.isnot(None))
-                .first()
-            )
-
-            if perf and perf.ml_shap_values:
-                # Return the stored SHAP impacts
-                return perf.ml_shap_values  # type: ignore
-
-            # Fallback to recalculation (for older matches without stored SHAP)
-            from .services.ml_predictor import get_ml_predictor
-
-            predictor = get_ml_predictor()
-
-            team1_ids = [mp.player_id for mp in match_players if mp.team_number == 1]
-            team2_ids = [mp.player_id for mp in match_players if mp.team_number == 2]
-
-            if not team1_ids or not team2_ids:
-                return []
-
-            prediction = predictor.predict(db, team1_ids, team2_ids)
-            return prediction.get("shap_impacts", [])
-        except Exception:
-            return []
 
     @staticmethod
     def _generate_match_overview(match: Match, match_players: List[MatchPlayer]) -> str:
