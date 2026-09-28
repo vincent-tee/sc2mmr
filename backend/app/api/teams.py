@@ -96,7 +96,6 @@ class PlayerInfo(BaseModel):
     id: int
     name: str
     mmr: float
-    unified_mmr: Optional[float] = None
     mu: float
     sigma: float
 
@@ -206,7 +205,6 @@ def balance_with_custom_players(
                 id=p.id,
                 name=p.name,
                 mmr=p.mmr,
-                unified_mmr=p.unified_mmr,
                 mu=p.mu,
                 sigma=p.sigma,
             )
@@ -310,7 +308,7 @@ def draft_teams(request: DraftRequest, db: Session = Depends(get_db)):
 
     def to_player_info(p: "BalancerPlayerInfo") -> PlayerInfo:
         return PlayerInfo(
-            id=p.id, name=p.name, mmr=p.mmr, unified_mmr=p.unified_mmr,
+            id=p.id, name=p.name, mmr=p.mmr,
             mu=p.mu, sigma=p.sigma,
         )
 
@@ -393,7 +391,7 @@ def suggest_swaps(request: SuggestSwapsRequest, db: Session = Depends(get_db)):
 
     def to_player_info(p: "BalancerPlayerInfo") -> PlayerInfo:
         return PlayerInfo(
-            id=p.id, name=p.name, mmr=p.mmr, unified_mmr=p.unified_mmr,
+            id=p.id, name=p.name, mmr=p.mmr,
             mu=p.mu, sigma=p.sigma,
         )
 
@@ -467,7 +465,6 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
                     id=player.id,
                     name=player.name,
                     mmr=player.mmr,
-                    unified_mmr=player.unified_mmr,
                     mu=player.mu,
                     sigma=player.sigma,
                 )
@@ -486,7 +483,6 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
                     id=player.id,
                     name=player.name,
                     mmr=player.mmr,
-                    unified_mmr=player.unified_mmr,
                     mu=player.mu,
                     sigma=player.sigma,
                 )
@@ -643,7 +639,6 @@ def balance_teams_composite(
                             id=p.id,
                             name=p.name,
                             mmr=p.mmr,
-                            unified_mmr=p.unified_mmr,
                             mu=p.mu,
                             sigma=p.sigma,
                         )

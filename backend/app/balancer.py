@@ -21,8 +21,6 @@ class PlayerInfo:
     economic_score: float = 60.0
     efficiency_score: float = 55.0
     timing_adjusted_mmr: float = 0.0
-    handicap_corrected_mmr: float = 0.0
-    unified_mmr: float = 0.0
 
     @classmethod
     def from_player(cls, player: Player) -> "PlayerInfo":
@@ -30,8 +28,6 @@ class PlayerInfo:
         avg_combat = player.avg_combat_score or 25
         timing_bonus = (300 - avg_fdt) / 60 * 100
         timing_adjusted = player.mmr + timing_bonus
-        handicap_corrected = player.handicap_corrected_mmr or player.mmr
-        unified = player.unified_mmr or handicap_corrected
 
         return cls(
             id=player.id,
@@ -47,8 +43,6 @@ class PlayerInfo:
             economic_score=player.avg_economic_score or 60.0,
             efficiency_score=player.avg_efficiency_score or 55.0,
             timing_adjusted_mmr=timing_adjusted,
-            handicap_corrected_mmr=handicap_corrected,
-            unified_mmr=unified,
         )
 
 
@@ -523,10 +517,8 @@ class TeamBalancer:
                 if stats and stats.total >= 3:
                     win_rate = (stats.wins or 0) / stats.total
                     if win_rate >= 0.6:
-                        info.unified_mmr += 100
                         info.mmr += 100
                     elif win_rate <= 0.4:
-                        info.unified_mmr -= 50
                         info.mmr -= 50
             player_infos.append(info)
         return player_infos, synergy_map

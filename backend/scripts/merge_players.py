@@ -47,8 +47,8 @@ def merge_players(from_id: int, into_name: str = None, into_id: int = None, dry_
             return
 
         print(f"\n{'[DRY RUN] ' if dry_run else ''}Merge plan:")
-        print(f"  FROM: [{source.id}] {source.name}  ({source.total_games} games, MMR {round(source.unified_mmr or source.mmr)})")
-        print(f"  INTO: [{target.id}] {target.name}  ({target.total_games} games, MMR {round(target.unified_mmr or target.mmr)})")
+        print(f"  FROM: [{source.id}] {source.name}  ({source.total_games} games, MMR {round(source.mmr)})")
+        print(f"  INTO: [{target.id}] {target.name}  ({target.total_games} games, MMR {round(target.mmr)})")
 
         # Count affected rows
         mp_count = db.query(MatchPlayer).filter(MatchPlayer.player_id == source.id).count()

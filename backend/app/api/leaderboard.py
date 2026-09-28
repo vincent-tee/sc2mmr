@@ -173,9 +173,6 @@ async def get_mmr_leaderboard(
     ),
     db: Session = Depends(get_db),
 ):
-    # Rating of record = display MMR (owner decision 2026-07-02,
-    # rating consolidation campaign Phase 5; unified_mmr demoted to
-    # display-only stats after its accuracy claim failed to replicate).
     query = db.query(Player).filter(
         Player.total_games >= min_games,
         Player.is_core_player == 1,
@@ -355,8 +352,8 @@ async def get_specialist_leaderboard(
             "player_id": p.id,
             "name": p.name,
             "value": round(getattr(p, col.name), 1),
-            "secondary_value": round(p.unified_mmr or p.mmr, 1),
-            "extra_info": f"Rank: {round(p.unified_mmr or p.mmr, 0):.0f} MMR",
+            "secondary_value": round(p.mmr, 1),
+            "extra_info": f"Rank: {round(p.mmr, 0):.0f} MMR",
         }
         for i, p in enumerate(players)
     ]
@@ -645,8 +642,8 @@ async def get_race_leaderboard(
             "player_id": p.id,
             "name": p.name,
             "value": getattr(p, col.name),
-            "secondary_value": round(p.unified_mmr or p.mmr, 1),
-            "extra_info": f"MMR: {round(p.unified_mmr or p.mmr, 0)}",
+            "secondary_value": round(p.mmr, 1),
+            "extra_info": f"MMR: {round(p.mmr, 0)}",
         }
         for i, p in enumerate(players)
     ]

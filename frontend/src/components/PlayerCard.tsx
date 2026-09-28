@@ -43,9 +43,6 @@ export interface PlayerCardData {
   id?: number;
   name: string;
   mmr: number;
-  unified_mmr?: number | null;
-  hybrid_mmr?: number | null;
-  avg_pim?: number | null;
   win_rate?: number;
   total_games?: number;
   terran_games?: number;

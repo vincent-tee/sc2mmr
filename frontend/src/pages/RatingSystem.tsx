@@ -213,7 +213,7 @@ const RatingSystem: React.FC = () => {
                       <Tr><Td fontWeight="bold">Starting Uncertainty</Td><Td><Code>8.333</Code></Td><Td fontSize="xs" color="gray.400">Maximum initial volatility</Td></Tr>
                       <Tr><Td fontWeight="bold">MMR Base</Td><Td><Code>1000</Code></Td><Td fontSize="xs" color="gray.400">Floor for all displayed ratings</Td></Tr>
                       <Tr><Td fontWeight="bold">Display Scale</Td><Td><Code>100x</Code></Td><Td fontSize="xs" color="gray.400">Points awarded per mu point</Td></Tr>
-                      <Tr><Td fontWeight="bold">Recency Half-Life</Td><Td><Code>90 Days</Code></Td><Td fontSize="xs" color="gray.400">Recent matches count for more</Td></Tr>
+                      <Tr><Td fontWeight="bold">Recency Half-Life</Td><Td><Code>90 Days</Code></Td><Td fontSize="xs" color="gray.400">Recent matches count for more in per-player stat averages</Td></Tr>
                     </Tbody>
                   </Table>
                 </Box>

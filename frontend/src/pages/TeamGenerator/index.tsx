@@ -391,10 +391,6 @@ const TeamGenerator: React.FC = () => {
                 total_games: 0,
                 win_rate: 0,
                 favorite_race: 'Random',
-                unified_mmr: mmr,
-                hybrid_mmr: mmr,
-                avg_pim: 0,
-                recency_weighted_mmr: mmr,
                 wins: 0,
                 losses: 0,
                 terran_games: 0,
@@ -431,10 +427,6 @@ const TeamGenerator: React.FC = () => {
                 total_games: 0,
                 win_rate: 0,
                 favorite_race: 'Random',
-                unified_mmr: mmr,
-                hybrid_mmr: mmr,
-                avg_pim: 0,
-                recency_weighted_mmr: mmr,
                 wins: 0,
                 losses: 0,
                 terran_games: 0,
@@ -468,9 +460,6 @@ const TeamGenerator: React.FC = () => {
                     ...p,
                     name: `${name} (Guest)`,
                     mmr: mmr,
-                    unified_mmr: mmr,
-                    hybrid_mmr: mmr,
-                    recency_weighted_mmr: mmr,
                     mu: (mmr - 1000 + 200 * p.sigma) / 100, // invert display MMR
                   };
                 }
@@ -482,9 +471,6 @@ const TeamGenerator: React.FC = () => {
                     ...p,
                     name: `${name} (Guest)`,
                     mmr: mmr,
-                    unified_mmr: mmr,
-                    hybrid_mmr: mmr,
-                    recency_weighted_mmr: mmr,
                     mu: (mmr - 1000 + 200 * p.sigma) / 100, // invert display MMR
                   };
                 }

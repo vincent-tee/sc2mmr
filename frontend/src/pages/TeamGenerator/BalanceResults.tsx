@@ -441,7 +441,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
         mmr: Math.round(p.mmr),
         race: p.favorite_race || 'Random',
       })),
-      // Sum player display MMRs directly; the API's avg_mmr is still unified-based
       totalMMR: Math.round(suggestion.team_1.players.reduce((sum, p) => sum + p.mmr, 0)),
       winProbability: suggestion.win_probability_team_1,
       synergyBonus: synergy_score > 0 ? synergy_score : undefined,

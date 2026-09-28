@@ -123,10 +123,6 @@ def _player_to_response(p: "Player", recent_form: Optional[float] = None) -> "Pl
         mu=p.mu,
         sigma=p.sigma,
         mmr=p.mmr,
-        unified_mmr=p.unified_mmr,
-        recency_weighted_mmr=p.recency_weighted_mmr,
-        hybrid_mmr=p.hybrid_mmr,
-        avg_pim=p.avg_pim,
         total_games=p.total_games,
         wins=p.wins,
         losses=p.losses,
@@ -155,10 +151,6 @@ class PlayerResponse(BaseModel):
     mu: float
     sigma: float
     mmr: float
-    unified_mmr: Optional[float] = None
-    recency_weighted_mmr: Optional[float] = None
-    hybrid_mmr: Optional[float] = None
-    avg_pim: Optional[float] = None
     total_games: int
     wins: int
     losses: int
@@ -188,11 +180,6 @@ class PlayerDetailResponse(BaseModel):
     mu: float
     sigma: float
     mmr: float
-    unified_mmr: Optional[float] = None
-    recency_weighted_mmr: Optional[float]
-    # Hybrid MMR System (SPEC-ML-001)
-    hybrid_mmr: Optional[float] = None
-    avg_pim: Optional[float] = None
     total_games: int
     wins: int
     losses: int
@@ -288,8 +275,6 @@ def get_player_rankings(
     if core_only:
         query = query.filter(Player.is_core_player == 1)
 
-    # Rating of record = display MMR (owner decision 2026-07-02, rating
-    # consolidation campaign Phase 5); unified_mmr is a display-only stat.
     players = query.order_by(desc(Player.mmr)).all()
 
     return [
@@ -370,10 +355,6 @@ def get_player_details(
         mu=player.mu,
         sigma=player.sigma,
         mmr=player.mmr,
-        unified_mmr=player.unified_mmr,
-        recency_weighted_mmr=player.recency_weighted_mmr,
-        hybrid_mmr=player.hybrid_mmr,
-        avg_pim=player.avg_pim,
         total_games=player.total_games,
         wins=player.wins,
         losses=player.losses,

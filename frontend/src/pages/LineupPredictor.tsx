@@ -74,7 +74,6 @@ interface DraftPlayerRef {
   id: number;
   name: string;
   mmr: number;
-  unified_mmr: number | null;
   mu: number;
   sigma: number;
 }

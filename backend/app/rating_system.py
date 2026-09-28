@@ -472,69 +472,6 @@ class RatingSystem:
 
         db.commit()
 
-        # =====================================================================
-        # Hybrid MMR System Integration (SPEC-ML-001)
-        # Calculate Performance Impact Modifier and update hybrid_mmr
-        # =====================================================================
-        if settings.hybrid_mmr_enabled:
-            from app.services.pi_calculator import PICalculator
-
-            pi_calculator = PICalculator()
-
-            # Get all match players (need fresh query after commit)
-            all_match_players = (
-                db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
-            )
-
-            # Calculate match averages once for efficiency
-            match_averages = pi_calculator.calculate_match_averages(db, match.id)
-
-            # Process each player
-            for mp in all_match_players:
-                # Calculate raw MMR change
-                raw_mmr_change = RatingSystem.calculate_display_mmr(
-                    mp.mu_after, mp.sigma_after
-                ) - RatingSystem.calculate_display_mmr(mp.mu_before, mp.sigma_before)
-
-                # Calculate and store PIM + features
-                features = pi_calculator.calculate_and_store_features(
-                    db, mp, raw_mmr_change, match_averages
-                )
-
-                # Update player's hybrid_mmr
-                player = db.query(Player).filter(Player.id == mp.player_id).first()
-                if player:
-                    # Initialize hybrid_mmr if None
-                    if player.hybrid_mmr is None:
-                        player.hybrid_mmr = RatingSystem.calculate_display_mmr(
-                            player.mu, player.sigma
-                        )
-
-                    # Apply hybrid change
-                    if features.hybrid_mmr_change is not None:
-                        player.hybrid_mmr = (
-                            player.hybrid_mmr or 0.0
-                        ) + features.hybrid_mmr_change
-
-                    # Update rolling average PIM
-                    if player.avg_pim is None:
-                        player.avg_pim = features.pim
-                    else:
-                        # Exponential moving average (more weight to recent)
-                        alpha = 0.2  # Weight for new value
-                        player.avg_pim = (
-                            alpha * features.pim + (1 - alpha) * player.avg_pim
-                        )
-
-            db.commit()
-
-        # Update recency-weighted ratings for all players in this match
-        if RECENCY_ENABLED:
-            for player, _ in team_1_db + team_2_db:
-                RatingSystem.update_recency_weighted_rating(
-                    db, player, replay_data.played_at
-                )
-
     @staticmethod
     def calibrate_new_player(
         db: Session, new_player_name: str, similar_to_player_id: int

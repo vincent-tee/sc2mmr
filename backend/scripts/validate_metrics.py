@@ -50,57 +50,6 @@ def validate_score_ranges(db):
     return len(issues) == 0
 
 
-def validate_unified_mmr_formula(db):
-    """Validate Unified MMR calculation matches expected formula."""
-    print("=" * 80)
-    print("TEST 2: Unified MMR Formula Validation")
-    print("=" * 80)
-    
-    issues = []
-    players = db.query(Player).filter(Player.total_games >= 10).limit(20).all()
-    
-    for player in players:
-        # Expected formula: hc_mmr + min(1200, combat*25 + eco*4 + eff*2)
-        hc_mmr = player.handicap_corrected_mmr or player.mmr
-        
-        combat = player.avg_combat_score or 20
-        if combat > 60:
-            combat = 60
-        
-        economic = player.avg_economic_score or 50
-        efficiency = player.avg_efficiency_score or 50
-        
-        combat_bonus = combat * 25
-        eco_bonus = economic * 4
-        eff_bonus = efficiency * 2
-        
-        perf_bonus = min(1200, combat_bonus + eco_bonus + eff_bonus)
-        expected_unified = hc_mmr + perf_bonus
-        
-        actual_unified = player.unified_mmr or 0
-        
-        # Allow 1 MMR point tolerance for rounding
-        if abs(expected_unified - actual_unified) > 1:
-            issues.append(
-                f"  ❌ {player.name}:\n"
-                f"     Expected: {expected_unified:.0f} (HC:{hc_mmr:.0f} + Perf:{perf_bonus:.0f})\n"
-                f"     Actual:   {actual_unified:.0f}\n"
-                f"     Diff:     {actual_unified - expected_unified:.0f}"
-            )
-    
-    if issues:
-        print("Issues found:")
-        for issue in issues[:5]:  # Show first 5
-            print(issue)
-        if len(issues) > 5:
-            print(f"  ... and {len(issues) - 5} more")
-    else:
-        print("  ✅ All Unified MMR calculations correct")
-    
-    print()
-    return len(issues) == 0
-
-
 def validate_win_loss_counts(db):
     """Validate that win/loss counts match actual match results."""
     print("=" * 80)
@@ -270,7 +219,6 @@ def main():
         
         # Run all validation tests
         results.append(("Score Ranges", validate_score_ranges(db)))
-        results.append(("Unified MMR Formula", validate_unified_mmr_formula(db)))
         results.append(("Win/Loss Counts", validate_win_loss_counts(db)))
         results.append(("Recent Performance", validate_recent_performance(db)))
         results.append(("Match Integrity", validate_match_integrity(db)))

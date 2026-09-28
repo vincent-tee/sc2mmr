@@ -15,10 +15,6 @@ export interface Player {
   mu: number;
   sigma: number;
   mmr: number;  // Display MMR — the rating of record (1000 + 100*mu - 200*sigma)
-  unified_mmr: number | null;  // Legacy rating, queued for retirement (Phase 6); do not use for display/sort
-  hybrid_mmr: number | null;
-  avg_pim: number | null;
-  recency_weighted_mmr: number | null;
   win_rate: number;
   total_games: number;
   wins: number;
@@ -53,7 +49,6 @@ export interface PlayerRanking {
   id: number;
   name: string;
   mmr: number;
-  recency_weighted_mmr: number | null;
   win_rate: number;
   total_games: number;
   wins: number;
@@ -278,8 +273,6 @@ export interface TeamPlayer {
   id: number;
   name: string;
   mmr: number;
-  unified_mmr: number | null;
-  recency_weighted_mmr: number | null;
   win_rate: number;
   total_games: number;
   favorite_race: string;
