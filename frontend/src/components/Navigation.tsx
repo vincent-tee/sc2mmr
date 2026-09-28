@@ -40,7 +40,7 @@ import {
   FiHelpCircle,
   FiCrosshair,
 } from 'react-icons/fi';
-import { LuTrophy, LuSwords } from 'react-icons/lu';
+import { LuSwords } from 'react-icons/lu';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { IconType } from 'react-icons';
 
@@ -54,8 +54,7 @@ interface NavItem {
 const primaryItems: NavItem[] = [
   { path: '/', label: 'Home', icon: FiHome },
   { path: '/balance', label: 'Teams', icon: FiZap },
-  { path: '/players', label: 'Roster', icon: FiUsers },
-  { path: '/leaderboard', label: 'Ladder', icon: LuTrophy },
+  { path: '/players', label: 'Players', icon: FiUsers },
   { path: '/history', label: 'Matches', icon: FiBarChart2 },
 ];
 

@@ -29,9 +29,8 @@ import {
   MenuItem,
   Divider,
   Flex,
-  useBreakpointValue,
 } from '@chakra-ui/react';
-import { FiUsers, FiX, FiPlus, FiCpu, FiChevronDown, FiEdit2, FiTrash2, FiClock, FiSearch } from 'react-icons/fi';
+import { FiUsers, FiX, FiPlus, FiCpu, FiChevronDown, FiEdit2, FiTrash2, FiRotateCcw, FiSearch } from 'react-icons/fi';
 import PlayerCard from '@/components/PlayerCard';
 import TacticalCard from '@/components/TacticalCard';
 import type { Player } from '@/types/api';
@@ -125,7 +124,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
     }
   };
 
-  const cardSize = useBreakpointValue<'sm' | 'md'>({ base: 'sm', md: 'md' }) ?? 'md';
   const minPlayers = 2;
   const canGenerate = selectedPlayers.length >= minPlayers;
   const hasOddPlayers = selectedPlayers.length % 2 !== 0;
@@ -144,7 +142,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
     <Box>
       <TacticalCard variant="command" glowColor="rgba(0, 212, 255, 0.5)">
         <Box p={{ base: 3, md: 6 }}>
-          <Flex justify="space-between" align="start" mb={{ base: 4, md: 6 }} gap={3} flexWrap="wrap">
+          <Flex justify="space-between" align="start" mb={{ base: 4, md: 5 }} gap={3} flexWrap="wrap">
             <VStack align="start" spacing={2}>
               <HStack>
                 <Icon as={FiUsers} color="brand.400" boxSize={6} />
@@ -186,7 +184,37 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
               </HStack>
             </VStack>
 
-            <Flex gap={1} flexWrap="wrap">
+            {onSelectLastMatch && (
+              <Button
+                size="md"
+                colorScheme="brand"
+                onClick={onSelectLastMatch}
+                leftIcon={<FiRotateCcw />}
+                fontFamily="heading"
+              >
+                Use last lineup
+              </Button>
+            )}
+          </Flex>
+
+          <Flex mb={4} gap={3} align="center" flexWrap="wrap">
+            <InputGroup size="sm" maxW={{ base: 'full', sm: '240px' }}>
+              <InputLeftElement pointerEvents="none">
+                <Icon as={FiSearch} color="gray.500" />
+              </InputLeftElement>
+              <Input
+                placeholder="Search players..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                borderRadius="full"
+                bg="whiteAlpha.100"
+                border="1px solid"
+                borderColor="whiteAlpha.200"
+                _placeholder={{ color: 'gray.500' }}
+              />
+            </InputGroup>
+            <LapsedToggle id="team-selector-show-lapsed" isChecked={showLegacy} onChange={setShowLegacy} />
+            <Flex gap={1} flexWrap="wrap" ml={{ base: 0, md: 'auto' }}>
               <Menu>
                 <MenuButton
                   as={Button}
@@ -221,16 +249,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 </MenuList>
               </Menu>
               <Button
-                size="sm"
-                variant="ghost"
-                colorScheme="brand"
-                onClick={onSelectLastMatch}
-                leftIcon={<FiClock />}
-                fontFamily="heading"
-              >
-                Last Match
-              </Button>
-              <Button
                 ref={addGuestButtonRef}
                 size="sm"
                 variant="ghost"
@@ -254,26 +272,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
             </Flex>
           </Flex>
 
-          <HStack mb={4} spacing={3} flexWrap="wrap">
-            <InputGroup size="sm" maxW="240px">
-              <InputLeftElement pointerEvents="none">
-                <Icon as={FiSearch} color="gray.500" />
-              </InputLeftElement>
-              <Input
-                placeholder="Search players..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                borderRadius="full"
-                bg="whiteAlpha.100"
-                border="1px solid"
-                borderColor="whiteAlpha.200"
-                _placeholder={{ color: 'gray.500' }}
-              />
-            </InputGroup>
-            <LapsedToggle id="team-selector-show-lapsed" isChecked={showLegacy} onChange={setShowLegacy} />
-          </HStack>
-
-          <SimpleGrid columns={{ base: 2, md: 3, lg: 4, xl: 5 }} spacing={{ base: 2, md: 4 }}>
+          <SimpleGrid columns={{ base: 2, md: 3, lg: 5, xl: 6 }} spacing={{ base: 2, md: 2.5 }}>
             {[...players]
               .filter((p) => p.is_active === undefined || showLegacy || p.is_active)
               .filter((p) => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -291,7 +290,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                   player={player}
                   isSelected={selectedPlayers.some((p) => p.id === player.id)}
                   onClick={() => onTogglePlayer(player)}
-                  size={cardSize}
+                  variant="compact"
                 />
               ))}
           </SimpleGrid>

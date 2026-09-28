@@ -15,12 +15,14 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import type { IconType } from 'react-icons';
-import { LuFlame, LuSnowflake } from 'react-icons/lu';
+import { LuCheck, LuFlame, LuSnowflake } from 'react-icons/lu';
 import {
   getRaceColor,
   getPlayerRaces,
   getPlayerAvatarUrl,
+  formatMMR,
 } from '../utils/formatting';
+import { getRankFromMMR } from '../utils/ranks';
 import RankBadge from './RankBadge';
 
 type CardSize = 'sm' | 'md' | 'lg';
@@ -67,6 +69,7 @@ interface PlayerCardProps {
   isSelected?: boolean;
   onClick?: () => void;
   size?: CardSize;
+  variant?: 'default' | 'compact';
 }
 
 const PlayerCard: React.FC<PlayerCardProps> = ({
@@ -74,6 +77,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
   isSelected = false,
   onClick,
   size = 'md',
+  variant = 'default',
 }) => {
   const cardBg = useColorModeValue('white', 'space.800');
   const borderColorDefault = useColorModeValue('gray.200', 'whiteAlpha.100');
@@ -111,6 +115,93 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
       onClick();
     }
   }, [onClick]);
+
+  const formBadge = getFormBadge(player.recent_form);
+
+  if (variant === 'compact') {
+    const rank = getRankFromMMR(player.mmr);
+    return (
+      <HStack
+        bg={cardBg}
+        borderRadius="lg"
+        border="1px solid"
+        borderColor={isSelected ? 'brand.500' : borderColorDefault}
+        boxShadow={isSelected ? '0 0 0 2px var(--chakra-colors-brand-500)' : 'none'}
+        px={2.5}
+        py={2}
+        spacing={2.5}
+        minW={0}
+        cursor={onClick ? 'pointer' : 'default'}
+        onClick={onClick}
+        onKeyDown={handleKeyDown}
+        tabIndex={onClick ? 0 : undefined}
+        role={onClick ? 'button' : undefined}
+        aria-label={onClick ? `Select player ${player.name}` : undefined}
+        aria-pressed={onClick ? isSelected : undefined}
+        transition="border-color 0.15s, box-shadow 0.15s"
+        _hover={onClick ? { borderColor: 'brand.400' } : {}}
+        _focusVisible={onClick ? {
+          outline: 'none',
+          boxShadow: '0 0 0 3px rgba(255, 107, 53, 0.5)',
+          borderColor: 'brand.400',
+        } : {}}
+      >
+        <Box position="relative" flexShrink={0}>
+          <Avatar
+            size="sm"
+            src={getPlayerAvatarUrl(player.name, primaryRace, player.is_ai)}
+            name={player.name}
+            bg={`${getRaceColor(primaryRace)}.500`}
+          />
+          {isSelected && (
+            <Box
+              position="absolute"
+              bottom="-2px"
+              right="-4px"
+              bg="brand.500"
+              color="white"
+              borderRadius="full"
+              boxSize="16px"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              border="2px solid"
+              borderColor="space.800"
+            >
+              <Icon as={LuCheck} boxSize="10px" strokeWidth={3} />
+            </Box>
+          )}
+        </Box>
+        <VStack spacing={0} align="start" flex={1} minW={0}>
+          <HStack spacing={1} maxW="100%">
+            <Text
+              fontSize="sm"
+              fontWeight="bold"
+              fontFamily="heading"
+              noOfLines={1}
+              wordBreak="break-all"
+              color={isSelected ? 'brand.300' : 'inherit'}
+            >
+              {player.name}
+            </Text>
+            {player.is_ai && (
+              <Badge colorScheme="purple" variant="solid" fontSize="2xs" flexShrink={0}>AI</Badge>
+            )}
+          </HStack>
+          <HStack spacing={1.5} fontSize="xs" color="gray.400">
+            <Box w="6px" h="6px" borderRadius="full" bg={rank.bg} flexShrink={0} />
+            <Text fontFamily="mono">{formatMMR(player.mmr)}</Text>
+            {formBadge && (
+              <Icon as={formBadge.icon} color={formBadge.color} boxSize="12px" flexShrink={0} aria-label={formBadge.label} />
+            )}
+            {player.total_games !== undefined && player.total_games < 5 && (
+              <Text color="orange.300" whiteSpace="nowrap">new</Text>
+            )}
+          </HStack>
+        </VStack>
+      </HStack>
+    );
+  }
 
   return (
     <Box

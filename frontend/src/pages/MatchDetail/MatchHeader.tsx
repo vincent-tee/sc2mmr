@@ -21,6 +21,7 @@ import {
   formatDuration,
   formatDateTime,
   getUpsetIndicator,
+  displayedMMRChange,
 } from '@/utils/formatting';
 import VSScreen from '@/components/VSScreen';
 import type { MatchDetail as MatchDetailType } from '@/types/api';
@@ -72,41 +73,27 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
     ? getUpsetIndicator(winningTeam, team1Prob, team2Prob)
     : null;
 
-  // Prepare VSScreen data
-  const team1Players = players.filter(p => p.team_number === 1);
-  const team2Players = players.filter(p => p.team_number === 2);
-  const team1TotalMMR = team1Players.reduce((sum, p) => sum + (p.mmr ?? p.mmr_before), 0);
-  const team2TotalMMR = team2Players.reduce((sum, p) => sum + (p.mmr ?? p.mmr_before), 0);
-
-  const vsScreenData = {
-    team1: {
-      players: team1Players.map(p => ({
+  const toPanel = (teamNumber: number, winProbability: number) => {
+    const teamPlayers = players.filter(p => p.team_number === teamNumber);
+    return {
+      players: teamPlayers.map(p => ({
         name: p.player_name,
-        mmr: p.mmr ?? p.mmr_before,
+        mmr: p.mmr_after,
         race: p.race,
+        mmrChange: displayedMMRChange(p.mmr_before, p.mmr_after),
       })),
-      totalMMR: team1TotalMMR,
-      winProbability: team1Prob * 100,
-    },
-    team2: {
-      players: team2Players.map(p => ({
-        name: p.player_name,
-        mmr: p.mmr ?? p.mmr_before,
-        race: p.race,
-      })),
-      totalMMR: team2TotalMMR,
-      winProbability: team2Prob * 100,
-    },
-    winner: winningTeam,
+      totalMMR: teamPlayers.reduce((sum, p) => sum + p.mmr_before, 0),
+      winProbability: winProbability * 100,
+    };
   };
 
   return (
-    <VStack spacing={{ base: 4, md: 6 }} align="stretch">
-      <Box bg={cardBg} borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100" p={{ base: 4, md: 6 }}>
+    <VStack spacing={{ base: 3, md: 4 }} align="stretch">
+      <Box bg={cardBg} borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100" p={{ base: 4, md: 5 }}>
         <Flex justify="space-between" align="start" flexWrap="wrap" gap={4}>
           <VStack align="start" spacing={2} minW={0}>
             <Flex align="center" gap={3} flexWrap="wrap">
-              <Heading size={{ base: 'lg', md: 'xl' }} fontFamily="heading" color="gray.100">
+              <Heading size="lg" fontFamily="heading" color="gray.100">
                 {match.map_name}
               </Heading>
               <Badge bg="space.900" color="brand.400" fontSize="md" px={3} py={1} borderRadius="md" fontFamily="heading">
@@ -148,10 +135,12 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
       </Box>
 
       <VSScreen
-        team1={vsScreenData.team1}
-        team2={vsScreenData.team2}
-        winner={vsScreenData.winner as 1 | 2}
+        team1={toPanel(1, team1Prob)}
+        team2={toPanel(2, team2Prob)}
+        winner={winningTeam}
         probabilityLabel="Pre-match odds"
+        totalLabel="Pre-match MMR"
+        compact
       />
     </VStack>
   );

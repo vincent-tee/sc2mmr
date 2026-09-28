@@ -6,7 +6,8 @@ import { useState } from 'react';
 import { Badge, Box, Button, ButtonGroup, Flex, Heading, HStack, SimpleGrid, Text, VStack } from '@chakra-ui/react';
 import { useMutation } from '@tanstack/react-query';
 import { FiShuffle, FiUsers, FiX, FiZap } from 'react-icons/fi';
-import apiClient from '@/api/client';
+import apiClient, { isUnauthenticated } from '@/api/client';
+import { useAuth } from '@/components/AuthGate';
 import type { Player } from '@/types/api';
 
 interface DraftResponse {
@@ -34,9 +35,10 @@ const CaptainsDraft: React.FC<CaptainsDraftProps> = ({ squad, onComplete, onCanc
   const [team1, setTeam1] = useState<Player[]>([]);
   const [team2, setTeam2] = useState<Player[]>([]);
   const drafting = team1.length > 0;
+  const { signIn } = useAuth();
 
   const autoDraft = useMutation({
-    mutationFn: async () => (await apiClient.post<DraftResponse>('/teams/draft', {
+    mutationFn: async (_: { afterSignIn?: boolean } = {}) => (await apiClient.post<DraftResponse>('/teams/draft', {
       player_ids: squad.map((p) => p.id),
       custom_players: [],
       num_teams: 2,
@@ -44,6 +46,12 @@ const CaptainsDraft: React.FC<CaptainsDraftProps> = ({ squad, onComplete, onCanc
     onSuccess: (data) => {
       const pick = (ids: { id: number }[]) => ids.map(({ id }) => squad.find((p) => p.id === id)).filter((p): p is Player => !!p);
       onComplete(pick(data.teams[0].players), pick(data.teams[1].players));
+    },
+    onError: (error, { afterSignIn }) => {
+      if (!isUnauthenticated(error) || afterSignIn) return;
+      signIn('draft teams').then((signedIn) => {
+        if (signedIn) autoDraft.mutate({ afterSignIn: true });
+      });
     },
   });
 
@@ -107,7 +115,7 @@ const CaptainsDraft: React.FC<CaptainsDraftProps> = ({ squad, onComplete, onCanc
             <Button leftIcon={<FiUsers />} colorScheme="brand" isDisabled={!captain1 || !captain2} onClick={startDraft}>
               Draft pick by pick
             </Button>
-            <Button leftIcon={<FiZap />} variant="outline" isLoading={autoDraft.isPending} onClick={() => autoDraft.mutate()}>
+            <Button leftIcon={<FiZap />} variant="outline" isLoading={autoDraft.isPending} onClick={() => autoDraft.mutate({})}>
               Draft automatically
             </Button>
           </ButtonGroup>

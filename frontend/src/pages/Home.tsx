@@ -398,9 +398,9 @@ const Home: React.FC = () => {
                 rightIcon={<FiArrowRight />}
                 color="brand.400"
                 fontFamily="heading"
-                onClick={() => navigate('/leaderboard')}
+                onClick={() => navigate('/players')}
               >
-                Full ladder
+                All players
               </Button>
             </Flex>
             <Box bg="space.800" borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100" p={2}>

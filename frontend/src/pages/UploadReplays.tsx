@@ -1,8 +1,7 @@
 /**
- * Upload Replays Page - Friend Squad Edition
- * Drag-and-drop bulk upload interface with comic-book styling
+ * Upload hub: drop replays, see what each one became, and what still needs a person.
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Box,
   Container,
@@ -10,6 +9,7 @@ import {
   Text,
   VStack,
   HStack,
+  Flex,
   Progress,
   Badge,
   Icon,
@@ -28,9 +28,11 @@ import {
   FiChevronDown,
   FiChevronUp,
   FiRefreshCw,
+  FiLock,
+  FiArrowRight,
 } from 'react-icons/fi';
-import { useDropzone, type FileRejection } from 'react-dropzone';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useDropzone } from 'react-dropzone';
+import { Link as RouterLink } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { replaysApi } from '../api/endpoints';
 import PageHeader from '../components/PageHeader';
@@ -40,15 +42,14 @@ import { useAuth } from '../components/AuthGate';
 import { parseErrorMessage } from '../utils/formatting';
 import type { ReplayUploadResponse } from '../types/api';
 import type { IconType } from 'react-icons';
+import NeedsAttention from './Upload/NeedsAttention';
 
-// Design tokens
 const cardBg = 'space.800';
+const BATCH_SIZE = 5;
 
-// Upload status enum
 const UPLOAD_STATUS = {
   QUEUED: 'queued',
   UPLOADING: 'uploading',
-  PROCESSING: 'processing',
   COMPLETE: 'complete',
   DUPLICATE: 'duplicate',
   ERROR: 'error',
@@ -56,7 +57,6 @@ const UPLOAD_STATUS = {
 
 type UploadStatusType = typeof UPLOAD_STATUS[keyof typeof UPLOAD_STATUS];
 
-// File upload state interface
 interface UploadFile {
   id: string;
   file: File;
@@ -67,189 +67,157 @@ interface UploadFile {
   data: ReplayUploadResponse | null;
 }
 
-// Error with custom properties
-interface UploadError extends Error {
-  isDuplicate?: boolean;
-  userMessage?: string;
-}
-
-// Props for FileItem component
 interface FileItemProps {
   file: UploadFile;
   onRetry: (fileId: string) => void;
   onRemove: (fileId: string) => void;
 }
 
+const toUploadFile = (file: File): UploadFile => ({
+  id: `${file.name}-${Date.now()}-${Math.random()}`,
+  file,
+  name: file.name,
+  status: UPLOAD_STATUS.QUEUED,
+  progress: 0,
+  message: null,
+  data: null,
+});
+
+const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`;
+
 const UploadReplays: React.FC = () => {
   const [files, setFiles] = useState<UploadFile[]>([]);
+  const [awaitingSignIn, setAwaitingSignIn] = useState<UploadFile[]>([]);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const toast = useToast();
   const queryClient = useQueryClient();
   const { authEnabled, authenticated, requireLogin } = useAuth();
-  const navigate = useNavigate();
+  const mustSignIn = authEnabled && !authenticated;
 
-  // Uploading is a write - in public-read mode it stays gated. Prompt for the
-  // squad password the moment someone lands on this route rather than letting
-  // them pick files and hit a 401 on submit. Unlike the download-button
-  // prompt, dismissing this one sends them home - this whole page is useless
-  // without a session, so "Go back" shouldn't just reveal the dead form.
-  useEffect(() => {
-    if (authEnabled && !authenticated) {
-      requireLogin(() => navigate('/'));
-    }
-  }, [authEnabled, authenticated, requireLogin, navigate]);
-
-  // Check if any files are currently uploading
   const hasUploadsInProgress = files.some(
-    (file) => file.status === UPLOAD_STATUS.UPLOADING || file.status === UPLOAD_STATUS.PROCESSING
+    (file) => file.status === UPLOAD_STATUS.UPLOADING || file.status === UPLOAD_STATUS.QUEUED
   );
 
-  // Warn user before leaving page if uploads are in progress
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent): string | void => {
-      if (hasUploadsInProgress) {
+      if (hasUploadsInProgress || awaitingSignIn.length > 0) {
         e.preventDefault();
-        e.returnValue = 'Uploads are still in progress. Are you sure you want to leave?';
+        e.returnValue = 'Replays are still waiting to upload. Are you sure you want to leave?';
         return e.returnValue;
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasUploadsInProgress]);
+  }, [hasUploadsInProgress, awaitingSignIn.length]);
 
-  // Update file status
-  const updateFileStatus = (
-    fileId: string,
-    status: UploadStatusType,
-    message: string | null,
-    progress: number,
-    data: ReplayUploadResponse | null = null
-  ): void => {
-    setFiles((prevFiles) =>
-      prevFiles.map((f) =>
-        f.id === fileId
-          ? { ...f, status, message, progress, data }
-          : f
-      )
-    );
+  const updateFile = (fileId: string, changes: Partial<UploadFile>): void => {
+    setFiles((prevFiles) => prevFiles.map((f) => (f.id === fileId ? { ...f, ...changes } : f)));
   };
 
-  // Process a single file
-  const processFile = async (file: UploadFile): Promise<void> => {
-    updateFileStatus(file.id, UPLOAD_STATUS.UPLOADING, null, 0);
+  const refreshDerivedQueries = (): void => {
+    queryClient.invalidateQueries({ queryKey: ['matches'] });
+    queryClient.invalidateQueries({ queryKey: ['players'] });
+    queryClient.invalidateQueries({ queryKey: ['recent-matches-ticker'] });
+    queryClient.invalidateQueries({ queryKey: ['failed-uploads'] });
+    queryClient.invalidateQueries({ queryKey: ['result-review'] });
+  };
+
+  const processFile = async (file: UploadFile): Promise<UploadStatusType> => {
+    updateFile(file.id, { status: UPLOAD_STATUS.UPLOADING, message: null, progress: 0, data: null });
 
     try {
       const response = await replaysApi.uploadAdvanced(file.file, (progressEvent) => {
         const total = progressEvent.total || 1;
-        const percentCompleted = Math.round(
-          (progressEvent.loaded * 100) / total
-        );
-        updateFileStatus(file.id, UPLOAD_STATUS.UPLOADING, null, percentCompleted);
+        updateFile(file.id, { progress: Math.round((progressEvent.loaded * 100) / total) });
       });
 
       const responseData = response.data as ReplayUploadResponse & {
-        processing_stats?: { total_time_ms: number; parse_time_ms: number; rating_update_time_ms: number }
+        processing_stats?: { total_time_ms: number };
       };
-      const stats = responseData.processing_stats;
-      const processingMessage = stats
-        ? `Processed in ${stats.total_time_ms}ms`
-        : response.data.message;
-
-      // The backend upserts duplicates (exact re-upload, or the same game
-      // from another player) and reports created=false instead of erroring.
-      const wasAlreadyTracked = responseData.created === false;
-      updateFileStatus(
-        file.id,
-        wasAlreadyTracked ? UPLOAD_STATUS.DUPLICATE : UPLOAD_STATUS.COMPLETE,
-        wasAlreadyTracked
-          ? response.data.message || 'Already on the ladder - existing match refreshed'
-          : processingMessage,
-        100,
-        response.data
-      );
-
-      queryClient.invalidateQueries({ queryKey: ['matches'] });
-      queryClient.invalidateQueries({ queryKey: ['players'] });
-      queryClient.invalidateQueries({ queryKey: ['recent-matches-ticker'] });
-    } catch (error) {
-      const uploadError = error as UploadError;
-      if (uploadError.isDuplicate) {
-        updateFileStatus(
-          file.id,
-          UPLOAD_STATUS.DUPLICATE,
-          uploadError.userMessage || 'Replay already uploaded',
-          100
-        );
-      } else {
-        updateFileStatus(
-          file.id,
-          UPLOAD_STATUS.ERROR,
-          parseErrorMessage(error as ApiClientError),
-          0
-        );
-      }
-    }
-  };
-
-  // Process files in batches
-  const processFiles = async (filesToProcess: UploadFile[]): Promise<void> => {
-    const batchSize = 5;
-    const batches: UploadFile[][] = [];
-
-    for (let i = 0; i < filesToProcess.length; i += batchSize) {
-      batches.push(filesToProcess.slice(i, i + batchSize));
-    }
-
-    for (const batch of batches) {
-      await Promise.all(batch.map((file) => processFile(file)));
-    }
-  };
-
-  // Handle file drop
-  const onDrop = useCallback(
-    async (acceptedFiles: File[], _fileRejections: FileRejection[]) => {
-      const newFiles: UploadFile[] = acceptedFiles
-        .filter((file) => file.name.endsWith('.SC2Replay'))
-        .map((file) => ({
-          id: `${file.name}-${Date.now()}-${Math.random()}`,
-          file,
-          name: file.name,
-          status: UPLOAD_STATUS.QUEUED,
-          progress: 0,
-          message: null,
-          data: null,
-        }));
-
-      if (newFiles.length === 0) {
-        toast.warning('Please upload .SC2Replay files only');
-        return;
-      }
-
-      setFiles((prev) => [...prev, ...newFiles]);
-      setIsExpanded(true);
-
-      await processFiles(newFiles);
-
-      setFiles((currentFiles) => {
-        const newFileIds = new Set(newFiles.map(f => f.id));
-        const processedFiles = currentFiles.filter(f => newFileIds.has(f.id));
-
-        const completed = processedFiles.filter((f) => f.status === UPLOAD_STATUS.COMPLETE).length;
-        const duplicates = processedFiles.filter((f) => f.status === UPLOAD_STATUS.DUPLICATE).length;
-        const errors = processedFiles.filter((f) => f.status === UPLOAD_STATUS.ERROR).length;
-
-        toast.success(
-          `Upload complete! ${completed} processed, ${duplicates} duplicates, ${errors} errors`
-        );
-
-        return currentFiles;
+      const wasAlreadyRecorded = responseData.created === false;
+      const status = wasAlreadyRecorded ? UPLOAD_STATUS.DUPLICATE : UPLOAD_STATUS.COMPLETE;
+      const processedIn = responseData.processing_stats
+        ? `Processed in ${responseData.processing_stats.total_time_ms}ms`
+        : responseData.message;
+      updateFile(file.id, {
+        status,
+        message: wasAlreadyRecorded ? 'Already recorded - existing match refreshed' : processedIn,
+        progress: 100,
+        data: responseData,
       });
-    },
-    [toast]
-  );
+      return status;
+    } catch (error) {
+      const uploadError = error as ApiClientError;
+      if (uploadError.isDuplicate) {
+        updateFile(file.id, {
+          status: UPLOAD_STATUS.DUPLICATE,
+          message: uploadError.userMessage || 'Replay already uploaded',
+          progress: 100,
+        });
+        return UPLOAD_STATUS.DUPLICATE;
+      }
+      updateFile(file.id, {
+        status: UPLOAD_STATUS.ERROR,
+        message: parseErrorMessage(uploadError),
+        progress: 0,
+      });
+      return UPLOAD_STATUS.ERROR;
+    }
+  };
 
-  // Dropzone configuration
+  const startUploads = async (newFiles: UploadFile[]): Promise<void> => {
+    setFiles((prev) => [...prev, ...newFiles]);
+    setIsExpanded(true);
+
+    const outcomes: UploadStatusType[] = [];
+    for (let i = 0; i < newFiles.length; i += BATCH_SIZE) {
+      outcomes.push(...(await Promise.all(newFiles.slice(i, i + BATCH_SIZE).map(processFile))));
+    }
+    refreshDerivedQueries();
+
+    const count = (status: UploadStatusType) => outcomes.filter((o) => o === status).length;
+    const summary = [
+      `${count(UPLOAD_STATUS.COMPLETE)} new`,
+      `${count(UPLOAD_STATUS.DUPLICATE)} already recorded`,
+      plural(count(UPLOAD_STATUS.ERROR), 'error'),
+    ].join(', ');
+    if (count(UPLOAD_STATUS.ERROR) > 0) {
+      toast.warning(summary, 'Upload finished');
+    } else {
+      toast.success(summary, 'Upload finished');
+    }
+  };
+
+  const startUploadsRef = useRef(startUploads);
+  useLayoutEffect(() => {
+    startUploadsRef.current = startUploads;
+  });
+
+  useEffect(() => {
+    if (mustSignIn || awaitingSignIn.length === 0) return;
+    const signedInBatch = awaitingSignIn;
+    setAwaitingSignIn([]);
+    startUploadsRef.current(signedInBatch);
+  }, [mustSignIn, awaitingSignIn]);
+
+  const onDrop = (acceptedFiles: File[]): void => {
+    const newFiles = acceptedFiles.filter((file) => file.name.endsWith('.SC2Replay')).map(toUploadFile);
+
+    if (newFiles.length === 0) {
+      toast.warning('Please upload .SC2Replay files only');
+      return;
+    }
+
+    if (mustSignIn) {
+      setAwaitingSignIn((prev) => [...prev, ...newFiles]);
+      requireLogin();
+      return;
+    }
+
+    startUploads(newFiles);
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -258,35 +226,31 @@ const UploadReplays: React.FC = () => {
     multiple: true,
   });
 
-  // Retry failed file
-  const retryFile = (fileId: string): void => {
-    updateFileStatus(fileId, UPLOAD_STATUS.QUEUED, null, 0);
-    setFiles((currentFiles) => {
-      const file = currentFiles.find((f) => f.id === fileId);
-      if (file) {
-        processFile(file);
-      }
-      return currentFiles;
-    });
+  const retryFile = async (fileId: string): Promise<void> => {
+    const file = files.find((f) => f.id === fileId);
+    if (!file) return;
+    if (mustSignIn) {
+      requireLogin();
+      return;
+    }
+    await processFile(file);
+    refreshDerivedQueries();
   };
 
-  // Remove file from list
   const removeFile = (fileId: string): void => {
     setFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
 
-  // Statistics
+  const countOf = (status: UploadStatusType) => files.filter((f) => f.status === status).length;
   const stats = {
     total: files.length,
-    queued: files.filter((f) => f.status === UPLOAD_STATUS.QUEUED).length,
-    uploading: files.filter((f) => f.status === UPLOAD_STATUS.UPLOADING).length,
-    processing: files.filter((f) => f.status === UPLOAD_STATUS.PROCESSING).length,
-    complete: files.filter((f) => f.status === UPLOAD_STATUS.COMPLETE).length,
-    duplicate: files.filter((f) => f.status === UPLOAD_STATUS.DUPLICATE).length,
-    error: files.filter((f) => f.status === UPLOAD_STATUS.ERROR).length,
+    remaining: countOf(UPLOAD_STATUS.QUEUED) + countOf(UPLOAD_STATUS.UPLOADING),
+    complete: countOf(UPLOAD_STATUS.COMPLETE),
+    duplicate: countOf(UPLOAD_STATUS.DUPLICATE),
+    error: countOf(UPLOAD_STATUS.ERROR),
   };
-
-  const isUploading = stats.uploading > 0 || stats.processing > 0 || stats.queued > 0;
+  const finished = stats.complete + stats.duplicate + stats.error;
+  const isUploading = stats.remaining > 0;
   const hasFiles = files.length > 0;
 
   return (
@@ -294,111 +258,152 @@ const UploadReplays: React.FC = () => {
       <PageHeader
         kicker="Fresh Data"
         title="Upload [Replays]"
-        description="Drag and drop your StarCraft II replay files or folders — ratings update automatically."
+        description="Drop StarCraft II replay files or folders — ratings update automatically. Anything that needs a person is listed below."
       />
       <Container maxW="container.xl" pt={8}>
       <VStack spacing={8} align="stretch">
-        {/* Main Upload Area */}
-        {(!hasFiles || !isUploading) && (
+        {!isUploading && (
           <Box
             {...getRootProps()}
             bg={cardBg}
-            borderWidth={3}
+            borderWidth={2}
             borderStyle="dashed"
             borderColor={isDragActive ? 'brand.500' : 'space.600'}
             borderRadius="xl"
-            p={16}
+            px={{ base: 6, md: 16 }}
+            py={hasFiles ? { base: 6, md: 8 } : { base: 10, md: 16 }}
             textAlign="center"
             cursor="pointer"
-            transition="all 0.2s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
+            transition="border-color 0.2s, transform 0.2s"
             _hover={{
               borderColor: 'brand.500',
               transform: 'translateY(-2px)',
             }}
           >
             <input {...getInputProps()} />
-            <VStack spacing={4}>
+            <VStack spacing={hasFiles ? 2 : 4}>
               <Icon
                 as={FiUploadCloud}
-                boxSize={20}
+                boxSize={hasFiles ? 10 : 16}
                 color={isDragActive ? 'brand.500' : 'gray.500'}
               />
               <Heading
-                size="lg"
+                size={hasFiles ? 'md' : 'lg'}
                 fontFamily="heading"
                 letterSpacing="wide"
                 color={isDragActive ? 'brand.400' : 'gray.300'}
               >
                 {isDragActive
-                  ? 'Drop your replays here!'
-                  : 'Drag replay files or folders here'}
+                  ? 'Drop your replays here'
+                  : hasFiles
+                    ? 'Drop more replays'
+                    : 'Drag replay files or folders here'}
               </Heading>
-              <Text color="gray.500" fontSize="lg">
+              <Text color="gray.500" fontSize={hasFiles ? 'sm' : 'lg'}>
                 or click to browse
               </Text>
-              <Text
-                fontFamily="mono"
-                fontSize="xs"
-                color="gray.600"
-                textTransform="uppercase"
-                letterSpacing="wider"
-              >
-                .SC2Replay files only
-              </Text>
+              {mustSignIn ? (
+                <HStack spacing={1.5} color="accent.400" fontSize="sm">
+                  <Icon as={FiLock} boxSize={3.5} />
+                  <Text>You&apos;ll be asked to sign in before anything is sent</Text>
+                </HStack>
+              ) : (
+                <Text
+                  fontFamily="mono"
+                  fontSize="xs"
+                  color="gray.600"
+                  textTransform="uppercase"
+                  letterSpacing="wider"
+                >
+                  .SC2Replay files only
+                </Text>
+              )}
             </VStack>
           </Box>
         )}
 
-        {/* Upload Summary */}
+        {awaitingSignIn.length > 0 && (
+          <Flex
+            bg={cardBg}
+            border="1px solid"
+            borderColor="accent.600"
+            borderRadius="xl"
+            p={4}
+            gap={3}
+            align={{ base: 'stretch', sm: 'center' }}
+            direction={{ base: 'column', sm: 'row' }}
+          >
+            <HStack spacing={3} flex={1} minW={0}>
+              <Icon as={FiLock} color="accent.400" boxSize={5} flexShrink={0} />
+              <Text fontSize="sm" color="gray.200">
+                <Text as="span" fontFamily="mono" fontWeight="700">{awaitingSignIn.length}</Text>
+                {' '}{awaitingSignIn.length === 1 ? 'replay is' : 'replays are'} waiting — sign in to upload{' '}
+                {awaitingSignIn.length === 1 ? 'it' : 'them'}.
+              </Text>
+            </HStack>
+            <HStack spacing={2}>
+              <Button size="sm" colorScheme="brand" onClick={() => requireLogin()}>
+                Sign in to upload
+              </Button>
+              <Button size="sm" variant="ghost" color="gray.400" onClick={() => setAwaitingSignIn([])}>
+                Discard
+              </Button>
+            </HStack>
+          </Flex>
+        )}
+
         {hasFiles && (
           <Box
             bg={cardBg}
             borderRadius="xl"
             border="1px solid"
             borderColor="whiteAlpha.100"
-            p={6}
+            p={{ base: 4, md: 6 }}
           >
             <VStack spacing={4} align="stretch">
               <HStack justify="space-between">
                 <Heading size="md" fontFamily="heading" letterSpacing="wide" color="gray.200">
-                  {isUploading
-                    ? `Uploading ${stats.total} replays...`
-                    : 'Upload Complete'}
+                  {isUploading ? 'Uploading' : 'This session'}
+                  <Text as="span" fontFamily="mono" fontSize="sm" color="gray.500" ml={2}>
+                    {finished}/{stats.total}
+                  </Text>
                 </Heading>
                 <IconButton
                   icon={isExpanded ? <FiChevronUp /> : <FiChevronDown />}
                   variant="ghost"
                   onClick={() => setIsExpanded(!isExpanded)}
-                  aria-label="Toggle details"
+                  aria-label={isExpanded ? 'Hide replays' : 'Show replays'}
                   color="gray.400"
                   _hover={{ color: 'brand.400' }}
                 />
               </HStack>
 
-              <HStack spacing={3} wrap="wrap">
-                <Badge bg="green.500" color="white" fontSize="sm" px={3} py={1} borderRadius="full">
-                  {stats.complete} complete
-                </Badge>
+              <HStack spacing={2} wrap="wrap">
+                {stats.complete > 0 && (
+                  <Badge colorScheme="green" variant="subtle" fontSize="xs" px={2} py={0.5} borderRadius="full">
+                    <Text as="span" fontFamily="mono">{stats.complete}</Text> new
+                  </Badge>
+                )}
                 {stats.duplicate > 0 && (
-                  <Badge bg="yellow.500" color="white" fontSize="sm" px={3} py={1} borderRadius="full">
-                    {stats.duplicate} duplicates
+                  <Badge colorScheme="gray" variant="subtle" fontSize="xs" px={2} py={0.5} borderRadius="full">
+                    <Text as="span" fontFamily="mono">{stats.duplicate}</Text> already recorded
                   </Badge>
                 )}
                 {stats.error > 0 && (
-                  <Badge bg="red.500" color="white" fontSize="sm" px={3} py={1} borderRadius="full">
-                    {stats.error} errors
+                  <Badge colorScheme="red" variant="subtle" fontSize="xs" px={2} py={0.5} borderRadius="full">
+                    <Text as="span" fontFamily="mono">{stats.error}</Text> failed
                   </Badge>
                 )}
-                {(stats.uploading > 0 || stats.processing > 0 || stats.queued > 0) && (
-                  <Badge bg="blue.500" color="white" fontSize="sm" px={3} py={1} borderRadius="full">
-                    {stats.uploading + stats.processing + stats.queued} remaining
+                {isUploading && (
+                  <Badge colorScheme="blue" variant="subtle" fontSize="xs" px={2} py={0.5} borderRadius="full">
+                    <Text as="span" fontFamily="mono">{stats.remaining}</Text> remaining
                   </Badge>
                 )}
               </HStack>
 
               {isUploading && (
                 <Progress
-                  value={(stats.complete / stats.total) * 100}
+                  value={(finished / stats.total) * 100}
                   colorScheme="brand"
                   size="sm"
                   borderRadius="full"
@@ -406,7 +411,6 @@ const UploadReplays: React.FC = () => {
                 />
               )}
 
-              {/* File List */}
               <Collapse in={isExpanded}>
                 <List spacing={2} maxH="400px" overflowY="auto">
                   {files.map((file) => (
@@ -420,7 +424,6 @@ const UploadReplays: React.FC = () => {
                 </List>
               </Collapse>
 
-              {/* Actions */}
               {!isUploading && (
                 <HStack spacing={3}>
                   <Button
@@ -431,65 +434,36 @@ const UploadReplays: React.FC = () => {
                     color="gray.400"
                     _hover={{ bg: 'space.700' }}
                   >
-                    Clear All
+                    Clear list
                   </Button>
-                  <Box
-                    flex={1}
-                    {...getRootProps()}
-                    display="inline-block"
-                  >
-                    <input {...getInputProps()} />
-                    <Button
-                      size="sm"
-                      bg="brand.500"
-                      color="white"
-                      _hover={{ bg: 'brand.600' }}
-                    >
-                      Upload More Files
-                    </Button>
-                  </Box>
+                  {stats.error > 0 && (
+                    <Text fontSize="xs" color="gray.500">
+                      Replays that fail to process also appear under failed uploads below.
+                    </Text>
+                  )}
                 </HStack>
               )}
             </VStack>
           </Box>
         )}
 
-        {/* Companion link to failed uploads */}
-        <HStack justify="center" spacing={2} color="gray.500" fontSize="sm">
-          <Icon as={FiAlertCircle} boxSize={4} />
-          <Text>A replay didn't go through?</Text>
-          <Link
-            as={RouterLink}
-            to="/failed-uploads"
-            color="brand.400"
-            fontWeight="medium"
-            _hover={{ color: 'brand.300', textDecoration: 'underline' }}
-          >
-            Review failed uploads
-          </Link>
-        </HStack>
+        <NeedsAttention />
       </VStack>
       </Container>
     </Box>
   );
 };
 
-// File Item Component
-const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
-  const getStatusIcon = (status: UploadStatusType): { icon: IconType; color: string } | null => {
-    switch (status) {
-      case UPLOAD_STATUS.COMPLETE:
-        return { icon: FiCheckCircle, color: 'green.400' };
-      case UPLOAD_STATUS.DUPLICATE:
-        return { icon: FiAlertCircle, color: 'yellow.400' };
-      case UPLOAD_STATUS.ERROR:
-        return { icon: FiXCircle, color: 'red.400' };
-      default:
-        return null;
-    }
-  };
+const STATUS_ICON: Partial<Record<UploadStatusType, { icon: IconType; color: string }>> = {
+  [UPLOAD_STATUS.COMPLETE]: { icon: FiCheckCircle, color: 'green.400' },
+  [UPLOAD_STATUS.DUPLICATE]: { icon: FiAlertCircle, color: 'gray.400' },
+  [UPLOAD_STATUS.ERROR]: { icon: FiXCircle, color: 'red.400' },
+};
 
-  const statusIcon = getStatusIcon(file.status);
+const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
+  const statusIcon = STATUS_ICON[file.status];
+  const isDone = file.status !== UPLOAD_STATUS.QUEUED && file.status !== UPLOAD_STATUS.UPLOADING;
+  const match = file.data;
 
   return (
     <ListItem>
@@ -498,21 +472,31 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
         p={3}
         bg="space.700"
         borderRadius="lg"
-        border="2px solid"
-        borderColor="space.600"
+        border="1px solid"
+        borderColor="whiteAlpha.100"
+        align="start"
       >
-        {/* Status Icon */}
-        {statusIcon && <Icon as={statusIcon.icon} color={statusIcon.color} boxSize={5} />}
+        {statusIcon && <Icon as={statusIcon.icon} color={statusIcon.color} boxSize={5} mt={0.5} flexShrink={0} />}
 
-        {/* File Info */}
-        <VStack flex={1} align="start" spacing={1}>
-          <Text fontSize="sm" fontWeight="medium" color="gray.200" noOfLines={1}>
+        <VStack flex={1} minW={0} align="stretch" spacing={1}>
+          {match ? (
+            <HStack spacing={2} minW={0} flexWrap="wrap">
+              <Text fontSize="sm" fontWeight="semibold" color="gray.100" noOfLines={1}>
+                {match.map_name || 'Unknown map'}
+              </Text>
+              {match.game_mode && (
+                <Badge bg="space.900" color="gray.400" fontSize="2xs" px={1.5}>
+                  {match.game_mode}
+                </Badge>
+              )}
+            </HStack>
+          ) : null}
+
+          <Text fontSize="xs" color={match ? 'gray.500' : 'gray.200'} noOfLines={1} wordBreak="break-all">
             {file.name}
           </Text>
 
-          {/* Progress Bar */}
-          {(file.status === UPLOAD_STATUS.UPLOADING ||
-            file.status === UPLOAD_STATUS.PROCESSING) && (
+          {file.status === UPLOAD_STATUS.UPLOADING && (
             <Progress
               value={file.progress}
               size="xs"
@@ -523,44 +507,32 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
             />
           )}
 
-          {/* Status Message */}
           {file.message && (
-            <Text fontSize="xs" color="gray.500" noOfLines={2}>
+            <Text fontSize="xs" color={file.status === UPLOAD_STATUS.ERROR ? 'red.300' : 'gray.500'} noOfLines={2}>
               {file.message}
             </Text>
           )}
 
-          {/* Match Details (for duplicates) */}
-          {file.status === UPLOAD_STATUS.DUPLICATE && file.data && (
-            <Text fontSize="xs" color="yellow.400">
-              Already uploaded
-            </Text>
-          )}
-
-          {/* Match Result (for completed uploads) */}
-          {file.status === UPLOAD_STATUS.COMPLETE && file.data && (
-            <HStack spacing={2} fontSize="xs" color="gray.500" flexWrap="wrap">
-              {file.data.map_name && <Text noOfLines={1}>{file.data.map_name}</Text>}
-              {file.data.game_mode && (
-                <Badge bg="space.900" color="gray.400" fontSize="2xs" px={1.5}>
-                  {file.data.game_mode}
-                </Badge>
-              )}
-              <Link
-                as={RouterLink}
-                to={`/history/${file.data.match_id}`}
-                color="brand.400"
-                fontWeight="medium"
-                _hover={{ color: 'brand.300', textDecoration: 'underline' }}
-              >
-                View match
-              </Link>
-            </HStack>
+          {match && (
+            <Link
+              as={RouterLink}
+              to={`/history/${match.match_id}`}
+              fontSize="xs"
+              color="brand.400"
+              fontWeight="medium"
+              display="inline-flex"
+              alignItems="center"
+              gap={1}
+              alignSelf="start"
+              _hover={{ color: 'brand.300', textDecoration: 'underline' }}
+            >
+              Open match <Text as="span" fontFamily="mono">#{match.match_id}</Text>
+              <Icon as={FiArrowRight} boxSize={3} />
+            </Link>
           )}
         </VStack>
 
-        {/* Actions */}
-        <HStack>
+        <HStack spacing={0} flexShrink={0}>
           {file.status === UPLOAD_STATUS.ERROR && (
             <IconButton
               icon={<FiRefreshCw />}
@@ -572,15 +544,13 @@ const FileItem: React.FC<FileItemProps> = ({ file, onRetry, onRemove }) => {
               _hover={{ color: 'brand.400' }}
             />
           )}
-          {(file.status === UPLOAD_STATUS.COMPLETE ||
-            file.status === UPLOAD_STATUS.DUPLICATE ||
-            file.status === UPLOAD_STATUS.ERROR) && (
+          {isDone && (
             <IconButton
               icon={<FiXCircle />}
               size="sm"
               variant="ghost"
               onClick={() => onRemove(file.id)}
-              aria-label="Remove"
+              aria-label="Remove from list"
               color="gray.400"
               _hover={{ color: 'red.400' }}
             />

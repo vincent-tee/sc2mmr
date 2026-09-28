@@ -68,7 +68,7 @@ const totalMMR = (team: TeamPlayer[]) => team.reduce((sum, p) => sum + p.mmr, 0)
 
 const TeamEditor: React.FC<TeamEditorProps> = ({ suggestion, onExport }) => {
   const toast = useToast();
-  const { authenticated, requireLogin } = useAuth();
+  const { authenticated, ensureSignedIn } = useAuth();
   const shareRef = useRef<HTMLDivElement>(null);
 
   const [team1, setTeam1] = useState<TeamPlayer[]>(suggestion.team_1.players);
@@ -81,7 +81,7 @@ const TeamEditor: React.FC<TeamEditorProps> = ({ suggestion, onExport }) => {
   const [recordOpen, setRecordOpen] = useState(false);
 
   useEffect(() => {
-    if (!suggestion.balance_prediction_id) return;
+    if (!suggestion.balance_prediction_id || !authenticated) return;
     let active = true;
     judgmentsApi.list({ balancePredictionId: suggestion.balance_prediction_id }).then(({ data }) => {
       if (!active || !data.length) return;
@@ -96,7 +96,7 @@ const TeamEditor: React.FC<TeamEditorProps> = ({ suggestion, onExport }) => {
       setRecordOpen(true);
     }).catch(() => {}).finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
-  }, [suggestion]);
+  }, [suggestion, authenticated]);
 
   const isEdited = !sameRoster(team1, suggestion.team_1.players) || !sameRoster(team2, suggestion.team_2.players);
   const hasGuests = [...team1, ...team2].some((p) => p.id < 0);
@@ -106,7 +106,7 @@ const TeamEditor: React.FC<TeamEditorProps> = ({ suggestion, onExport }) => {
   const livePrediction = useQuery({
     queryKey: ['predict', ids1, ids2],
     queryFn: async () => (await teamsApi.predict(ids1, ids2)).data,
-    enabled: isEdited && !hasGuests,
+    enabled: authenticated && isEdited && !hasGuests,
   });
 
   const swapSuggestions = useQuery({
@@ -116,7 +116,7 @@ const TeamEditor: React.FC<TeamEditorProps> = ({ suggestion, onExport }) => {
       team_2_ids: ids2,
       top_n: 3,
     })).data,
-    enabled: adjustOpen && !locked && !hasGuests && team1.length > 0 && team2.length > 0,
+    enabled: authenticated && adjustOpen && !locked && !hasGuests && team1.length > 0 && team2.length > 0,
   });
 
   const { team1WinChance, qualityPercent } = useMemo(() => {
@@ -147,6 +147,15 @@ const TeamEditor: React.FC<TeamEditorProps> = ({ suggestion, onExport }) => {
     }
     if (team === 2) swapPlayers(pendingSwap.id, id);
     else swapPlayers(id, pendingSwap.id);
+  };
+
+  const toggleAdjust = async () => {
+    if (!adjustOpen && !(await ensureSignedIn('adjust teams'))) return;
+    setAdjustOpen((open) => !open);
+  };
+
+  const openRecording = async () => {
+    if (await ensureSignedIn('record this game')) setRecordOpen(true);
   };
 
   const resetSplit = () => {
@@ -278,7 +287,7 @@ const TeamEditor: React.FC<TeamEditorProps> = ({ suggestion, onExport }) => {
             variant={adjustOpen ? 'solid' : 'outline'}
             colorScheme="brand"
             leftIcon={<FiEdit3 />}
-            onClick={() => setAdjustOpen((open) => !open)}
+            onClick={toggleAdjust}
             aria-expanded={adjustOpen}
           >
             Adjust teams
@@ -347,7 +356,7 @@ const TeamEditor: React.FC<TeamEditorProps> = ({ suggestion, onExport }) => {
         {!suggestion.balance_prediction_id ? (
           <Text fontSize="sm" color="gray.500">Recording a game is available for generated teams of registered players.</Text>
         ) : !authenticated ? (
-          <Button size="sm" variant="outline" leftIcon={<FiFlag />} onClick={() => requireLogin()}>Sign in to record this game</Button>
+          <Button size="sm" variant="outline" leftIcon={<FiFlag />} onClick={openRecording}>Sign in to record this game</Button>
         ) : restoring ? (
           <Text fontSize="sm" color="gray.500">Loading saved game…</Text>
         ) : (

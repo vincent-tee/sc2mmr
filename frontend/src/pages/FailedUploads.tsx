@@ -2,7 +2,7 @@
  * Failed Uploads Page
  * Review replay files that failed to process
  */
-import { useState, type ChangeEvent, type ReactNode } from 'react';
+import { Fragment, useState, type ChangeEvent, type ReactNode } from 'react';
 import {
   Box,
   Container,
@@ -36,7 +36,7 @@ import {
   AlertDescription,
 } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   FiAlertCircle,
   FiXCircle,
@@ -47,6 +47,7 @@ import {
   FiEye,
   FiChevronDown,
   FiChevronRight,
+  FiArrowLeft,
 } from 'react-icons/fi';
 import { replaysApi, type FailedUpload } from '../api/endpoints';
 import PageHeader from '../components/PageHeader';
@@ -272,6 +273,11 @@ const FailedUploads: React.FC = () => {
         kicker="Needs Attention"
         title="Failed [Uploads]"
         description="Replay files that failed to process — review, retry, or dismiss them."
+        actions={
+          <Button as={RouterLink} to="/upload" size="sm" variant="ghost" color="gray.400" leftIcon={<FiArrowLeft />}>
+            Back to upload
+          </Button>
+        }
       />
       <Container maxW="container.xl" pt={8}>
       <VStack spacing={8} align="stretch">
@@ -302,14 +308,16 @@ const FailedUploads: React.FC = () => {
           borderColor="whiteAlpha.100"
           p={4}
         >
-          <HStack spacing={4} justify="space-between">
-            <HStack spacing={4}>
-              <Icon as={FiFilter} color="gray.400" />
+          <HStack spacing={3} justify="space-between" flexWrap="wrap">
+            <HStack spacing={3} flex={1} minW={0} flexWrap="wrap">
+              <Icon as={FiFilter} color="gray.400" flexShrink={0} display={{ base: 'none', sm: 'block' }} />
               <Select
                 placeholder="All Error Types"
                 value={errorTypeFilter}
                 onChange={handleErrorTypeChange}
-                maxW="300px"
+                maxW={{ base: '100%', sm: '300px' }}
+                minW="150px"
+                flex={1}
                 bg="space.900"
                 borderColor="space.700"
               >
@@ -325,7 +333,9 @@ const FailedUploads: React.FC = () => {
                 placeholder="All Statuses"
                 value={reviewedFilter}
                 onChange={handleReviewedFilterChange}
-                maxW="200px"
+                maxW={{ base: '100%', sm: '200px' }}
+                minW="150px"
+                flex={1}
                 bg="space.900"
                 borderColor="space.700"
               >
@@ -382,9 +392,8 @@ const FailedUploads: React.FC = () => {
                   </Thead>
                   <Tbody>
                     {failedUploads.map((upload) => (
-                      <>
+                      <Fragment key={upload.id}>
                         <Tr
-                          key={upload.id}
                           opacity={upload.reviewed ? 0.6 : 1}
                           borderLeft="4px solid"
                           borderLeftColor={
@@ -476,7 +485,7 @@ const FailedUploads: React.FC = () => {
                           </Td>
                         </Tr>
                         {expandedRow === upload.id && (
-                          <Tr key={`${upload.id}-expanded`}>
+                          <Tr>
                             <Td colSpan={6} bg={expandedRowBg} p={4}>
                               <VStack align="stretch" spacing={4}>
                                 {/* Error Message Section */}
@@ -544,7 +553,7 @@ const FailedUploads: React.FC = () => {
                             </Td>
                           </Tr>
                         )}
-                      </>
+                      </Fragment>
                     ))}
                   </Tbody>
               </Table>
@@ -653,8 +662,7 @@ const FailedUploads: React.FC = () => {
                     <Box>
                       <AlertTitle>Manual Review Suggested</AlertTitle>
                       <AlertDescription fontSize="sm">
-                        Use the team stats above to manually verify which team won.
-                        A future update will allow you to manually specify the winner.
+                        Check the error above, then pick the winning team from the expanded row.
                       </AlertDescription>
                     </Box>
                   </Alert>

@@ -22,7 +22,8 @@ import { FiShuffle, FiZap } from 'react-icons/fi';
 import { keyframes } from '@emotion/react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { playersApi, teamsApi, replaysApi } from '../../api/endpoints';
-import apiClient, { ApiClientError } from '../../api/client';
+import apiClient, { ApiClientError, isUnauthenticated } from '../../api/client';
+import { useAuth } from '../../components/AuthGate';
 import { Player, TeamPlayer, TeamSuggestionWithImpact } from '../../types/api';
 import PageHeader from '../../components/PageHeader';
 import AnimatedNumber from '../../components/AnimatedNumber';
@@ -50,8 +51,8 @@ const TeamGenerator: React.FC = () => {
   const [aiDifficulties, setAIDifficulties] = useState<Record<string, number>>({});
   const [draftOpen, setDraftOpen] = useState(false);
   const [resultsTitle, setResultsTitle] = useState('Your teams');
+  const { ensureSignedIn, signIn } = useAuth();
 
-  
   const toast = useToast({
     position: 'top',
     isClosable: true,
@@ -87,7 +88,7 @@ const TeamGenerator: React.FC = () => {
   const allAvailablePlayers = [...activePlayers, ...guestPlayers];
 
   const balanceTeamsMutation = useMutation({
-    mutationFn: async (playerIds: number[]) => {
+    mutationFn: async ({ playerIds }: { playerIds: number[]; afterSignIn?: boolean }) => {
       const realIds = playerIds.filter(id => id > 0);
       const guests = allAvailablePlayers.filter(gp => gp.id < 0 && playerIds.includes(gp.id));
 
@@ -129,10 +130,18 @@ const TeamGenerator: React.FC = () => {
         }
       }, 100);
     },
-    onError: (error: ApiClientError) => {
+    onError: (error: ApiClientError, { playerIds, afterSignIn }) => {
+      if (isUnauthenticated(error) && !afterSignIn) {
+        signIn('generate teams').then((signedIn) => {
+          if (signedIn) balanceTeamsMutation.mutate({ playerIds, afterSignIn: true });
+        });
+        return;
+      }
       toast({
-        title: 'Failed to generate teams',
-        description: error.userMessage || 'An unexpected error occurred',
+        title: isUnauthenticated(error) ? 'Still not signed in' : 'Failed to generate teams',
+        description: isUnauthenticated(error)
+          ? 'Try signing in again, or reload the page.'
+          : error.userMessage || 'An unexpected error occurred',
         status: 'error',
         duration: 5000,
         isClosable: true,
@@ -238,7 +247,7 @@ const TeamGenerator: React.FC = () => {
     is_ai: player.is_ai,
   });
 
-  const showDraftedTeams = async (team1: Player[], team2: Player[]): Promise<void> => {
+  const showDraftedTeams = async (team1: Player[], team2: Player[], afterSignIn = false): Promise<void> => {
     const teamMMR = (team: Player[]) => team.reduce((sum, p) => sum + p.mmr, 0);
     try {
       const { data } = await teamsApi.predict(team1.map((p) => p.id), team2.map((p) => p.id));
@@ -255,6 +264,10 @@ const TeamGenerator: React.FC = () => {
       }]);
       setDraftOpen(false);
     } catch (error) {
+      if (isUnauthenticated(error) && !afterSignIn) {
+        if (await signIn('score the drafted teams')) await showDraftedTeams(team1, team2, true);
+        return;
+      }
       toast({ title: "Couldn't score the drafted teams", description: (error as ApiClientError).userMessage, status: 'error' });
     }
   };
@@ -286,9 +299,14 @@ const TeamGenerator: React.FC = () => {
     setDraftOpen(false);
   };
 
-  const generateTeams = (): void => {
+  const generateTeams = async (): Promise<void> => {
     const playerIds = selectedPlayers.map((p) => p.id);
-    balanceTeamsMutation.mutate(playerIds);
+    if (!(await ensureSignedIn('generate teams'))) return;
+    balanceTeamsMutation.mutate({ playerIds });
+  };
+
+  const openDraft = async (): Promise<void> => {
+    if (await ensureSignedIn('draft teams')) setDraftOpen(true);
   };
 
   // Validation flags
@@ -610,7 +628,7 @@ const TeamGenerator: React.FC = () => {
                   variant="outline"
                   size="md"
                   leftIcon={<Icon as={FiShuffle} />}
-                  onClick={() => setDraftOpen(true)}
+                  onClick={openDraft}
                   isDisabled={draftSquad.length < minPlayers}
                   title={draftSquad.length < selectedPlayers.length ? "Guests and AI aren't included in a draft" : undefined}
                 >

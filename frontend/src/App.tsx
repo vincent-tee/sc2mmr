@@ -47,7 +47,6 @@ const PlayerDetail = lazy(() => import('./pages/PlayerDetail'));
 const MatchHistory = lazy(() => import('./pages/MatchHistory'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
 const RatingSystem = lazy(() => import('./pages/RatingSystem'));
-const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Achievements = lazy(() => import('./pages/Achievements'));
 const HeadToHead = lazy(() => import('./pages/HeadToHead'));
 const ResultsReview = lazy(() => import('./pages/ResultsReview'));
@@ -168,11 +167,7 @@ function App(): React.ReactElement {
               />
               <Route
                 path="/leaderboard"
-                element={
-                  <ErrorBoundary>
-                    <Leaderboard />
-                  </ErrorBoundary>
-                }
+                element={<Navigate to="/players" replace />}
               />
               <Route
                 path="/achievements"

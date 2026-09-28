@@ -38,6 +38,9 @@ export const apiClient: AxiosInstance = axios.create({
  */
 export const AUTH_EXPIRED_EVENT = 'sc2mmr:auth-expired';
 
+export const isUnauthenticated = (error: unknown): boolean =>
+  axios.isAxiosError(error) && error.response?.status === 401;
+
 // Request interceptor for debugging + optional admin token
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {

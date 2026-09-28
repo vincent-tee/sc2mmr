@@ -17,7 +17,7 @@ import {
   VStack,
 } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LuCrown } from 'react-icons/lu';
+import { LuArrowLeft, LuCrown } from 'react-icons/lu';
 import PageHeader from '../components/PageHeader';
 import LoadingState from '../components/LoadingState';
 import EmptyState from '../components/EmptyState';
@@ -171,6 +171,11 @@ const ResultsReview: React.FC = () => {
           { label: 'To review', value: data.total },
           { label: 'Doubtful', value: data.conflicts },
         ] : undefined}
+        actions={
+          <Button as={RouterLink} to="/upload" size="sm" variant="ghost" color="gray.400" leftIcon={<LuArrowLeft />}>
+            Back to upload
+          </Button>
+        }
       />
       <Container maxW="container.lg" pt={8}>
         <VStack align="stretch" spacing={4}>

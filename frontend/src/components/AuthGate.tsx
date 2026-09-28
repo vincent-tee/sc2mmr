@@ -7,7 +7,7 @@
  * renders children immediately. Real enforcement lives in the backend
  * middleware - this component is purely the UX for it.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -54,6 +54,14 @@ interface AuthContextValue {
    * (download) should just close the prompt and leave them on it.
    */
   requireLogin: (onCancel?: () => void) => void;
+  /**
+   * Resolves true once the visitor may write: immediately when auth is off or
+   * a session exists, otherwise after they sign in through the prompt (false
+   * if they cancel). `purpose` completes "Sign in to ..." in the prompt.
+   */
+  ensureSignedIn: (purpose?: string) => Promise<boolean>;
+  /** Like ensureSignedIn, but always prompts - for a write that just got a 401. */
+  signIn: (purpose?: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -61,6 +69,8 @@ const AuthContext = createContext<AuthContextValue>({
   publicRead: true,
   authenticated: true,
   requireLogin: () => {},
+  ensureSignedIn: async () => true,
+  signIn: async () => true,
 });
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -72,7 +82,8 @@ const LoginScreen: React.FC<{
    * back out of the password prompt instead of the whole app hard-locking. */
   onCancel?: () => void;
   overlay?: boolean;
-}> = ({ onSuccess, onCancel, overlay }) => {
+  purpose?: string;
+}> = ({ onSuccess, onCancel, overlay, purpose }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -131,10 +142,12 @@ const LoginScreen: React.FC<{
             Squad Access
           </Text>
           <Heading size="lg" fontFamily="heading" color="gray.100">
-            Members Only
+            {purpose ? `Sign in to ${purpose}` : 'Members Only'}
           </Heading>
           <Text fontSize="sm" color="gray.500" mt={2}>
-            Enter the squad password to open the tracker.
+            {purpose
+              ? 'Enter the squad password. Your picks stay as they are.'
+              : 'Enter the squad password to open the tracker.'}
           </Text>
         </Box>
 
@@ -168,7 +181,7 @@ const LoginScreen: React.FC<{
           fontWeight="bold"
           letterSpacing="wider"
         >
-          Enter
+          {purpose ? 'Sign in' : 'Enter'}
         </Button>
 
         {onCancel && (
@@ -180,7 +193,7 @@ const LoginScreen: React.FC<{
             onClick={onCancel}
             isDisabled={submitting}
           >
-            Go back
+            {purpose ? 'Cancel' : 'Go back'}
           </Button>
         )}
       </VStack>
@@ -197,6 +210,14 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // per-trigger "Go back" behavior - null means just close the prompt.
   const [prompt, setPrompt] = useState(false);
   const [promptCancel, setPromptCancel] = useState<(() => void) | null>(null);
+  const [promptPurpose, setPromptPurpose] = useState<string | undefined>(undefined);
+  const waitingForSignIn = useRef<((signedIn: boolean) => void)[]>([]);
+
+  const settleWaiting = (signedIn: boolean) => {
+    const waiting = waitingForSignIn.current;
+    waitingForSignIn.current = [];
+    waiting.forEach((resolve) => resolve(signedIn));
+  };
 
   const checkStatus = useCallback(async () => {
     try {
@@ -230,6 +251,7 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const onExpired = () => {
       if (status?.public_read) {
         setPromptCancel(null);
+        setPromptPurpose(undefined);
         setPrompt(true);
       } else {
         setState('locked');
@@ -239,20 +261,41 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, [status]);
 
-  const contextValue = useMemo<AuthContextValue>(
-    () => ({
-      authEnabled: status?.auth_enabled ?? false,
+  const signIn = useCallback((purpose?: string) => {
+    setPromptCancel(null);
+    setPromptPurpose(purpose);
+    setPrompt(true);
+    return new Promise<boolean>((resolve) => {
+      waitingForSignIn.current.push(resolve);
+    });
+  }, []);
+
+  const contextValue = useMemo<AuthContextValue>(() => {
+    // Fail open when we couldn't confirm status: only block on a *known*
+    // unauthenticated session.
+    const authenticated = status ? status.authenticated : true;
+    const authEnabled = status?.auth_enabled ?? false;
+    return {
+      authEnabled,
       publicRead: status?.public_read ?? true,
-      // Fail open when we couldn't confirm status: only block on a *known*
-      // unauthenticated session.
-      authenticated: status ? status.authenticated : true,
+      authenticated,
       requireLogin: (onCancel) => {
         setPromptCancel(() => onCancel ?? null);
+        setPromptPurpose(undefined);
         setPrompt(true);
       },
-    }),
-    [status]
-  );
+      ensureSignedIn: (purpose) =>
+        !authEnabled || authenticated ? Promise.resolve(true) : signIn(purpose),
+      signIn,
+    };
+  }, [status, signIn]);
+
+  const completeSignIn = async () => {
+    await checkStatus();
+    setPrompt(false);
+    setPromptCancel(null);
+    settleWaiting(true);
+  };
 
   if (state === 'checking') {
     return (
@@ -267,7 +310,7 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // the gate open - otherwise a route guarded on `authenticated` would see
   // it still false and re-lock in a loop.
   if (state === 'locked') {
-    return <LoginScreen onSuccess={checkStatus} />;
+    return <LoginScreen onSuccess={completeSignIn} />;
   }
 
   return (
@@ -276,15 +319,13 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       {prompt && (
         <LoginScreen
           overlay
-          onSuccess={() => {
-            checkStatus();
-            setPrompt(false);
-            setPromptCancel(null);
-          }}
+          purpose={promptPurpose}
+          onSuccess={completeSignIn}
           onCancel={() => {
             setPrompt(false);
             promptCancel?.();
             setPromptCancel(null);
+            settleWaiting(false);
           }}
         />
       )}

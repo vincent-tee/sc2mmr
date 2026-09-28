@@ -19,13 +19,12 @@ import {
 } from '@chakra-ui/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { FiArrowLeft, FiUsers, FiZap, FiTarget, FiDownload, FiMonitor } from 'react-icons/fi';
+import { FiArrowLeft, FiZap, FiTarget, FiDownload, FiMonitor } from 'react-icons/fi';
 import { replaysApi, impactApi } from '@/api/endpoints';
 import LoadingState from '@/components/LoadingState';
 import MatchBalanceFeedback from '@/components/MatchBalanceFeedback';
 import { useAuth } from '@/components/AuthGate';
 import MatchHeader from './MatchHeader';
-import OperativesTab from './OperativesTab';
 import CommentaryTab from './CommentaryTab';
 import AnalyticsTab from './AnalyticsTab';
 import ScoreScreenTab from './ScoreScreenTab';
@@ -135,8 +134,8 @@ const MatchDetail: React.FC = () => {
 
   return (
     <Box position="relative">
-      <Container maxW="container.xl" py={{ base: 4, md: 8 }} position="relative" zIndex={1}>
-        <VStack spacing={{ base: 5, md: 8 }} align="stretch">
+      <Container maxW="container.xl" py={{ base: 4, md: 6 }} position="relative" zIndex={1}>
+        <VStack spacing={{ base: 4, md: 5 }} align="stretch">
           {/* Back Button + Replay Download */}
           <HStack justify="space-between" align="center" flexWrap="wrap" gap={3}>
             <Button
@@ -144,7 +143,7 @@ const MatchDetail: React.FC = () => {
               variant="ghost"
               alignSelf="flex-start"
               onClick={() => navigate('/history')}
-              size={{ base: 'md', md: 'lg' }}
+              size="md"
               fontFamily="heading"
               _hover={{
                 transform: 'translateX(-4px)',
@@ -181,13 +180,12 @@ const MatchDetail: React.FC = () => {
 
           {/* Match Header */}
           <MatchHeader matchData={matchData} team1Won={team1Won} />
-          {authenticated && <MatchBalanceFeedback key={matchId} matchId={Number(matchId)} />}
 
           {/* Tabs for different views */}
           <Tabs
             colorScheme="brand"
             variant="enclosed"
-            size={{ base: 'sm', md: 'lg' }}
+            size={{ base: 'sm', md: 'md' }}
             isLazy
             sx={{
               '& .chakra-tabs__tab': {
@@ -209,10 +207,6 @@ const MatchDetail: React.FC = () => {
                 Scores
               </Tab>
               <Tab>
-                <Icon as={FiUsers} mr={2} />
-                Rating changes
-              </Tab>
-              <Tab>
                 <Icon as={FiZap} mr={2} />
                 Recap
               </Tab>
@@ -228,11 +222,6 @@ const MatchDetail: React.FC = () => {
                 <ScoreScreenTab matchData={matchData} team1Won={team1Won} />
               </TabPanel>
 
-              {/* Operatives Tab */}
-              <TabPanel px={0}>
-                <OperativesTab matchData={matchData} team1Won={team1Won} />
-              </TabPanel>
-
               {/* Commentary Tab */}
               <TabPanel px={0}>
                 <CommentaryTab commentary={commentary} isLoading={commentaryLoading} />
@@ -244,6 +233,7 @@ const MatchDetail: React.FC = () => {
               </TabPanel>
             </TabPanels>
           </Tabs>
+          {authenticated && <MatchBalanceFeedback key={matchId} matchId={Number(matchId)} />}
         </VStack>
       </Container>
     </Box>
