@@ -1,6 +1,6 @@
 /**
  * Leaderboard API Client
- * Streamlined to 5 core categories
+ * MMR and win rate boards
  */
 import { AxiosResponse } from 'axios';
 import apiClient from './client';
@@ -22,17 +22,7 @@ export interface LeaderboardApi {
     activeOnly?: boolean
   ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
 
-  /** Get recent form leaderboard (14-day half-life weighted) */
-  getRecentForm: (
-    limit?: number,
-    minGames?: number
-  ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
 
-  /** Get combat leaderboard */
-  getCombat: (
-    limit?: number,
-    minGames?: number
-  ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
 
   /** Get win rate leaderboard */
   getWinRate: (
@@ -40,15 +30,7 @@ export interface LeaderboardApi {
     minGames?: number
   ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
 
-  /** Get win streak leaderboard */
-  getWinStreak: (
-    limit?: number
-  ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
 
-  /** Get longest matches leaderboard (each player's own longest game) */
-  getLongestMatches: (
-    limit?: number
-  ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
 
   getMetaReport: () => Promise<AxiosResponse<MetaReportResponse>>;
 
@@ -72,17 +54,7 @@ export const leaderboardApi: LeaderboardApi = {
     });
   },
 
-  getRecentForm: (limit = 20, minGames = 10) => {
-    return apiClient.get<LeaderboardEntry[]>('/leaderboard/recent-form', {
-      params: { limit, min_games: minGames },
-    });
-  },
 
-  getCombat: (limit = 20, minGames = 5) => {
-    return apiClient.get<LeaderboardEntry[]>('/leaderboard/specialists', {
-      params: { category: 'combat', limit, min_games: minGames },
-    });
-  },
 
   getWinRate: (limit = 20, minGames = 20) => {
     return apiClient.get<LeaderboardEntry[]>('/leaderboard/winrate', {
@@ -90,17 +62,7 @@ export const leaderboardApi: LeaderboardApi = {
     });
   },
 
-  getWinStreak: (limit = 20) => {
-    return apiClient.get<LeaderboardEntry[]>('/leaderboard/winstreak', {
-      params: { limit },
-    });
-  },
 
-  getLongestMatches: (limit = 20) => {
-    return apiClient.get<LeaderboardEntry[]>('/leaderboard/longest-matches', {
-      params: { limit },
-    });
-  },
 
   getMetaReport: () => {
     return apiClient.get<MetaReportResponse>('/leaderboard/meta-report');
@@ -113,16 +75,8 @@ export const leaderboardApi: LeaderboardApi = {
     switch (category) {
       case 'mmr':
         return leaderboardApi.getMMR(limit, minGames, activeOnly);
-      case 'recent-form':
-        return leaderboardApi.getRecentForm(limit, minGames || 10);
-      case 'combat':
-        return leaderboardApi.getCombat(limit, minGames);
       case 'winrate':
         return leaderboardApi.getWinRate(limit, minGames || 20);
-      case 'winstreak':
-        return leaderboardApi.getWinStreak(limit);
-      case 'longest-matches':
-        return leaderboardApi.getLongestMatches(limit);
       default:
         return leaderboardApi.getMMR(limit, minGames);
     }

@@ -1,8 +1,8 @@
 /**
  * Players Page - Clubhouse Edition
  * One home for the squad: top-3 podium, then a searchable ranking table
- * with races, activity and recent form. Other boards (Combat, Win Rate, ...)
- * are alternate views behind the category switcher.
+ * with races, activity and recent form. The Win Rate board is an alternate
+ * view behind the category switcher.
  */
 import React, { useState, useMemo, useCallback } from 'react';
 import {
@@ -35,9 +35,9 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { keyframes } from '@emotion/react';
-import { FiActivity, FiTrendingUp, FiSearch } from 'react-icons/fi';
+import { FiTrendingUp, FiSearch } from 'react-icons/fi';
 import type { IconType } from 'react-icons';
-import { LuTrophy, LuSwords, LuFlame, LuCrown, LuSnowflake } from 'react-icons/lu';
+import { LuTrophy, LuFlame, LuCrown, LuSnowflake } from 'react-icons/lu';
 import { leaderboardApi } from '../api/leaderboard';
 import { playersApi } from '../api/endpoints';
 import RankBadge from '../components/RankBadge';
@@ -53,25 +53,9 @@ import {
 } from '../types/leaderboard';
 import LapsedToggle from '@/components/LapsedToggle';
 
-// Parse a "383W 325L" record string into a win-rate percentage.
-// Returns null when the extra_info isn't a W/L record (e.g. "Current: 1").
-const winRateFromRecord = (info?: string): string | null => {
-  if (!info) return null;
-  const match = info.match(/(\d+)\s*W\s*(\d+)\s*L/i);
-  if (!match) return null;
-  const wins = parseInt(match[1], 10);
-  const losses = parseInt(match[2], 10);
-  const total = wins + losses;
-  if (total === 0) return null;
-  return `${((wins / total) * 100).toFixed(1)}%`;
-};
-
 const CATEGORY_ICONS: Record<string, IconType> = {
   mmr: LuTrophy,
-  'recent-form': FiActivity,
-  combat: LuSwords,
   winrate: FiTrendingUp,
-  winstreak: LuFlame,
 };
 
 const HOT_TONE = { icon: LuFlame, color: 'orange.400', label: 'Hot' };
@@ -82,13 +66,6 @@ const toneFromRecentForm = (recentForm: number | null | undefined) => {
   if (recentForm == null) return null;
   if (recentForm >= 0.7) return HOT_TONE;
   if (recentForm <= 0.3) return COLD_TONE;
-  return null;
-};
-
-// The recent-form board sends its hot/cold flag as an emoji
-const toneFromFormIcon = (formIcon: string | null | undefined) => {
-  if (formIcon === '🔥') return HOT_TONE;
-  if (formIcon?.startsWith('❄')) return COLD_TONE;
   return null;
 };
 
@@ -521,8 +498,6 @@ interface CategoryTableProps {
 
 const CategoryTable: React.FC<CategoryTableProps> = React.memo(({ entries, category, onPlayerClick, raceById }) => {
   const categoryInfo = LEADERBOARD_CATEGORIES.find((c) => c.key === category);
-  const isRecentForm = category === 'recent-form';
-  const showRecordCols = category === 'winrate';
 
   return (
     <Table variant="simple" size="md" sx={tableSx}>
@@ -531,25 +506,11 @@ const CategoryTable: React.FC<CategoryTableProps> = React.memo(({ entries, categ
           <Th {...thProps} w={{ base: '32px', md: '64px' }}>Rank</Th>
           <Th {...thProps}>Player</Th>
           <Th {...thProps} isNumeric>{categoryInfo?.unit || 'Value'}</Th>
-          {isRecentForm ? (
-            <>
-              <Th {...thProps} isNumeric display={fromMd}>Games</Th>
-              <Th {...thProps} isNumeric display={fromMd}>WR</Th>
-            </>
-          ) : showRecordCols ? (
-            <>
-              <Th {...thProps} display={fromMd}>Record</Th>
-              <Th {...thProps} isNumeric display={fromMd}>Win rate</Th>
-            </>
-          ) : (
-            <Th {...thProps} display={fromMd}>Info</Th>
-          )}
+          <Th {...thProps} display={fromMd}>Record</Th>
         </Tr>
       </Thead>
       <Tbody>
-        {entries.map((entry) => {
-          const tone = toneFromFormIcon(entry.form_icon);
-          return (
+        {entries.map((entry) => (
             <Tr
               key={entry.player_id}
               cursor="pointer"
@@ -574,45 +535,13 @@ const CategoryTable: React.FC<CategoryTableProps> = React.memo(({ entries, categ
                   {formatLeaderboardValue(entry.value, category)}
                 </Text>
               </Td>
-              {isRecentForm ? (
-                <>
-                  <Td {...tdProps} isNumeric display={fromMd}>
-                    <Text color="gray.400" fontFamily="mono" fontSize="sm">
-                      {entry.games_played ?? '-'}/30
-                    </Text>
-                  </Td>
-                  <Td {...tdProps} isNumeric display={fromMd}>
-                    <HStack justify="flex-end" spacing={1.5}>
-                      {tone && <Icon as={tone.icon} color={tone.color} boxSize={3.5} aria-label={tone.label} />}
-                      <Text color="gray.300" fontFamily="mono" fontSize="sm" fontWeight="600">
-                        {entry.secondary_value != null ? `${entry.secondary_value}%` : '-'}
-                      </Text>
-                    </HStack>
-                  </Td>
-                </>
-              ) : showRecordCols ? (
-                <>
-                  <Td {...tdProps} display={fromMd}>
-                    <Text color="gray.400" fontFamily="mono" fontSize="sm">
-                      {entry.extra_info || '-'}
-                    </Text>
-                  </Td>
-                  <Td {...tdProps} isNumeric display={fromMd}>
-                    <Text color="gray.300" fontFamily="mono" fontSize="sm" fontWeight="600">
-                      {winRateFromRecord(entry.extra_info) ?? '-'}
-                    </Text>
-                  </Td>
-                </>
-              ) : (
-                <Td {...tdProps} display={fromMd}>
-                  <Text color="gray.500" fontSize="sm">
-                    {entry.extra_info || '-'}
-                  </Text>
-                </Td>
-              )}
+              <Td {...tdProps} display={fromMd}>
+                <Text color="gray.400" fontFamily="mono" fontSize="sm">
+                  {entry.extra_info || '-'}
+                </Text>
+              </Td>
             </Tr>
-          );
-        })}
+        ))}
       </Tbody>
     </Table>
   );
