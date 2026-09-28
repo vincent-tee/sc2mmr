@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -210,3 +210,33 @@ def test_alias_below_min_players_does_not_apply(db_session, replay):
     ingest_match(db_session, one_v_one, require_experience=False)
 
     assert db_session.query(Player).filter(Player.name == "Player 0").first() is not None
+
+
+def another_players_copy(replay, seconds_later=8, duration_seconds=540):
+    return replace(replay, replay_hash="teammate-file", game_fingerprint="teammate-fingerprint",
+                   played_at=replay.played_at + timedelta(seconds=seconds_later),
+                   duration_seconds=duration_seconds)
+
+
+def test_same_game_recorded_by_another_player_counts_once(db_session, replay):
+    match, _ = ingest_match(db_session, replay, require_experience=False)
+    before = player_state(db_session)
+    same_game, created = ingest_match(db_session, another_players_copy(replay), require_experience=False)
+    assert not created
+    assert same_game.id == match.id
+    assert db_session.query(Match).count() == 1
+    assert player_state(db_session) == before
+
+
+def test_rematch_with_the_same_players_on_the_same_map_is_a_new_game(db_session, replay):
+    ingest_match(db_session, replay, require_experience=False)
+    rematch = another_players_copy(replay, seconds_later=12 * 60, duration_seconds=600)
+    _, created = ingest_match(db_session, rematch, require_experience=False)
+    assert created
+    assert db_session.query(Match).count() == 2
+
+
+def test_game_aborted_in_the_lobby_is_rejected(db_session, replay):
+    with pytest.raises(ValidationError, match="aborted"):
+        ingest_match(db_session, replace(replay, duration_seconds=4), require_experience=False)
+    assert db_session.query(Match).count() == 0

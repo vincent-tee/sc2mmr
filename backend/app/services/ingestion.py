@@ -1,6 +1,7 @@
 """Shared, atomic persistence for HTTP uploads and batch replay ingestion."""
 
 from contextlib import contextmanager
+from datetime import timedelta
 from typing import Callable, Optional
 import logging
 
@@ -11,6 +12,9 @@ from ..models import FailedUpload, Match, MatchPlayer, Player, Race
 from ..replay_parser import ReplayData
 from ..rating_system import RatingSystem
 from .player_service import PlayerService
+
+MIN_GAME_SECONDS = 60
+LONGEST_GAME = timedelta(hours=2)
 
 
 @contextmanager
@@ -34,11 +38,32 @@ def ingestion_transaction(db: Session):
         raise
 
 
+def game_started_at(played_at, duration_seconds):
+    return played_at - timedelta(seconds=duration_seconds or 0)
+
+
+def find_same_game_recorded_by_another_player(db: Session, replay_data: ReplayData) -> Optional[Match]:
+    started_at = game_started_at(replay_data.played_at, replay_data.duration_seconds)
+    roster = set(resolve_player_names(db, replay_data))
+    candidates = db.query(Match).filter(
+        Match.map_name == replay_data.map_name,
+        Match.played_at > started_at,
+        Match.played_at < replay_data.played_at + LONGEST_GAME,
+    ).all()
+    for match in candidates:
+        overlaps = game_started_at(match.played_at, match.duration_seconds) < replay_data.played_at
+        if overlaps and {mp.player.name for mp in match.participants} == roster:
+            return match
+    return None
+
+
 def find_existing_match(db: Session, replay_data: ReplayData) -> Optional[Match]:
     existing = db.query(Match).filter(Match.replay_hash == replay_data.replay_hash).first()
     fingerprint = getattr(replay_data, "game_fingerprint", None)
     if existing is None and fingerprint:
         existing = db.query(Match).filter(Match.game_fingerprint == fingerprint).first()
+    if existing is None:
+        existing = find_same_game_recorded_by_another_player(db, replay_data)
     return existing
 
 
@@ -63,6 +88,8 @@ def upsert_match(db: Session, replay_data: ReplayData, replay_file_path=None) ->
 
 
 def validate_result(replay_data: ReplayData) -> None:
+    if (replay_data.duration_seconds or 0) < MIN_GAME_SECONDS:
+        raise ValidationError(f"Game lasted under {MIN_GAME_SECONDS} seconds, so it was aborted, not played")
     teams = {p.team for p in replay_data.players}
     winning_teams = {p.team for p in replay_data.players if p.won}
     if teams != {1, 2} or len(winning_teams) != 1:

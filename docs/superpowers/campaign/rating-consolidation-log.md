@@ -688,11 +688,12 @@ copies, which leaks outcomes and flipped the dedup conclusion.
    [-0.0042, +0.0032]), so removing them is a pure correctness fix. It needs
    owner sign-off (match deletion) and a fingerprint rule that tolerates a
    few seconds of start-time difference.
-3. **`player_match_metrics` is unreliable at the team level.** On ground-truth
-   matches, team `army_value_killed` picks the winner 61.3%; the replay's own
-   `resources_killed` picks it 94.6%. This feeds `avg_combat_score`, the
-   composite objective's `components` term, and the ML features. Parser and
-   backfill project.
+3. **`player_match_metrics` was stale, not mis-parsed** (corrected in
+   Session 12). The parsers compute the right army-only values; the stored
+   rows were never re-parsed on prod, and the 2026-09-16 local backfill
+   matched raw replay names, skipping every aliased player. (The first
+   "61% vs 95%" comparison also mixed army-only DB values with all-category
+   replay kills; army-only kills pick the winner 76.5% from the replay.)
 4. The parser's no-result fallback compares unspent bank
    (`minerals_current`), not resources collected. Left alone: the
    supply-advantage branch makes it 92.1% on recorded replays, but final
@@ -744,3 +745,72 @@ Tests: `tests/test_balance_capture.py` (+4 timing regressions; helpers now
 set `played_at` as the end time), `tests/test_composite_balancer.py`
 helper, `tests/test_ml_pipeline_e2e.py` gate patch. Suite: 300 passed /
 5 skipped / 0 failed.
+
+---
+
+## 2026-09-28 — Session 12: data repairs (duplicates, aborted games, aliases, metrics backfill)
+
+Owner: "fix it all"; winners were "all programmatic", method unknown.
+
+**Winners: kept, with evidence.** The 2026-07-06 fix gave winners to 149
+previously winner-less matches (`backup_pre_winner_fix_20260706_103705` vs
+now), 60 of the 92 disputed ones among them. Its labels side with the
+pre-match favorite 53% of the time, so they were not produced from the
+ratings. On the 92 disputed games the stored labels make the favorite win
+67% (ground-truth games: 68%), while the replay-signal consensus would make
+it 33%. With the leak-free relabel test (Session 11 finding 1), stored labels
+are right and the replay-state signals mislead on replays that end when the
+recorder leaves. The parser fallback is left unchanged: no replay-derived
+rule is validated for no-result replays. `UnifiedParser._determine_winner`
+reads `p.stats`, which sc2reader rarely fills, so on the orchestrator path it
+yields no winner and relies on manual review.
+
+**Duplicates, by overlap.** Two stored matches are one game when they are on
+the same map with the same roster and their play time overlaps (start =
+`played_at` - duration; `played_at` is the replay's end). On prod: 89 pairs,
+starts at most 24 s apart, 24 with conflicting winners. The copy kept is the
+longer one: where exactly one copy has a recorded in-game result, the longer
+copy is that one 57/57.
+
+**Aborted games.** 6 stored "games" lasted 0-22 s (lobby aborts rated as
+results). Anything under 60 s is now rejected at ingestion and removed.
+
+**Code:**
+- `app/services/ingestion.py`: `find_existing_match` also recognises the same
+  game recorded by another player (overlap rule), so the second copy is
+  treated like a fingerprint match (one match, winners must agree, longer
+  replay kept). `validate_result` rejects games under `MIN_GAME_SECONDS`.
+- `app/services/game_cleanup.py`: `plan_cleanup` (aborted + duplicate
+  copies, dry-run plan) and `remove_matches` (bulk delete; DB cascades remove
+  participants, metrics, features, achievements/rivalry rows tied to the
+  match; balance/judgment links are set to NULL).
+- `app/services/metrics_backfill.py` + rewritten
+  `scripts/backfill_metrics_shard.py` / `scripts/apply_metrics_backfill.py`:
+  replay names resolve through `PlayerService.resolve_canonical_name`, rows
+  are keyed by replay hash + player id, missing metrics rows are created, and
+  player averages are recomputed. Kill events are no longer backfilled:
+  nothing reads `kill_events`.
+
+**Aliases needed** (games were merged onto the main account earlier without
+an alias, so replay names don't resolve): DemonSlayer -> ShadowDragon,
+WhiteFang -> ShadowDragon, SirhcT -> Sirhc (all three inferred from where
+their games are stored), theEngineer -> LayManFan, vinteezy -> shunmanFan
+(owner-confirmed). Ratings already credit the main accounts; the aliases fix
+metrics attribution and future uploads under those names.
+
+**Verified on a copy of the 2026-09-27 prod snapshot:** cleanup removes 95
+matches (878 -> 783); in-place recalculation processes 760 and skips 23
+ghost matches (no participants; left alone, replays exist if they are ever
+worth restoring). Backfill: 4,049 rows updated, 600 created, 0 unmatched
+after the aliases; per-player `army_value_killed` equals the replay's
+army-only kills 770/770 (sampled). Team army kills now pick the recorded
+winner 68.2% on ground-truth games (AI players' kills aren't stored, so the
+replay's 76.5% is the ceiling).
+
+**Leaderboard after cleanup + recalculation (display MMR, 15+ games):**
+Stephan 4165, Sirhc 3300, androidsine 3154, HahaLolo 3037, shunmanFan 3020,
+ShadowDragon 2800, banzo 2391, Tingmore 2318, Redevilz 2171, ChrisO 2150.
+
+**Not yet on prod:** applying the cleanup and the metrics rows on prod needs
+admin endpoints (prod is SQLite inside Cloud Run; writes must go through the
+app). Pending owner go-ahead.
