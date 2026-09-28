@@ -11,6 +11,7 @@ from ..exceptions import ValidationError
 from ..models import FailedUpload, Match, MatchPlayer, Player, Race
 from ..replay_parser import ReplayData
 from ..rating_system import RatingSystem
+from .derived_data import mark_stale, rebuild_if_due
 from .player_service import PlayerService
 
 MIN_GAME_SECONDS = 60
@@ -85,6 +86,10 @@ def upsert_match(db: Session, replay_data: ReplayData, replay_file_path=None) ->
     db.add(match)
     db.flush()
     return match, True
+
+
+def later_game_already_rated(db: Session, match: Match) -> bool:
+    return db.query(Match.id).filter(Match.id != match.id, Match.played_at > match.played_at).first() is not None
 
 
 def validate_result(replay_data: ReplayData) -> None:
@@ -177,6 +182,8 @@ def ingest_match(
             work.flush()
         if created:
             RatingSystem.update_ratings_from_match(work, replay_data, match)
+            if later_game_already_rated(work, match):
+                mark_stale(work, f"Match {match.id} was uploaded after later games were already rated")
         if failed_upload_id is not None:
             failed = work.get(FailedUpload, failed_upload_id)
             if failed is not None:
@@ -227,3 +234,7 @@ def post_process_match(db: Session, match_id: int, created: bool, replay_path=No
     if created:
         run_optional_processing(db, "Achievements", award_achievements)
         run_optional_processing(db, "Rivalry calculation", RivalryService.calculate_all_rivalries)
+    try:
+        rebuild_if_due(db)
+    except Exception:
+        logging.getLogger(__name__).exception("Derived data rebuild failed")

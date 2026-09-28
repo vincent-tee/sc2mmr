@@ -9,6 +9,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Box, Spinner, Center, Link } from '@chakra-ui/react';
 import Navigation from './components/Navigation';
+import DerivedDataBanner from './components/DerivedDataBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 
 /**
@@ -78,6 +79,7 @@ function App(): React.ReactElement {
       <SkipToContent />
       <Box minH="100vh" position="relative" zIndex={1}>
         <Navigation />
+        <DerivedDataBanner />
         <Box as="main" role="main" id="main-content">
           <Suspense fallback={<PageLoader />}>
             <Routes>

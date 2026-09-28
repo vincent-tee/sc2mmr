@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from ..models import Match
+from .derived_data import mark_stale
 from .ingestion import MIN_GAME_SECONDS, game_started_at
 
 
@@ -61,6 +62,8 @@ def plan_cleanup(db: Session) -> CleanupPlan:
 
 def remove_matches(db: Session, match_ids: list[int]) -> int:
     removed = db.query(Match).filter(Match.id.in_(match_ids)).delete(synchronize_session=False)
+    if removed:
+        mark_stale(db, f"Removed {removed} duplicate or aborted games")
     db.commit()
     db.expire_all()
     return removed

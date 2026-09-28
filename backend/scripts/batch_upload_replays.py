@@ -156,7 +156,7 @@ def main():
 
         if new_matches > 0:
             print(f"\n💡 Tip: Run rating recalculation if needed:")
-            print(f"   python scripts/recalculate_all_mmrs.py")
+            print(f"   python scripts/rebuild_derived_data.py")
 
 
 if __name__ == "__main__":

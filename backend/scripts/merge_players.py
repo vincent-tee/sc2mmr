@@ -9,7 +9,7 @@ What it does:
   2. Reassigns all match_players rows from the duplicate to the canonical player.
   3. Handles synergies and rivalries that reference the duplicate.
   4. Deletes the duplicate player record.
-  5. Does NOT recalculate MMR — run recalculate_all_mmrs.py afterwards.
+  5. Does NOT recalculate MMR — run rebuild_derived_data.py afterwards.
 """
 
 import argparse
@@ -126,7 +126,7 @@ def merge_players(from_id: int, into_name: str = None, into_id: int = None, dry_
         db.delete(source)
         db.commit()
         print(f"\n✅ Deleted duplicate player [{source.id}] '{source.name}'")
-        print(f"\nNow run: python backend/scripts/recalculate_all_mmrs.py")
+        print(f"\nNow run: python backend/scripts/rebuild_derived_data.py")
 
     except Exception as e:
         db.rollback()

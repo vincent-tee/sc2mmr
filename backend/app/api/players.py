@@ -14,7 +14,7 @@ from ..models import Player, MatchPlayer, Match
 from ..rating_system import RatingSystem
 from ..impact_service import ImpactService
 from ..replay_parser import ReplayData, PlayerData
-from ..services.rating_recalculation import recalculate_ratings_in_place
+from ..services.derived_data import mark_stale, rebuild_derived_data
 from ..services.fk_repair import repair_orphaned_metrics
 from pydantic import BaseModel
 
@@ -490,14 +490,10 @@ class RecalculationStats(BaseModel):
     dependencies=[Depends(require_admin)],
 )
 def recalculate_all_ratings(db: Session = Depends(get_db)):
-    """Recalculate every player's TrueSkill mu/sigma/display-MMR from scratch,
-    in chronological order, using the same policy as live ingestion.
-
-    Updates existing match_players rows by primary key -- never deletes or
-    recreates them, so child tables (metrics, performance features) can
-    never be orphaned by this running. See app/services/rating_recalculation.py.
-    """
-    stats = recalculate_ratings_in_place(db)
+    """Rebuild ratings and all other derived data from match history."""
+    stats = rebuild_derived_data(db)
+    if stats is None:
+        raise HTTPException(status_code=409, detail="A rebuild is already running")
     return RecalculationStats(**stats)
 
 
@@ -752,9 +748,7 @@ def merge_players(request: MergePlayersRequest, db: Session = Depends(get_db)):
         target_player.avg_efficiency_score = source_efficiency
         target_player.avg_overall_impact = source_overall
 
-    # Note: TrueSkill ratings (mu, sigma) are NOT merged
-    # The target player keeps their existing rating
-    # This is intentional - merging would require recalculating all matches chronologically
+    mark_stale(db, f"Merged '{request.source_player_name}' into '{request.target_player_name}'")
 
     # Delete the source player
     db.delete(source_player)

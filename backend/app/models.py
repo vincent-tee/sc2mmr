@@ -1083,6 +1083,19 @@ class PostgameFeedbackType(str, enum.Enum):
     OTHER = "other"
 
 
+class DerivedDataState(Base):
+    __tablename__ = "derived_data_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stale_since: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    stale_reason: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    rebuild_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    rebuilding_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_rebuilt_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_rebuild_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
 class BalanceSelection(Base):
     """Immutable final teams recorded when the organizer starts a game."""
 

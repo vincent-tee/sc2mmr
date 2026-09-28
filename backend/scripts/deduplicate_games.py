@@ -232,7 +232,7 @@ def main():
                 print(f"\n✅ Deleted {deleted} duplicate matches")
                 print(f"✅ Kept {kept} matches (longest version of each game)")
                 print("\n⚠️  You may want to recalculate ratings:")
-                print("   python scripts/recalculate_all_mmrs.py")
+                print("   python scripts/rebuild_derived_data.py")
             else:
                 print(f"\n📊 Summary (DRY RUN):")
                 print(f"   Would delete: {deleted} matches")

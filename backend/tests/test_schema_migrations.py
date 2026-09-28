@@ -17,7 +17,8 @@ def test_empty_database_upgrade_is_repeatable(engine):
     upgrade_schema(engine)
     upgrade_schema(engine)
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0005"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0006"
+        assert connection.execute(text("SELECT count(*) FROM derived_data_state WHERE id = 1")).scalar() == 1
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
     indexes = inspect(engine).get_indexes("matches")
     assert any(index["name"] == "uq_matches_game_fingerprint" and index["unique"] for index in indexes)

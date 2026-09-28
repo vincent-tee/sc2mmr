@@ -814,3 +814,84 @@ ShadowDragon 2800, banzo 2391, Tingmore 2318, Redevilz 2171, ChrisO 2150.
 **Not yet on prod:** applying the cleanup and the metrics rows on prod needs
 admin endpoints (prod is SQLite inside Cloud Run; writes must go through the
 app). Pending owner go-ahead.
+
+---
+
+## 2026-09-28 — Session 13: prune derived data, one rebuild, out-of-order auto-rebuild
+
+Owner approved the Session 12 inventory table ("do it now"), then asked to
+remove synergy entirely ("remove everything synergy-related, unless there's
+a better heuristic"; none is validated: Session 9-era residual test was null).
+
+**Retired (columns and tables stay; nothing computes or exposes them):**
+unified/handicap-corrected MMR, hybrid MMR/PIM, recency-weighted MMR,
+session-weighted MMR, timing-adjusted MMR; the match-outcome ML predictor
+(SHAP panel, `/teams/predict-ml`, match-detail ML probability, orchestrator
+retraining, composite ML term folded into closeness 0.45 + 0.10 = 0.55, image
+no longer ships `xgboost_model.pkl`); auto-optimisation weights; the
+`/adaptive` routes except build-order retrain; `/teams/balance-with-model`,
+`/compare-models`, `/models`, `/balance-with-ml-metrics`; empty-table writers
+(`live_match_feed`, `meta_feedback`, `feature_suggestions`,
+`component_accuracy`). Synergy: gone from the balancer (ranking and badge),
+uploads, the duo/trio leaderboards, the impact synergy endpoints and the
+lineup predictor (chemistry, synergy list, upset alert). Duo achievements
+now count wins with the same teammate from match history. Coaching tips are
+stat-based only (they used stored SHAP) and tolerate missing averages.
+Frontend types, wrappers and pages were updated with each group.
+
+**One rebuild** (`app/services/derived_data.py::rebuild_derived_data`):
+ratings, per-match snapshots and game counts (`recalculate_ratings_in_place`),
+each match's stored win probability, metric averages, rivalries,
+achievements (additive: never revokes), and suggestion re-resolution, in one
+`ingestion_transaction` so a failure leaves the DB unchanged. ~6 s on prod
+data. `POST /players/recalculate-ratings` now calls it.
+
+**Staleness** (`derived_data_state`, migration 0006): marked by an upload
+older than an already-rated game, a player merge, a duplicate/aborted-game
+cleanup and a stats backfill. Each mark pushes `rebuild_due_at` to now + 2 min
+(debounce). Cloud Run throttles CPU after a response and can scale to zero,
+so the rebuild runs inside a request: after any upload's own transaction
+commits, or when the stale banner (signed-in users only; a 401 would bounce
+viewers to login) calls `POST /maintenance/derived-data/rebuild-if-due`.
+The claim is an atomic compare-and-set that also requires "stale and due",
+and expires after 10 min so a killed instance can't wedge it. Admin
+fallback: `POST /maintenance/derived-data/rebuild` and the banner's
+"Rebuild now" button (shown when the admin token is set).
+
+**Data repair endpoints (admin):** `POST /maintenance/duplicate-games`
+(dry run by default; apply requires the exact previewed match ids, 409
+otherwise) and `POST /maintenance/metrics-backfill` (rows keyed by replay
+hash + player id, from `scripts/backfill_metrics_shard.py`).
+
+**Verification:**
+- Equivalence test: 18 games uploaded shuffled + rebuild == uploaded in order
+  (ratings, snapshots, match win probabilities, rivalries). Also: rebuild is
+  idempotent, failure is atomic and stays due, claim expiry, debounce.
+- Prod copy, full sequence over HTTP on a local server: migration 0006 on
+  boot; 5 aliases; cleanup preview 95 = apply 95; 4,841 stats rows (4,210
+  updated, 631 created, 0 unmatched); rebuild 6.1 s; leaderboard as projected
+  in Session 12. Two rebuilds bit-identical except ~1e-14 float noise in the
+  recency-weighted averages (weighted by elapsed time).
+- Pair-synergy scoring was 45 s of a 49 s rebuild; a bulk rewrite matched the
+  per-pair scorer on all 214 pairs before synergy was removed altogether.
+- Backend 318 passed / 5 skipped; frontend tsc, lint (1 pre-existing
+  warning), build clean.
+
+**Deploy order:** frontend (Vercel) before backend. The old lineup predictor
+reads `prediction.synergies.length`; the new frontend tolerates the old
+backend (status banner hides on error).
+
+**Dead code awaiting deletion** (file deletion was blocked by the permission
+classifier this session): `backend/scripts/recalculate_all_mmrs.py`,
+`backend/recalculate_ratings.py`, `app/services/handicap_mmr_service.py`,
+`adaptive_balancer.py`, `session_weighted_ratings.py`, `rating_models.py`,
+`pi_calculator.py`, `component_accuracy_tracker.py`, `synergy_calculator.py`,
+`ml_predictor.py`, `ml_prediction_service.py`, `shap_feature_importance.py`,
+`app/auto_adaptive.py`, `app/adaptive_model.py`, `app/playstyle_analyzer.py`,
+tests `test_adaptive_balancer.py`, `test_balance_regression.py`,
+`test_pi_calculator.py`, `test_xgboost_shap.py`; frontend
+`components/MatchSHAPExplainer.tsx`, `components/LeaderboardTable.tsx`,
+`pages/MatchHistory/` (never routed; `MatchHistory.tsx` is the page), and the
+`PlayerSynergy` type once `SynergyTab.tsx` is gone. Skills under
+`.claude/skills/` still describe the retired variants in many places; the
+change-control and run-and-operate recalculation instructions are updated.

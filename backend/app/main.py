@@ -20,6 +20,7 @@ from .api import (
     leaderboard,
     headtohead,
     judgments,
+    maintenance,
 )
 from .auth import RequireSessionMiddleware
 from .auth import router as auth_router
@@ -82,6 +83,7 @@ app.include_router(achievements.router)
 app.include_router(leaderboard.router)
 app.include_router(headtohead.router)
 app.include_router(judgments.router)
+app.include_router(maintenance.router)
 
 
 @app.get("/")

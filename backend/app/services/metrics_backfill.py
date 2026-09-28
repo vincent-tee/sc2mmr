@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..impact_service import ImpactService
 from ..models import Match, MatchPlayer, PlayerMatchMetrics
+from .derived_data import mark_stale
 
 BACKFILLED_FIELDS = (
     "army_value_built", "army_value_killed", "army_value_lost", "spending_efficiency",
@@ -49,6 +50,8 @@ def apply_metrics_rows(db: Session, rows: list[dict]) -> BackfillStats:
     db.flush()
     for player_id in touched_players:
         ImpactService.update_player_averages(db, player_id)
+    if stats.updated or stats.created:
+        mark_stale(db, "Per-match stats were re-parsed from replays")
     db.commit()
     stats.players_reaveraged = len(touched_players)
     return stats
