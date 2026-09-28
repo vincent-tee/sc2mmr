@@ -93,9 +93,6 @@ export const playersApi: PlayersApi = {
 export interface TeamsApi {
   balance: (playerIds: number[], topN?: number, mapName?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
   quickBalance: (playerIds: number[]) => Promise<AxiosResponse<TeamSuggestion[]>>;
-  balanceWithModel: (playerIds: number[], model?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
-  compareModels: (playerIds: number[]) => Promise<AxiosResponse<Record<string, TeamSuggestion[]>>>;
-  getModels: () => Promise<AxiosResponse<string[]>>;
   getAIDifficulties: () => Promise<AxiosResponse<{ difficulties: Record<string, number>, config_path: string }>>;
   predict: (team1Ids: number[], team2Ids: number[]) => Promise<AxiosResponse<MatchPredictionResponse>>;
 }
@@ -118,25 +115,6 @@ export const teamsApi: TeamsApi = {
     });
   },
 
-  // Balance with specific model
-  balanceWithModel: (playerIds: number[], model = 'trueskill') => {
-    return apiClient.post<TeamSuggestion[]>('/teams/balance-with-model', {
-      player_ids: playerIds,
-      model
-    });
-  },
-
-  // Compare all models
-  compareModels: (playerIds: number[]) => {
-    return apiClient.post<Record<string, TeamSuggestion[]>>('/teams/compare-models', {
-      player_ids: playerIds
-    });
-  },
-
-  // Get available models
-  getModels: () => {
-    return apiClient.get<string[]>('/teams/models');
-  },
   // Get AI difficulties
   getAIDifficulties: () => {
     return apiClient.get<{ difficulties: Record<string, number>, config_path: string }>('/teams/ai-difficulties');

@@ -20,14 +20,11 @@ class PlayerInfo:
     avg_combat_score: float = 25.0
     economic_score: float = 60.0
     efficiency_score: float = 55.0
-    timing_adjusted_mmr: float = 0.0
 
     @classmethod
     def from_player(cls, player: Player) -> "PlayerInfo":
         avg_fdt = player.avg_first_damage_timing or 300
         avg_combat = player.avg_combat_score or 25
-        timing_bonus = (300 - avg_fdt) / 60 * 100
-        timing_adjusted = player.mmr + timing_bonus
 
         return cls(
             id=player.id,
@@ -42,7 +39,6 @@ class PlayerInfo:
             avg_combat_score=avg_combat,
             economic_score=player.avg_economic_score or 60.0,
             efficiency_score=player.avg_efficiency_score or 55.0,
-            timing_adjusted_mmr=timing_adjusted,
         )
 
 
