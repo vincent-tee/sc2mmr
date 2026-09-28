@@ -136,6 +136,16 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, winningTeam }) => 
 
         {match.result_source === 'unknown' && <UnknownResultNotice teamSupply={match.result_evidence?.team_supply} />}
 
+        {match.result_source === 'not_rateable' && (
+          <HStack mt={4} spacing={3} align="start" p={3} borderRadius="lg" bg="whiteAlpha.50" borderLeft="3px solid" borderLeftColor="gray.500">
+            <Icon as={FiHelpCircle} color="gray.400" mt={0.5} />
+            <Text fontSize="sm" color="gray.300">
+              <Text as="span" fontWeight="bold" color="gray.200">Not rated.</Text>{' '}
+              This wasn&apos;t two teams against each other, so it doesn&apos;t count towards anyone&apos;s rating.
+            </Text>
+          </HStack>
+        )}
+
         {match.result_source === 'suggested' && winningTeam !== null && (
           <SuggestedResultNotice
             winningTeam={winningTeam}

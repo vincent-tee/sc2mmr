@@ -116,6 +116,17 @@ def settled_result(evidence: Optional[dict]) -> tuple[str, Optional[int]]:
     return (ResultSource.SUGGESTED, winner) if winner is not None else (ResultSource.UNKNOWN, None)
 
 
+def mark_not_rateable(db: Session, match: Match, marked_by: str, now: Optional[datetime] = None) -> None:
+    """Take a game that isn't two teams against each other out of rating for good."""
+    if not marked_by.strip():
+        raise ResultChangeError("Say who is marking the game")
+    set_winner(db, match, None, f"Match {match.id} marked not rateable by {marked_by.strip()}")
+    match.result_source = ResultSource.NOT_RATEABLE
+    match.result_confirmed_by = marked_by.strip()
+    match.result_confirmed_at = now or datetime.utcnow()
+    db.commit()
+
+
 @dataclass
 class SettleReport:
     checked: int = 0

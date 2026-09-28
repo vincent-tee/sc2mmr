@@ -30,11 +30,12 @@ import { leaderboardApi } from '../api/leaderboard';
 import RankBadge from '../components/RankBadge';
 import { formatDateTimeShort, getPlayerAvatarUrl, getPlayerRaces, getRaceColor } from '../utils/formatting';
 import type { Player, MatchWithPlayers } from '../types/api';
+import { isRatedResult } from '../utils/matchResult';
 
 /** Compact match row for the battles feed */
 const MatchRow: React.FC<{ match: MatchWithPlayers; onClick: () => void }> = ({ match, onClick }) => {
   const allPlayers = match.players || [];
-  const rated = match.result_source !== 'unknown';
+  const rated = isRatedResult(match.result_source);
   const winners = allPlayers.filter((p) => p.won);
   const losers = allPlayers.filter((p) => !p.won);
   const winnerNames = winners.map((p) => p.player_name).join(', ');

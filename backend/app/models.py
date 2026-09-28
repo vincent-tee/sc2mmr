@@ -250,12 +250,12 @@ class Match(Base):
     @hybrid_property
     def is_rated(self) -> bool:
         """Whether the game has a winner; unknown results count as neither a win nor a loss."""
-        return self.result_source != ResultSource.UNKNOWN
+        return self.result_source not in ResultSource.UNRATED
 
     @is_rated.inplace.expression
     @classmethod
     def _is_rated_expression(cls):
-        return or_(cls.result_source.is_(None), cls.result_source != ResultSource.UNKNOWN)
+        return or_(cls.result_source.is_(None), cls.result_source.not_in(ResultSource.UNRATED))
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(

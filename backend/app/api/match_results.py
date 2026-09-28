@@ -10,7 +10,7 @@ from ..database import get_db
 from ..models import Match
 from ..services.match_results import (
     ResultChangeError, ReviewItem, backfill_result_sources, confirm_result, review_item, review_queue,
-    settle_unrecorded_results,
+    mark_not_rateable, settle_unrecorded_results,
 )
 
 router = APIRouter(prefix="/match-results", tags=["match results"])
@@ -94,6 +94,24 @@ def confirm_match_result(match_id: int, request: ConfirmResultRequest, db: Sessi
         raise HTTPException(status_code=400, detail=str(error))
     db.refresh(match)
     return ConfirmResultResponse(changed=changed, item=to_response(review_item(match)))
+
+
+class NotRateableRequest(BaseModel):
+    marked_by: str
+
+
+@router.post("/{match_id}/not-rateable", response_model=ReviewItemResponse,
+             dependencies=[Depends(require_admin)])
+def mark_match_not_rateable(match_id: int, request: NotRateableRequest, db: Session = Depends(get_db)):
+    match = db.get(Match, match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+    try:
+        mark_not_rateable(db, match, request.marked_by)
+    except ResultChangeError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    db.refresh(match)
+    return to_response(review_item(match))
 
 
 class BackfillResponse(BaseModel):

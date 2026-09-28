@@ -58,6 +58,7 @@ import {
 } from '../utils/formatting';
 import type { MatchWithPlayers, MatchPlayerSummary, MatchListWithPlayersResponse } from '../types/api';
 import { GAME_MODES } from '../types/api';
+import { isRatedResult } from '../utils/matchResult';
 
 // Player highlight card component (expanded per-player stats)
 const PlayerHighlightCard: React.FC<{
@@ -372,7 +373,7 @@ const MatchCard: React.FC<{
                     key={player.player_id}
                     player={player}
                     isMVP={player.player_id === match.mvp_player_id}
-                    rated={match.result_source !== 'unknown'}
+                    rated={isRatedResult(match.result_source)}
                   />
                 ))}
               </VStack>
@@ -395,7 +396,7 @@ const MatchCard: React.FC<{
                     key={player.player_id}
                     player={player}
                     isMVP={player.player_id === match.mvp_player_id}
-                    rated={match.result_source !== 'unknown'}
+                    rated={isRatedResult(match.result_source)}
                   />
                 ))}
               </VStack>

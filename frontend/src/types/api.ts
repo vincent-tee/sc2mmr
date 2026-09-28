@@ -80,7 +80,7 @@ export interface RecentMatch {
 // =============================================================================
 
 /** Where a match's winner came from; null means not yet checked. */
-export type ResultSource = 'replay' | 'suggested' | 'confirmed' | 'unknown';
+export type ResultSource = 'replay' | 'suggested' | 'confirmed' | 'unknown' | 'not_rateable';
 
 export interface ResultEvidence {
   frame?: number;

@@ -15,6 +15,9 @@ class ResultSource:
     SUGGESTED = "suggested"  # a clear supply lead, because the replay has no result
     CONFIRMED = "confirmed"  # chosen or confirmed by a person
     UNKNOWN = "unknown"  # no recorded result and no clear supply lead: unrated
+    NOT_RATEABLE = "not_rateable"  # not a two-team game (free-for-all, three teams): never rated
+
+    UNRATED = (UNKNOWN, NOT_RATEABLE)
 
 
 CLEAR_SUPPLY_LEAD = 1.25

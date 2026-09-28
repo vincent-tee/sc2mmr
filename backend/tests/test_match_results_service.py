@@ -218,3 +218,21 @@ def test_unknown_games_are_neither_wins_nor_losses(db_session):
     bob = next(mp.player_id for mp in won.participants if mp.team_number == 2)
     assert _calculate_recent_form(db_session, ann) == 1.0
     assert _batch_recent_form(db_session, [ann, bob]) == {ann: 1.0, bob: 0.0}
+
+
+def test_not_rateable_games_are_unrated_and_leave_the_queue(db_session):
+    from app.services.match_results import mark_not_rateable
+
+    ffa = ingest(db_session, replay("ffa", supply=(100.0, 110.0), when=1))
+    settle_unrecorded_results(db_session, dry_run=False)
+    assert [item.match.id for item in review_queue(db_session)] == [ffa.id]
+
+    with pytest.raises(ResultChangeError):
+        mark_not_rateable(db_session, ffa, " ")
+    mark_not_rateable(db_session, ffa, "Vincent")
+
+    assert (ffa.result_source, ffa.result_confirmed_by, winners(db_session, ffa)) == (
+        ResultSource.NOT_RATEABLE, "Vincent", set())
+    assert review_queue(db_session) == []
+    assert ffa.id not in {m.id for m in db_session.query(Match).filter(Match.is_rated)}
+    assert settle_unrecorded_results(db_session, dry_run=True).changed == []
