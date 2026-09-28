@@ -6,7 +6,7 @@
  * Uses React.lazy for route-based code splitting to improve initial load time.
  */
 import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Box, Spinner, Center, Link } from '@chakra-ui/react';
 import Navigation from './components/Navigation';
 import DerivedDataBanner from './components/DerivedDataBanner';
@@ -40,7 +40,6 @@ import Home from './pages/Home';
 
 // Lazy-loaded pages
 const TeamGenerator = lazy(() => import('./pages/TeamGenerator'));
-const LineupPredictor = lazy(() => import('./pages/LineupPredictor'));
 const UploadReplays = lazy(() => import('./pages/UploadReplays'));
 const FailedUploads = lazy(() => import('./pages/FailedUploads'));
 const Players = lazy(() => import('./pages/Players'));
@@ -51,7 +50,6 @@ const RatingSystem = lazy(() => import('./pages/RatingSystem'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Achievements = lazy(() => import('./pages/Achievements'));
 const HeadToHead = lazy(() => import('./pages/HeadToHead'));
-const JudgmentsDemo = lazy(() => import('./pages/JudgmentsDemo'));
 
 /**
  * Loading fallback component for Suspense boundaries
@@ -101,11 +99,7 @@ function App(): React.ReactElement {
               />
               <Route
                 path="/predictor"
-                element={
-                  <ErrorBoundary>
-                    <LineupPredictor />
-                  </ErrorBoundary>
-                }
+                element={<Navigate to="/balance" replace />}
               />
               <Route
                 path="/upload"
@@ -192,14 +186,6 @@ function App(): React.ReactElement {
                 element={
                   <ErrorBoundary>
                     <HeadToHead />
-                  </ErrorBoundary>
-                }
-              />
-              <Route
-                path="/judgments-demo"
-                element={
-                  <ErrorBoundary>
-                    <JudgmentsDemo />
                   </ErrorBoundary>
                 }
               />

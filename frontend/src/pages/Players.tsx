@@ -23,7 +23,6 @@ import {
   FormLabel,
   Flex,
   Heading,
-  Switch,
   Tooltip,
 } from '@chakra-ui/react';
 import { FiSearch, FiTarget, FiArrowRight, FiClock } from 'react-icons/fi';
@@ -39,6 +38,7 @@ import PageHeader from '../components/PageHeader';
 import { formatWinRate, formatDate, getPlayerRaces, getRaceColor, getPlayerAvatarUrl } from '../utils/formatting';
 import RankBadge from '../components/RankBadge';
 import type { Player } from '../types/api';
+import LapsedToggle from '@/components/LapsedToggle';
 
 type SortOption = 'mmr' | 'recent' | 'games' | 'name';
 
@@ -123,10 +123,10 @@ const Players: React.FC = () => {
 
   const header = (
     <PageHeader
-      kicker="The Roster"
-      title="Squad [Roster]"
+      kicker="Who plays"
+      title="The [Roster]"
       description="Who's who in the squad — races, recent form, and who's laddering lately."
-      stats={[{ label: showLegacy ? 'Players' : 'Active players', value: rosterCount }]}
+      stats={[{ label: showLegacy ? 'Players incl. lapsed' : 'Current players', value: rosterCount }]}
       actions={
         <HStack spacing={3}>
           <FormControl w={{ base: '100%', md: '240px' }}>
@@ -172,18 +172,7 @@ const Players: React.FC = () => {
               <option value="name">By Name</option>
             </Select>
           </FormControl>
-          <FormControl w="auto" display="flex" alignItems="center" gap={2}>
-            <FormLabel htmlFor="show-legacy" mb={0} fontSize="sm" color="gray.500" whiteSpace="nowrap" cursor="pointer">
-              Show legacy
-            </FormLabel>
-            <Switch
-              id="show-legacy"
-              size="sm"
-              colorScheme="orange"
-              isChecked={showLegacy}
-              onChange={(e) => setShowLegacy(e.target.checked)}
-            />
-          </FormControl>
+          <LapsedToggle id="show-lapsed" isChecked={showLegacy} onChange={setShowLegacy} />
         </HStack>
       }
     />
@@ -230,7 +219,7 @@ const Players: React.FC = () => {
             </Text>
           </Box>
         ) : (
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={5}>
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={{ base: 3, md: 5 }}>
             {filteredPlayers.map((player, index) => {
               const playerRaces = getPlayerRaces(player);
               const primaryRace = playerRaces.length > 0 ? playerRaces[0].name : 'Random';
@@ -248,7 +237,7 @@ const Players: React.FC = () => {
                   borderTop="3px solid"
                   borderTopColor={`${raceColor}.500`}
                   borderRadius="xl"
-                  p={5}
+                  p={{ base: 4, md: 5 }}
                   cursor="pointer"
                   transition="all 0.2s ease"
                   _hover={{ transform: 'translateY(-4px)', borderColor: 'brand.500', borderTopColor: 'brand.500' }}
@@ -270,7 +259,7 @@ const Players: React.FC = () => {
                       {rosterRank}
                     </Text>
                   )}
-                  <VStack spacing={4} align="stretch" position="relative">
+                  <VStack spacing={{ base: 3, md: 4 }} align="stretch" position="relative">
                     {/* Header with Avatar */}
                     <HStack spacing={4}>
                       <Avatar
@@ -301,7 +290,7 @@ const Players: React.FC = () => {
                               inactive — a missing field must not mark everyone */}
                           {player.is_active === false && (
                             <Badge colorScheme="gray" fontSize="9px">
-                              LEGACY
+                              LAPSED
                             </Badge>
                           )}
                         </HStack>
@@ -310,7 +299,7 @@ const Players: React.FC = () => {
                     </HStack>
 
                     {/* Races */}
-                    <HStack spacing={2} flexWrap="wrap">
+                    <HStack spacing={2} flexWrap="wrap" display={{ base: 'none', md: 'flex' }}>
                       {playerRaces.map((race) => (
                         <Badge key={race.name} variant={`race-${race.name.toLowerCase()}`} fontSize="10px" px={2} py={0.5}>
                           {race.name.toUpperCase()}
@@ -374,7 +363,7 @@ const Players: React.FC = () => {
                       ))}
                     </Flex>
 
-                    <Box>
+                    <Box display={{ base: 'none', md: 'block' }}>
                       <Progress
                         value={player.win_rate * 100}
                         size="xs"
@@ -384,7 +373,7 @@ const Players: React.FC = () => {
                       />
                     </Box>
 
-                    <HStack justify="end" spacing={1} color="brand.400">
+                    <HStack justify="end" spacing={1} color="brand.400" display={{ base: 'none', md: 'flex' }}>
                       <Text fontSize="xs" fontFamily="heading" fontWeight="700" letterSpacing="0.05em">
                         View profile
                       </Text>

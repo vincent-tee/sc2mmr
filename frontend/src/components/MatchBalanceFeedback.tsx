@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Box, Button, HStack, Text, VStack } from '@chakra-ui/react';
+import { Box, Button, Collapse, HStack, Text, VStack } from '@chakra-ui/react';
+import { FiChevronDown, FiMessageSquare } from 'react-icons/fi';
 import { judgmentsApi, selectionsApi } from '@/api/judgments';
 import type { BalanceSelection, JudgmentResponse } from '@/api/judgments';
 import { useToast } from '@/hooks/useToast';
@@ -10,6 +11,7 @@ export default function MatchBalanceFeedback({ matchId }: { matchId: number }) {
   const [judgments, setJudgments] = useState<JudgmentResponse[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const toast = useToast();
   useEffect(() => {
     let active = true;
@@ -46,7 +48,20 @@ export default function MatchBalanceFeedback({ matchId }: { matchId: number }) {
         </Box>
       )}
       {judgments.map(j => <Text key={j.id} fontSize="sm">Pre-game assessment by {j.author}: {j.human_estimate.replace(/_/g, ' ')} ({j.confidence} confidence). Team numbers refer to the saved selection.</Text>)}
-      <PostgameFeedback matchId={matchId} judgmentId={judgments[0]?.id} />
+      <Button
+        alignSelf="flex-start"
+        variant="outline"
+        size="sm"
+        leftIcon={<FiMessageSquare />}
+        rightIcon={<FiChevronDown style={{ transform: feedbackOpen ? 'rotate(180deg)' : undefined }} />}
+        onClick={() => setFeedbackOpen((open) => !open)}
+        aria-expanded={feedbackOpen}
+      >
+        How did it play? Leave feedback
+      </Button>
+      <Collapse in={feedbackOpen} animateOpacity>
+        <PostgameFeedback matchId={matchId} judgmentId={judgments[0]?.id} />
+      </Collapse>
     </VStack>
   );
 }

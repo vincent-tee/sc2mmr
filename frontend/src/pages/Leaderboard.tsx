@@ -26,9 +26,6 @@ import {
   AlertIcon,
   Icon,
   Avatar,
-  Switch,
-  FormControl,
-  FormLabel,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -48,6 +45,7 @@ import {
   LeaderboardEntry,
   formatLeaderboardValue,
 } from '../types/leaderboard';
+import LapsedToggle from '@/components/LapsedToggle';
 
 // Parse a "383W 325L" record string into a win-rate percentage.
 // Returns null when the extra_info isn't a W/L record (e.g. "Current: 1").
@@ -187,16 +185,18 @@ const Podium: React.FC<PodiumProps> = React.memo(({ entries, category, onPlayerC
               position="relative"
               overflow="hidden"
               bg={isChampion ? `linear-gradient(180deg, ${medal.soft}, var(--chakra-colors-space-800) 55%)` : 'space.800'}
-              borderRadius="2xl 2xl 0 0"
-              borderTopRadius="2xl"
+              borderRadius={{ base: 'xl', md: '2xl 2xl 0 0' }}
               border="1px solid"
-              borderBottom="none"
+              borderBottom={{ base: '1px solid', md: 'none' }}
               borderColor={medal.border}
               boxShadow={isChampion ? '0 0 60px rgba(251, 191, 36, 0.10)' : 'none'}
-              textAlign="center"
-              px={5}
-              pt={isChampion ? 8 : 6}
-              pb={5}
+              textAlign={{ base: 'left', md: 'center' }}
+              display={{ base: 'flex', md: 'block' }}
+              alignItems="center"
+              gap={4}
+              px={{ base: 4, md: 5 }}
+              pt={{ base: 4, md: isChampion ? 8 : 6 }}
+              pb={{ base: 4, md: 5 }}
               _groupHover={{ borderColor: medal.hex }}
             >
               {isChampion && (
@@ -212,7 +212,10 @@ const Podium: React.FC<PodiumProps> = React.memo(({ entries, category, onPlayerC
                 />
               )}
               {/* Avatar with crown perched on the champion */}
-              <Box position="relative" display="inline-block" mb={3}>
+              <Text display={{ base: 'block', md: 'none' }} fontFamily="heading" fontWeight="800" fontSize="2xl" color={medal.text} w="24px">
+                {idx + 1}
+              </Text>
+              <Box position="relative" display="inline-block" mb={{ base: 0, md: 3 }} flexShrink={0}>
                 {isChampion && (
                   <Icon
                     as={LuCrown}
@@ -227,7 +230,7 @@ const Podium: React.FC<PodiumProps> = React.memo(({ entries, category, onPlayerC
                   />
                 )}
                 <Avatar
-                  boxSize={medal.avatar}
+                  boxSize={{ base: '52px', md: medal.avatar }}
                   src={getPlayerAvatarUrl(entry.name, raceById.get(entry.player_id))}
                   name={entry.name}
                   border="3px solid"
@@ -235,20 +238,21 @@ const Podium: React.FC<PodiumProps> = React.memo(({ entries, category, onPlayerC
                   boxShadow={`0 0 0 4px ${medal.soft}`}
                 />
               </Box>
-              <Heading fontSize={isChampion ? '2xl' : 'lg'} color="gray.50" mb={1} noOfLines={1}>
+              <Box minW={0}>
+              <Heading fontSize={{ base: 'lg', md: isChampion ? '2xl' : 'lg' }} color="gray.50" mb={1} noOfLines={1}>
                 {entry.name}
               </Heading>
               <Text
                 fontFamily="mono"
                 fontWeight="700"
-                fontSize={isChampion ? '3xl' : 'xl'}
+                fontSize={{ base: 'xl', md: isChampion ? '3xl' : 'xl' }}
                 lineHeight="1.1"
                 color={medal.text}
               >
                 {formatLeaderboardValue(entry.value, category)}
               </Text>
               {category === 'mmr' && (
-                <HStack justify="center" mt={2}>
+                <HStack justify={{ base: 'flex-start', md: 'center' }} mt={2}>
                   <RankBadge mmr={entry.value} size="xs" showMMR={false} />
                 </HStack>
               )}
@@ -257,11 +261,13 @@ const Podium: React.FC<PodiumProps> = React.memo(({ entries, category, onPlayerC
                   {entry.extra_info}
                 </Text>
               )}
+              </Box>
             </Box>
 
             {/* Podium step — numeral only; heights and medal colors carry the rest */}
             <Flex
               h={medal.step}
+              display={{ base: 'none', md: 'flex' }}
               align="center"
               justify="center"
               bg={`linear-gradient(180deg, ${medal.soft}, rgba(0, 0, 0, 0.25))`}
@@ -388,7 +394,7 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(
                   )}
                   {entry.is_active === false && (
                     <Badge colorScheme="gray" fontSize="9px" px={1.5}>
-                      LEGACY
+                      LAPSED
                     </Badge>
                   )}
                 </HStack>
@@ -535,18 +541,7 @@ const Leaderboard: React.FC = () => {
               </Flex>
             </Box>
             {activeCategory === 'mmr' && (
-              <FormControl w="auto" display="flex" alignItems="center" gap={2}>
-                <FormLabel htmlFor="show-legacy" mb={0} fontSize="sm" color="gray.400" cursor="pointer">
-                  Show legacy players
-                </FormLabel>
-                <Switch
-                  id="show-legacy"
-                  size="sm"
-                  colorScheme="orange"
-                  isChecked={showLegacy}
-                  onChange={(e) => setShowLegacy(e.target.checked)}
-                />
-              </FormControl>
+              <LapsedToggle id="show-lapsed" isChecked={showLegacy} onChange={setShowLegacy} />
             )}
           </Flex>
 

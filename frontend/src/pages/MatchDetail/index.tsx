@@ -16,7 +16,6 @@ import {
   TabPanels,
   Tab,
   TabPanel,
-  useColorModeValue,
 } from '@chakra-ui/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -33,8 +32,6 @@ import ScoreScreenTab from './ScoreScreenTab';
 import type {
   MatchCommentary,
   PlayerMetricsResponse,
-  PlayerTimeline,
-  TimelineData,
 } from './types';
 import type { MatchDetail as MatchDetailType } from '@/types/api';
 
@@ -42,9 +39,6 @@ const MatchDetail: React.FC = () => {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate = useNavigate();
   const { authEnabled, authenticated, requireLogin } = useAuth();
-
-  // Reserved for future card styling
-  void useColorModeValue('white', 'rgba(17, 25, 40, 0.8)');
 
   // Fetch match details
   const { data: matchData, isLoading: matchLoading } = useQuery<MatchDetailType>({
@@ -114,59 +108,22 @@ const MatchDetail: React.FC = () => {
     enabled: !!matchData,
   });
 
-  // Fetch damage timeline data for players
-  const {
-    data: damageTimelines,
-    isLoading: timelinesLoading,
-  } = useQuery<PlayerTimeline[]>({
-    queryKey: ['match-damage-timelines', matchId],
-    queryFn: async (): Promise<PlayerTimeline[]> => {
-      if (!matchData || !matchData.players) return [];
-
-      const timelinePromises = matchData.players.map(async (player): Promise<PlayerTimeline | null> => {
-        try {
-          const response = await impactApi.getMatchDamageTimeline(
-            player.player_id,
-            matchId!
-          );
-          return {
-            player_id: player.player_id,
-            player_name: player.player_name,
-            team_number: player.team_number,
-            timeline: response.data as TimelineData,
-          };
-        } catch {
-          // Timeline might not be available for all players
-          return null;
-        }
-      });
-
-      const results = await Promise.all(timelinePromises);
-      return results.filter((r): r is PlayerTimeline => r !== null);
-    },
-    enabled: !!matchData,
-  });
-
   if (matchLoading) {
     return (
-      <Box bg="space.900">
-        <Container maxW="container.xl" py={8}>
-          <LoadingState message="Loading match data..." />
-        </Container>
-      </Box>
+      <Container maxW="container.xl" py={8}>
+        <LoadingState message="Loading match data..." />
+      </Container>
     );
   }
 
   if (!matchData) {
     return (
-      <Box bg="space.900">
-        <Container maxW="container.xl" py={8}>
-          <Alert status="error">
-            <AlertIcon />
-            Match data not found
-          </Alert>
-        </Container>
-      </Box>
+      <Container maxW="container.xl" py={8}>
+        <Alert status="error">
+          <AlertIcon />
+          Match data not found
+        </Alert>
+      </Container>
     );
   }
 
@@ -177,9 +134,9 @@ const MatchDetail: React.FC = () => {
   const team1Won = team1Players.length > 0 && team1Players[0].won;
 
   return (
-    <Box position="relative" bg="space.900">
-      <Container maxW="container.xl" py={8} position="relative" zIndex={1}>
-        <VStack spacing={8} align="stretch">
+    <Box position="relative">
+      <Container maxW="container.xl" py={{ base: 4, md: 8 }} position="relative" zIndex={1}>
+        <VStack spacing={{ base: 5, md: 8 }} align="stretch">
           {/* Back Button + Replay Download */}
           <HStack justify="space-between" align="center" flexWrap="wrap" gap={3}>
             <Button
@@ -187,7 +144,7 @@ const MatchDetail: React.FC = () => {
               variant="ghost"
               alignSelf="flex-start"
               onClick={() => navigate('/history')}
-              size="lg"
+              size={{ base: 'md', md: 'lg' }}
               fontFamily="heading"
               _hover={{
                 transform: 'translateX(-4px)',
@@ -195,7 +152,7 @@ const MatchDetail: React.FC = () => {
               }}
               transition="all 0.2s"
             >
-              Return to Archive
+              All matches
             </Button>
             {matchData.match.replay_hash && (
               <Button
@@ -230,11 +187,14 @@ const MatchDetail: React.FC = () => {
           <Tabs
             colorScheme="brand"
             variant="enclosed"
-            size="lg"
+            size={{ base: 'sm', md: 'lg' }}
+            isLazy
             sx={{
               '& .chakra-tabs__tab': {
                 fontFamily: 'heading',
                 letterSpacing: 'wider',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 _selected: {
                   bg: 'brand.500',
                   color: 'gray.900',
@@ -243,22 +203,22 @@ const MatchDetail: React.FC = () => {
               },
             }}
           >
-            <TabList>
+            <TabList overflowX="auto" overflowY="hidden">
               <Tab>
                 <Icon as={FiMonitor} mr={2} />
-                Score Screen
+                Scores
               </Tab>
               <Tab>
                 <Icon as={FiUsers} mr={2} />
-                Players
+                Rating changes
               </Tab>
               <Tab>
                 <Icon as={FiZap} mr={2} />
-                Commentary
+                Recap
               </Tab>
               <Tab>
                 <Icon as={FiTarget} mr={2} />
-                Analytics
+                Impact
               </Tab>
             </TabList>
 
@@ -275,22 +235,12 @@ const MatchDetail: React.FC = () => {
 
               {/* Commentary Tab */}
               <TabPanel px={0}>
-                <CommentaryTab
-                  commentary={commentary}
-                  isLoading={commentaryLoading}
-                  matchData={matchData}
-                />
+                <CommentaryTab commentary={commentary} isLoading={commentaryLoading} />
               </TabPanel>
 
               {/* Analytics Tab */}
               <TabPanel px={0}>
-                <AnalyticsTab
-                  matchData={matchData}
-                  playerMetrics={playerMetrics}
-                  damageTimelines={damageTimelines}
-                  metricsLoading={metricsLoading}
-                  timelinesLoading={timelinesLoading}
-                />
+                <AnalyticsTab matchData={matchData} playerMetrics={playerMetrics} metricsLoading={metricsLoading} />
               </TabPanel>
             </TabPanels>
           </Tabs>

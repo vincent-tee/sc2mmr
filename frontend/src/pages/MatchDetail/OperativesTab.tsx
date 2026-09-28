@@ -19,6 +19,7 @@ import {
 } from '@chakra-ui/react';
 import { FiAward, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import type { MatchDetail as MatchDetailType } from '@/types/api';
+import { displayedMMRChange } from '@/utils/formatting';
 
 interface OperativesTabProps {
   matchData: MatchDetailType;
@@ -32,8 +33,6 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
   const cardBg = 'space.800';
   const winnerBg = 'rgba(72, 187, 120, 0.05)';
   const loserBg = 'rgba(245, 101, 101, 0.05)';
-  const borderColor = 'space.900';
-  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
   const { players } = matchData;
 
@@ -73,9 +72,8 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
         <Box
           bg={cardBg}
           borderRadius="xl"
-          border="3px solid"
-          borderColor={borderColor}
-          boxShadow={brandShadow}
+          border="1px solid"
+          borderColor="whiteAlpha.100"
           overflow="hidden"
         >
           <Box p={4} bg={team1Won ? winnerBg : loserBg}>
@@ -126,7 +124,7 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
                             fontWeight="bold"
                             fontFamily="mono"
                           >
-                            {Math.abs(Math.round(player.mmr_change))}
+                            {Math.abs(displayedMMRChange(player.mmr_before, player.mmr_after))}
                           </Text>
                         </HStack>
                       </Td>
@@ -169,9 +167,8 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
         <Box
           bg={cardBg}
           borderRadius="xl"
-          border="3px solid"
-          borderColor={borderColor}
-          boxShadow={brandShadow}
+          border="1px solid"
+          borderColor="whiteAlpha.100"
           overflow="hidden"
         >
           <Box p={4} bg={!team1Won ? winnerBg : loserBg}>
@@ -222,7 +219,7 @@ const OperativesTab: React.FC<OperativesTabProps> = ({
                             fontWeight="bold"
                             fontFamily="mono"
                           >
-                            {Math.abs(Math.round(player.mmr_change))}
+                            {Math.abs(displayedMMRChange(player.mmr_before, player.mmr_after))}
                           </Text>
                         </HStack>
                       </Td>

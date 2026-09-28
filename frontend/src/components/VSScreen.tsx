@@ -14,6 +14,7 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
+import { LuCrown } from 'react-icons/lu';
 import { formatMMR, getRaceColor } from '../utils/formatting';
 
 // =============================================================================
@@ -56,9 +57,6 @@ export interface VSScreenProps {
    * a plain historical tally doesn't have.
    */
   probabilityLabel?: string;
-  /** Label for the odds bar's center caption. Defaults to "Pre-Match Odds" -
-   * override for the same reason as `probabilityLabel`. */
-  oddsBarLabel?: string;
 }
 
 // =============================================================================
@@ -74,17 +72,6 @@ const getRaceIcon = (race: string): string => {
   };
   return raceMap[race] || '?';
 };
-
-// getRaceIconColor available if needed for race-specific icon colors
-// const getRaceIconColor = (race: string): string => {
-//   const colorMap: Record<string, string> = {
-//     Terran: 'terran.500',
-//     Protoss: 'protoss.500',
-//     Zerg: 'zerg.500',
-//     Random: 'gray.400',
-//   };
-//   return colorMap[race] || 'gray.400';
-// };
 
 // =============================================================================
 // Keyframe Animations
@@ -188,6 +175,7 @@ const PlayerRow: React.FC<PlayerRowProps> = ({ player, isWinner, side, index }) 
         letterSpacing="wide"
         textShadow={isWinner ? '0 0 8px rgba(245, 158, 11, 0.5)' : 'none'}
         noOfLines={1}
+        minW={{ base: 0, md: 'auto' }}
       >
         {player.name}
       </Text>
@@ -196,6 +184,7 @@ const PlayerRow: React.FC<PlayerRowProps> = ({ player, isWinner, side, index }) 
         fontSize="sm"
         color="gray.400"
         fontFamily="mono"
+        flexShrink={0}
       >
         {formatMMR(player.mmr)}
       </Text>
@@ -237,7 +226,8 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side,
   return (
     <Box
       flex={1}
-      p={5}
+      minW={{ base: 0, md: 'auto' }}
+      p={{ base: 4, md: 5 }}
       bg={bgColor}
       borderRadius="xl"
       border="2px solid"
@@ -283,8 +273,11 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side,
           boxShadow={isPrediction ? 'none' : '0 3px 12px rgba(245, 158, 11, 0.6)'}
           zIndex={2}
           whiteSpace="nowrap"
+          display="flex"
+          alignItems="center"
+          gap={1}
         >
-          {isPrediction ? 'ADVANTAGE' : '🏆 WINNER'}
+          {isPrediction ? 'ADVANTAGE' : <><LuCrown aria-hidden /> WINNER</>}
         </Box>
       )}
 
@@ -363,68 +356,6 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side,
 };
 
 // =============================================================================
-// Win Probability Bar
-// =============================================================================
-
-interface WinProbabilityBarProps {
-  team1Prob?: number;
-  team2Prob?: number;
-  winner?: 1 | 2 | null;
-  label?: string;
-}
-
-const WinProbabilityBar: React.FC<WinProbabilityBarProps> = ({ team1Prob, team2Prob, winner, label = 'Pre-Match Odds' }) => {
-  if (team1Prob === undefined || team2Prob === undefined) return null;
-
-  return (
-    <Box w="100%" maxW="600px" mx="auto" mt={4}>
-      <HStack justify="space-between" mb={1}>
-        <Text fontSize="xs" color="gray.500" fontWeight="bold">
-          {team1Prob.toFixed(1)}%
-        </Text>
-        <Text fontSize="xs" color="gray.500" letterSpacing="wider">
-          {label}
-        </Text>
-        <Text fontSize="xs" color="gray.500" fontWeight="bold">
-          {team2Prob.toFixed(1)}%
-        </Text>
-      </HStack>
-      <Box
-        w="100%"
-        h="8px"
-        bg="whiteAlpha.200"
-        borderRadius="full"
-        overflow="hidden"
-        position="relative"
-      >
-        <Box
-          position="absolute"
-          left={0}
-          top={0}
-          h="100%"
-          w={`${team1Prob}%`}
-          bg={winner === 1 ? 'shield.500' : 'brand.500'}
-          borderRadius="full"
-          transition="all 0.5s ease-out"
-          boxShadow={winner === 1 ? '0 0 10px rgba(245, 158, 11, 0.6)' : '0 0 10px rgba(255, 140, 26, 0.4)'}
-        />
-        <Box
-          position="absolute"
-          right={0}
-          top={0}
-          h="100%"
-          w={`${team2Prob}%`}
-          bg={winner === 2 ? 'shield.500' : 'accent.500'}
-          borderRadius="full"
-          transition="all 0.5s ease-out"
-          boxShadow={winner === 2 ? '0 0 10px rgba(245, 158, 11, 0.6)' : '0 0 10px rgba(239, 68, 68, 0.4)'}
-        />
-      </Box>
-    </Box>
-  );
-};
-
-// =============================================================================
 // Main Component
 // =============================================================================
 
@@ -436,7 +367,6 @@ const VSScreen: React.FC<VSScreenProps> = ({
   onViewDetails,
   isPrediction = false,
   probabilityLabel,
-  oddsBarLabel,
 }) => {
   const bgColor = useColorModeValue('gray.900', 'space.900');
 
@@ -444,7 +374,7 @@ const VSScreen: React.FC<VSScreenProps> = ({
     <Box
       bg={bgColor}
       borderRadius="2xl"
-      p={6}
+      p={{ base: 3, md: 6 }}
       position="relative"
       overflow="hidden"
       border="1px solid"
@@ -496,7 +426,7 @@ const VSScreen: React.FC<VSScreenProps> = ({
           align="center"
           justify="center"
           minW={{ base: 'auto', md: '100px' }}
-          py={{ base: 4, md: 0 }}
+          py={{ base: 0, md: 0 }}
           position="relative"
         >
           {/* Vertical Line (hidden on mobile) */}
@@ -518,7 +448,7 @@ const VSScreen: React.FC<VSScreenProps> = ({
             py={2}
           >
             <Text
-              fontSize="4xl"
+              fontSize={{ base: '2xl', md: '4xl' }}
               fontWeight="black"
               fontFamily="heading"
               color="brand.500"
@@ -540,14 +470,6 @@ const VSScreen: React.FC<VSScreenProps> = ({
           probabilityLabel={probabilityLabel}
         />
       </Flex>
-
-      {/* Win Probability Bar */}
-      <WinProbabilityBar
-        team1Prob={team1.winProbability}
-        team2Prob={team2.winProbability}
-        winner={winner}
-        label={oddsBarLabel}
-      />
 
       {/* View Details Button */}
       {onViewDetails && (

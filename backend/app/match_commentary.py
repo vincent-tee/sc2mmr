@@ -144,7 +144,7 @@ class MatchCommentaryGenerator:
             early_damage.sort(key=lambda x: x[1])
             aggressor = early_damage[0]
             moments.append(
-                f"⚔️ {aggressor[0]} applied early pressure at {aggressor[1]} seconds, "
+                f"{aggressor[0]} applied early pressure at {aggressor[1]} seconds, "
                 f"forcing defensive responses from opponents."
             )
 
@@ -161,7 +161,7 @@ class MatchCommentaryGenerator:
 
         if top_impacts and top_impacts[0][1] > 70:
             moments.append(
-                f"💪 {top_impacts[0][0]} delivered a dominant performance with an impact score of {top_impacts[0][1]:.1f}/100."
+                f"{top_impacts[0][0]} delivered a dominant performance with an impact score of {top_impacts[0][1]:.1f}/100."
             )
 
         # Economic powerhouse
@@ -177,7 +177,7 @@ class MatchCommentaryGenerator:
 
         if top_economy and top_economy[0][1] > 50000:
             moments.append(
-                f"💰 {top_economy[0][0]} amassed {top_economy[0][1]:,} resources, "
+                f"{top_economy[0][0]} amassed {top_economy[0][1]:,} resources, "
                 f"establishing economic dominance."
             )
 
@@ -194,7 +194,7 @@ class MatchCommentaryGenerator:
 
         if top_damage and top_damage[0][1] > 10000:
             moments.append(
-                f"🎯 {top_damage[0][0]} dealt {top_damage[0][1]:,} damage with a {top_damage[0][2]:.2f}:1 damage ratio, "
+                f"{top_damage[0][0]} dealt {top_damage[0][1]:,} damage with a {top_damage[0][2]:.2f}:1 damage ratio, "
                 f"showcasing superior combat micro."
             )
 

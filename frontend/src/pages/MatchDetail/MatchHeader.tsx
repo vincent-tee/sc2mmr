@@ -12,14 +12,9 @@ import {
   StatLabel,
   StatNumber,
   Icon,
-  Divider,
-  Alert,
   Flex,
 } from '@chakra-ui/react';
-import {
-  FiActivity,
-  FiAlertTriangle,
-} from 'react-icons/fi';
+import { FiAlertTriangle } from 'react-icons/fi';
 import {
   formatDuration,
   formatDateTime,
@@ -35,8 +30,6 @@ interface MatchHeaderProps {
 
 const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
   const cardBg = 'space.800';
-  const borderColor = 'space.900';
-  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
   const { match, players } = matchData;
 
@@ -80,109 +73,49 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
   };
 
   return (
-    <VStack spacing={6} align="stretch">
-      {/* VSScreen - Team vs Team display: rosters, per-player MMR, avg MMR,
-          win probability, winner emphasis, and a single pre-match odds bar.
-          Map/mode/date/duration are shown once, in the detail card below. */}
+    <VStack spacing={{ base: 4, md: 6 }} align="stretch">
+      <Box bg={cardBg} borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100" p={{ base: 4, md: 6 }}>
+        <Flex justify="space-between" align="start" flexWrap="wrap" gap={4}>
+          <VStack align="start" spacing={2} minW={0}>
+            <Flex align="center" gap={3} flexWrap="wrap">
+              <Heading size={{ base: 'lg', md: 'xl' }} fontFamily="heading" color="gray.100">
+                {match.map_name}
+              </Heading>
+              <Badge bg="space.900" color="brand.400" fontSize="md" px={3} py={1} borderRadius="md" fontFamily="heading">
+                {match.game_mode}
+              </Badge>
+            </Flex>
+            <Text color="gray.400" fontSize="sm">
+              {formatDateTime(match.played_at)} · <Text as="span" color={team1Won ? 'brand.400' : 'accent.400'} fontWeight="bold">Team {winningTeam} won</Text>
+            </Text>
+          </VStack>
+
+          <Stat textAlign="right" flex="0 0 auto">
+            <StatLabel color="gray.500" letterSpacing="widest" textTransform="uppercase" fontSize="xs">
+              Duration
+            </StatLabel>
+            <StatNumber fontSize={{ base: '2xl', md: '3xl' }} fontFamily="mono" color="gray.100">
+              {formatDuration(match.duration_seconds)}
+            </StatNumber>
+          </Stat>
+        </Flex>
+
+        {upsetIndicator && (
+          <HStack mt={4} spacing={3} p={3} borderRadius="lg" bg="rgba(255, 179, 0, 0.08)" borderLeft="3px solid" borderLeftColor="accent.500">
+            <Icon as={FiAlertTriangle} color="accent.400" />
+            <Text fontSize="sm" color="gray.200">
+              <Text as="span" fontWeight="bold" color="accent.400">{upsetIndicator}</Text> — the underdogs beat the pre-match odds.
+            </Text>
+          </HStack>
+        )}
+      </Box>
+
       <VSScreen
         team1={vsScreenData.team1}
         team2={vsScreenData.team2}
         winner={vsScreenData.winner as 1 | 2}
+        probabilityLabel="Pre-match odds"
       />
-
-      {/* Detailed Match Information Card */}
-      <Box
-        bg={cardBg}
-        borderRadius="xl"
-        border="3px solid"
-        borderColor={borderColor}
-        boxShadow={brandShadow}
-        position="relative"
-        overflow="hidden"
-      >
-        <Box p={6}>
-          <VStack align="stretch" spacing={6}>
-            {/* Match Title and Duration */}
-            <Flex justify="space-between" align="start" flexWrap="wrap" gap={4}>
-            <VStack align="start" spacing={2}>
-              <HStack spacing={3}>
-                <Icon as={FiActivity} boxSize={6} color="brand.400" />
-                <Heading
-                  size="xl"
-                  fontFamily="heading"
-                  letterSpacing="wider"
-                  color="gray.100"
-                >
-                  {match.map_name}
-                </Heading>
-                <Badge
-                  bg="space.900"
-                  color="brand.400"
-                  fontSize="md"
-                  px={4}
-                  py={1}
-                  borderRadius="md"
-                  fontFamily="heading"
-                >
-                  {match.game_mode}
-                </Badge>
-              </HStack>
-              <Text color="gray.500" fontFamily="heading" fontSize="sm">
-                {formatDateTime(match.played_at)}
-              </Text>
-            </VStack>
-
-            <Stat textAlign="right">
-              <StatLabel fontFamily="heading" color="brand.400" letterSpacing="widest" textTransform="uppercase" fontSize="xs">
-                Battle Duration
-              </StatLabel>
-              <StatNumber fontSize="3xl" fontFamily="heading" color="gray.100">
-                {formatDuration(match.duration_seconds)}
-              </StatNumber>
-            </Stat>
-          </Flex>
-
-          {/* Upset callout - when the underdog defied the pre-match odds.
-              Win probabilities and the odds bar already live in the VSScreen
-              above; this only flags the noteworthy case of an upset. */}
-          {upsetIndicator && (
-            <Box>
-              <Divider my={5} borderColor="whiteAlpha.100" />
-              <Alert
-                status="warning"
-                variant="left-accent"
-                borderRadius="xl"
-                bg="rgba(255, 179, 0, 0.1)"
-                borderColor="accent.500"
-                borderWidth="2px"
-                boxShadow="inner"
-              >
-                <Icon
-                  as={FiAlertTriangle}
-                  boxSize={6}
-                  mr={3}
-                  color="accent.500"
-                />
-                <Box>
-                  <Text
-                    fontWeight="black"
-                    fontSize="lg"
-                    fontFamily="heading"
-                    letterSpacing="wider"
-                    color="accent.400"
-                  >
-                    {upsetIndicator}
-                  </Text>
-                  <Text fontSize="sm" color="gray.300">
-                    The underdog team defied the forecast and secured victory!
-                  </Text>
-                </Box>
-              </Alert>
-            </Box>
-          )}
-        </VStack>
-      </Box>
-    </Box>
     </VStack>
   );
 };

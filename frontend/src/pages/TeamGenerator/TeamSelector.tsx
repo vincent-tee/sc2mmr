@@ -28,9 +28,8 @@ import {
   MenuList,
   MenuItem,
   Divider,
-  Switch,
-  FormControl,
-  FormLabel,
+  Flex,
+  useBreakpointValue,
 } from '@chakra-ui/react';
 import { FiUsers, FiX, FiPlus, FiCpu, FiChevronDown, FiEdit2, FiTrash2, FiClock, FiSearch } from 'react-icons/fi';
 import PlayerCard from '@/components/PlayerCard';
@@ -38,6 +37,7 @@ import TacticalCard from '@/components/TacticalCard';
 import type { Player } from '@/types/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { teamsApi } from '@/api/endpoints';
+import LapsedToggle from '@/components/LapsedToggle';
 
 interface TeamSelectorProps {
   players: Player[];
@@ -125,6 +125,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
     }
   };
 
+  const cardSize = useBreakpointValue<'sm' | 'md'>({ base: 'sm', md: 'md' }) ?? 'md';
   const minPlayers = 2;
   const canGenerate = selectedPlayers.length >= minPlayers;
   const hasOddPlayers = selectedPlayers.length % 2 !== 0;
@@ -142,11 +143,11 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
   return (
     <Box>
       <TacticalCard variant="command" glowColor="rgba(0, 212, 255, 0.5)">
-        <Box p={6}>
-          <HStack justify="space-between" mb={6}>
+        <Box p={{ base: 3, md: 6 }}>
+          <Flex justify="space-between" align="start" mb={{ base: 4, md: 6 }} gap={3} flexWrap="wrap">
             <VStack align="start" spacing={2}>
               <HStack>
-                <Icon as={FiUsers} color="brand.400" boxSize={6} filter="drop-shadow(2px 2px 0 var(--chakra-colors-space-900))" />
+                <Icon as={FiUsers} color="brand.400" boxSize={6} />
                 <Heading
                   size="md"
                   fontFamily="heading"
@@ -166,7 +167,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                   py={1}
                   borderRadius="lg"
                   fontFamily="heading"
-                  boxShadow="2px 2px 0 var(--chakra-colors-space-900)"
                 >
                   {selectedPlayers.length} selected
                 </Badge>
@@ -179,7 +179,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                     py={1}
                     borderRadius="lg"
                     fontFamily="heading"
-                    boxShadow="2px 2px 0 var(--chakra-colors-space-900)"
                   >
                     {getGameMode(selectedPlayers.length)}
                   </Badge>
@@ -187,7 +186,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
               </HStack>
             </VStack>
 
-            <HStack>
+            <Flex gap={1} flexWrap="wrap">
               <Menu>
                 <MenuButton
                   as={Button}
@@ -200,7 +199,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 >
                   Add AI
                 </MenuButton>
-                <MenuList bg="space.800" borderColor="space.700" boxShadow="4px 4px 0 var(--chakra-colors-space-900)" borderRadius="xl">
+                <MenuList bg="space.800" borderColor="space.700" borderRadius="xl">
                   <Text px={3} py={2} fontSize="10px" color="gray.500" fontWeight="black" textTransform="uppercase" letterSpacing="widest">
                     Select Difficulty
                   </Text>
@@ -252,8 +251,8 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
               >
                 Clear
               </Button>
-            </HStack>
-          </HStack>
+            </Flex>
+          </Flex>
 
           <HStack mb={4} spacing={3} flexWrap="wrap">
             <InputGroup size="sm" maxW="240px">
@@ -271,21 +270,10 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                 _placeholder={{ color: 'gray.500' }}
               />
             </InputGroup>
-            <FormControl w="auto" display="flex" alignItems="center" gap={2}>
-              <FormLabel htmlFor="team-selector-show-legacy" mb={0} fontSize="sm" color="gray.500" whiteSpace="nowrap" cursor="pointer">
-                Show legacy
-              </FormLabel>
-              <Switch
-                id="team-selector-show-legacy"
-                size="sm"
-                colorScheme="orange"
-                isChecked={showLegacy}
-                onChange={(e) => setShowLegacy(e.target.checked)}
-              />
-            </FormControl>
+            <LapsedToggle id="team-selector-show-lapsed" isChecked={showLegacy} onChange={setShowLegacy} />
           </HStack>
 
-          <SimpleGrid columns={{ base: 2, md: 3, lg: 4, xl: 5 }} spacing={4}>
+          <SimpleGrid columns={{ base: 2, md: 3, lg: 4, xl: 5 }} spacing={{ base: 2, md: 4 }}>
             {[...players]
               .filter((p) => p.is_active === undefined || showLegacy || p.is_active)
               .filter((p) => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -303,7 +291,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
                   player={player}
                   isSelected={selectedPlayers.some((p) => p.id === player.id)}
                   onClick={() => onTogglePlayer(player)}
-                  size="md"
+                  size={cardSize}
                 />
               ))}
           </SimpleGrid>
@@ -313,7 +301,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
       {/* Add Guest Modal */}
       <Modal isOpen={isOpen} onClose={onClose} isCentered finalFocusRef={addGuestButtonRef}>
         <ModalOverlay backdropFilter="blur(8px)" />
-        <ModalContent bg="space.800" border="3px solid" borderColor="space.700" borderRadius="xl">
+        <ModalContent bg="space.800" border="1px solid" borderColor="whiteAlpha.100" borderRadius="xl">
           <ModalHeader>Add Guest Player</ModalHeader>
           <ModalBody pb={6}>
             <VStack spacing={4} align="stretch">
@@ -356,7 +344,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
       {/* Edit Guest Modal */}
       <Modal isOpen={isEditOpen} onClose={onEditClose} isCentered finalFocusRef={editGuestTriggerRef}>
         <ModalOverlay backdropFilter="blur(8px)" />
-        <ModalContent bg="space.800" border="3px solid" borderColor="space.700" borderRadius="xl">
+        <ModalContent bg="space.800" border="1px solid" borderColor="whiteAlpha.100" borderRadius="xl">
           <ModalHeader>Edit Guest Player</ModalHeader>
           <ModalBody pb={6}>
             <VStack spacing={4} align="stretch">

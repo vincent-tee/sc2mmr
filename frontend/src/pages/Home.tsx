@@ -21,8 +21,8 @@ import {
   Badge,
   Progress,
 } from '@chakra-ui/react';
-import { FiUpload, FiZap, FiTarget, FiArrowRight, FiAward } from 'react-icons/fi';
-import { LuCrown } from 'react-icons/lu';
+import { FiUpload, FiZap, FiArrowRight, FiAward } from 'react-icons/fi';
+import { LuCrown, LuSwords } from 'react-icons/lu';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { playersApi, replaysApi } from '../api/endpoints';
@@ -256,7 +256,7 @@ const Home: React.FC = () => {
             </HStack>
             <HStack spacing={7} flexWrap="wrap">
               {[
-                { value: isLoading ? '—' : totalPlayers, label: 'Players' },
+                { value: isLoading ? '—' : totalPlayers, label: 'Players all-time' },
                 { value: isLoading ? '—' : totalMatches.toLocaleString(), label: 'Matches' },
                 {
                   value:
@@ -449,7 +449,7 @@ const Home: React.FC = () => {
             {/* Quick links */}
             <VStack spacing={2} align="stretch" mt={6}>
               {[
-                { label: 'Predict a match', icon: FiTarget, path: '/predictor' },
+                { label: 'Head to head', icon: LuSwords, path: '/h2h' },
                 { label: 'Achievements', icon: FiAward, path: '/achievements' },
               ].map((link) => (
                 <Flex

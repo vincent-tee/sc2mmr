@@ -1,271 +1,81 @@
 /**
- * CommentaryTab Component - AI-generated match commentary
+ * CommentaryTab Component - short written recap: overview, key moments and MVP
  */
 import {
   Box,
-  Card,
-  CardBody,
   VStack,
   HStack,
   Heading,
   Text,
   Badge,
   Icon,
-  Grid,
-  GridItem,
   Alert,
   AlertIcon,
-  useColorModeValue,
 } from '@chakra-ui/react';
-import {
-  FiZap,
-  FiAward,
-  FiTarget,
-  FiTrendingUp,
-} from 'react-icons/fi';
+import { FiAward } from 'react-icons/fi';
 import LoadingState from '@/components/LoadingState';
 import type { MatchCommentary } from './types';
-import type { MatchDetail as MatchDetailType } from '@/types/api';
 
 interface CommentaryTabProps {
   commentary: MatchCommentary | undefined;
   isLoading: boolean;
-  matchData?: MatchDetailType;
 }
 
-const CommentaryTab: React.FC<CommentaryTabProps> = ({
-  commentary,
-  isLoading,
-  matchData,
-}) => {
-  const cardBg = useColorModeValue('white', 'rgba(17, 25, 40, 0.8)');
-  const teamBg = useColorModeValue('gray.50', 'rgba(30, 41, 59, 0.5)');
-  const borderColor = useColorModeValue('gray.200', 'rgba(0, 212, 255, 0.2)');
-
+const CommentaryTab: React.FC<CommentaryTabProps> = ({ commentary, isLoading }) => {
   if (isLoading) {
-    return <LoadingState message="Generating tactical analysis..." />;
+    return <LoadingState message="Writing the recap..." />;
   }
 
   if (!commentary || commentary.error) {
     return (
-      <Alert status="info">
+      <Alert status="info" borderRadius="lg">
         <AlertIcon />
-        Tactical commentary is only available for advanced replay uploads.
+        A recap isn't available for this match.
       </Alert>
     );
   }
 
+  const mvp = commentary.mvp_analysis;
+
   return (
-    <VStack spacing={6} align="stretch">
-      {/* Match Overview */}
-      <Grid templateColumns="1fr" gap={6}>
-        <GridItem>
-          <Card bg={cardBg} border="2px solid" borderColor={borderColor} h="full">
-            <CardBody>
-              <Heading
-                size="md"
-                mb={3}
-                fontFamily="heading"
-                letterSpacing="wider"
-              >
-                Match Overview
-              </Heading>
-              <Text lineHeight="tall">{commentary.overview}</Text>
-            </CardBody>
-          </Card>
-        </GridItem>
-      </Grid>
+    <Box bg="space.800" border="1px solid" borderColor="whiteAlpha.100" borderRadius="xl" p={{ base: 4, md: 6 }}>
+      <VStack align="stretch" spacing={5}>
+        {commentary.overview && <Text color="gray.200" lineHeight="tall">{commentary.overview}</Text>}
 
-      {/* Key Moments */}
-      <Card bg={cardBg} border="2px solid" borderColor={borderColor}>
-        <CardBody>
-          <HStack mb={4}>
-            <Icon as={FiZap} color="yellow.500" />
-            <Heading
-              size="md"
-              fontFamily="heading"
-              letterSpacing="wider"
-            >
-              Critical Moments
-            </Heading>
-          </HStack>
-          <VStack align="stretch" spacing={3}>
-            {(commentary.key_moments ?? []).map((moment, idx) => (
-              <Box
-                key={idx}
-                p={3}
-                bg={teamBg}
-                borderRadius="md"
-                borderLeft="4px solid"
-                borderLeftColor="brand.500"
-              >
-                <Text>{moment}</Text>
-              </Box>
-            ))}
-          </VStack>
-        </CardBody>
-      </Card>
-
-      {/* MVP Analysis */}
-      {commentary.mvp_analysis &&
-        commentary.mvp_analysis.player_name !== 'Unknown' && (
-          <Card
-            bg={cardBg}
-            borderWidth="3px"
-            borderColor="yellow.400"
-            boxShadow="0 0 30px rgba(255, 215, 0, 0.3)"
-          >
-            <CardBody>
-              <HStack mb={4}>
-                <Icon as={FiAward} color="yellow.500" boxSize={6} />
-                <Heading
-                  size="md"
-                  fontFamily="heading"
-                  letterSpacing="wider"
-                >
-                  Match MVP
-                </Heading>
+        {mvp && (
+          <HStack align="start" spacing={3} p={4} bg="whiteAlpha.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="shield.400">
+            <Icon as={FiAward} color="shield.400" boxSize={5} mt={0.5} />
+            <Box>
+              <HStack spacing={2} mb={1} flexWrap="wrap">
+                <Text fontWeight="bold" color="gray.50">MVP: {mvp.player_name}</Text>
+                <Badge variant="subtle" colorScheme="yellow">Team {mvp.team}</Badge>
+                {mvp.impact_score !== null && (
+                  <Badge variant="subtle" colorScheme="green" fontFamily="mono">Impact {mvp.impact_score.toFixed(1)}</Badge>
+                )}
               </HStack>
-              <VStack align="stretch" spacing={3}>
-                <HStack>
-                  <Text
-                    fontWeight="bold"
-                    fontSize="xl"
-                    fontFamily="heading"
-                  >
-                    {commentary.mvp_analysis.player_name}
-                  </Text>
-                  <Badge colorScheme="yellow" fontSize="md">
-                    Team {commentary.mvp_analysis.team}
-                  </Badge>
-                  {commentary.mvp_analysis.impact_score && (
-                    <Badge colorScheme="green" fontSize="md">
-                      Impact: {commentary.mvp_analysis.impact_score.toFixed(1)}
-                    </Badge>
-                  )}
-                </HStack>
-                <Text lineHeight="tall">
-                  {commentary.mvp_analysis.reasoning}
-                </Text>
-              </VStack>
-            </CardBody>
-          </Card>
+              <Text fontSize="sm" color="gray.400">{mvp.reasoning}</Text>
+            </Box>
+          </HStack>
         )}
 
-      {/* Player Performances */}
-      <Card bg={cardBg} border="2px solid" borderColor={borderColor}>
-        <CardBody>
-          <HStack mb={4}>
-            <Icon as={FiTarget} color="blue.500" />
-            <Heading
-              size="md"
-              fontFamily="heading"
-              letterSpacing="wider"
-            >
-              Player Performance
+        {commentary.key_moments && commentary.key_moments.length > 0 && (
+          <Box>
+            <Heading size="xs" color="gray.500" textTransform="uppercase" letterSpacing="widest" mb={2}>
+              Key moments
             </Heading>
-          </HStack>
-          <VStack align="stretch" spacing={4}>
-            {Object.entries(commentary.player_performances ?? {}).map(
-              ([name, analysis]) => {
-                const playerInfo = matchData?.players.find(p => p.player_name === name);
-                const race = playerInfo?.race || 'Random';
-                const won = playerInfo?.won || false;
-                
-                return (
-                  <Box 
-                    key={name} 
-                    p={4} 
-                    bg={teamBg} 
-                    borderRadius="md"
-                    borderLeft="4px solid"
-                    borderLeftColor={won ? 'green.400' : 'red.400'}
-                  >
-                    <HStack mb={2} justify="space-between">
-                      <HStack>
-                        <Heading size="sm" fontFamily="heading">
-                          {name}
-                        </Heading>
-                        <Badge colorScheme={won ? 'green' : 'red'} variant="outline" fontSize="2xs">
-                          {won ? 'Winner' : 'Defeat'}
-                        </Badge>
-                        <Badge variant={`race-${race.toLowerCase()}`} fontSize="2xs">
-                          {race}
-                        </Badge>
-                      </HStack>
-                    </HStack>
-                    <Text fontSize="sm" lineHeight="tall" color="gray.300">
-                      {analysis}
-                    </Text>
-                  </Box>
-                );
-              }
-            )}
-          </VStack>
-        </CardBody>
-      </Card>
-
-      {/* Team Analysis */}
-      {commentary.team_analysis && (
-        <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
-          <GridItem>
-            <Card bg={cardBg} border="2px solid" borderColor={borderColor}>
-              <CardBody>
-                <Heading
-                  size="md"
-                  mb={3}
-                  fontFamily="heading"
-                  letterSpacing="wider"
-                  color="brand.400"
-                >
-                  Team 1 Analysis
-                </Heading>
-                <Text fontSize="sm" lineHeight="tall">
-                  {commentary.team_analysis.team_1}
+            <VStack align="stretch" spacing={2}>
+              {commentary.key_moments.map((moment) => (
+                <Text key={moment} fontSize="sm" color="gray.300" pl={3} borderLeft="2px solid" borderColor="brand.500">
+                  {moment}
                 </Text>
-              </CardBody>
-            </Card>
-          </GridItem>
-          <GridItem>
-            <Card bg={cardBg} border="2px solid" borderColor={borderColor}>
-              <CardBody>
-                <Heading
-                  size="md"
-                  mb={3}
-                  fontFamily="heading"
-                  letterSpacing="wider"
-                  color="accent.400"
-                >
-                  Team 2 Analysis
-                </Heading>
-                <Text fontSize="sm" lineHeight="tall">
-                  {commentary.team_analysis.team_2}
-                </Text>
-              </CardBody>
-            </Card>
-          </GridItem>
-        </Grid>
-      )}
+              ))}
+            </VStack>
+          </Box>
+        )}
 
-      {/* Match Summary */}
-      <Card bg={cardBg} border="2px solid" borderColor={borderColor}>
-        <CardBody>
-          <HStack mb={4}>
-            <Icon as={FiTrendingUp} color="purple.500" />
-            <Heading
-              size="md"
-              fontFamily="heading"
-              letterSpacing="wider"
-            >
-              Final Assessment
-            </Heading>
-          </HStack>
-          <Text lineHeight="tall" fontSize="md">
-            {commentary.match_summary}
-          </Text>
-        </CardBody>
-      </Card>
-    </VStack>
+        {commentary.match_summary && <Text fontSize="sm" color="gray.400">{commentary.match_summary}</Text>}
+      </VStack>
+    </Box>
   );
 };
 

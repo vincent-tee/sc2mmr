@@ -43,10 +43,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { 
   FiArrowLeft, 
-  FiTrendingUp, 
   FiActivity, 
   FiAward, 
-  FiTarget, 
   FiZap
 } from 'react-icons/fi';
 import { 
@@ -62,14 +60,13 @@ import { playersApi } from '../api/endpoints';
 import { achievementsApi } from '../api/achievements';
 import LoadingState from '../components/LoadingState';
 import RankBadge from '../components/RankBadge';
+import MMRBreakdown from '../components/MMRBreakdown';
 import AchievementGrid from '../components/AchievementGrid';
-import { formatWinRate, formatDateOnly, formatDateTime } from '../utils/formatting';
+import { formatWinRate, formatDateOnly, formatDateTime, displayedMMRChange } from '../utils/formatting';
 import type { RecentMatch, PlayerDetail as PlayerDetailType } from '@/types/api';
 
 // Design tokens
 const cardBg = 'space.800';
-const borderColor = 'space.900';
-const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
 /**
  * Compact "D MMM" label for the trajectory chart x-axis. Mirrors the AEST
@@ -203,15 +200,14 @@ const PlayerDetail: React.FC = () => {
           <Box
             bg={cardBg}
             borderRadius="xl"
-            border="3px solid"
-            borderColor={borderColor}
-            boxShadow={brandShadow}
+            border="1px solid"
+            borderColor="whiteAlpha.100"
             p={6}
           >
-            <HStack justify="space-between" align="start">
-              <VStack align="start" spacing={2}>
-                <HStack spacing={3}>
-                  <Heading size="xl" fontFamily="heading" letterSpacing="wide" color="gray.100">
+            <Flex justify="space-between" align="start" gap={4} flexWrap="wrap">
+              <VStack align="start" spacing={2} minW={0}>
+                <Flex gap={3} align="center" flexWrap="wrap">
+                  <Heading size={{ base: 'lg', md: 'xl' }} fontFamily="heading" letterSpacing="wide" color="gray.100" wordBreak="break-word">
                     {playerData.name}
                   </Heading>
                   <Badge
@@ -240,7 +236,7 @@ const PlayerDetail: React.FC = () => {
                       AI
                     </Badge>
                   )}
-                </HStack>
+                </Flex>
                 {playerData.last_played && (
                   <Text color="gray.500" fontSize="sm">
                     Last played: {formatDateOnly(playerData.last_played)}
@@ -256,12 +252,12 @@ const PlayerDetail: React.FC = () => {
                   showIcon={true}
                 />
               </VStack>
-            </HStack>
+            </Flex>
           </Box>
 
           {/* MMR History Chart */}
-          <Box bg={cardBg} p={6} borderRadius="2xl" border="3px solid" borderColor={borderColor} boxShadow={brandShadow} w="100%">
-            <HStack justify="space-between" mb={6}>
+          <Box bg={cardBg} p={6} borderRadius="2xl" border="1px solid" borderColor="whiteAlpha.100" w="100%">
+            <Flex justify="space-between" mb={6} gap={3} flexWrap="wrap">
               <VStack align="start" spacing={0}>
                 <Heading size="md" fontFamily="heading" color="gray.100" textTransform="uppercase" letterSpacing="widest">
                   Performance Trajectory
@@ -274,7 +270,7 @@ const PlayerDetail: React.FC = () => {
                   {Math.round(historyData.history[historyData.history.length-1].mmr - historyData.history[0].mmr)} Total Swing
                 </Badge>
               )}
-            </HStack>
+            </Flex>
             
             <Box h="300px" w="100%">
               {historyData?.history && historyData.history.length > 0 ? (
@@ -360,9 +356,8 @@ const PlayerDetail: React.FC = () => {
                 <Box
                   bg={cardBg}
                   borderRadius="xl"
-                  border="3px solid"
-                  borderColor={borderColor}
-                  boxShadow={brandShadow}
+                  border="1px solid"
+                  borderColor="whiteAlpha.100"
                   p={5}
                   h="100%"
                 >
@@ -383,9 +378,8 @@ const PlayerDetail: React.FC = () => {
                 <Box
                   bg={cardBg}
                   borderRadius="xl"
-                  border="3px solid"
-                  borderColor={borderColor}
-                  boxShadow={brandShadow}
+                  border="1px solid"
+                  borderColor="whiteAlpha.100"
                   p={5}
                   h="100%"
                 >
@@ -404,54 +398,8 @@ const PlayerDetail: React.FC = () => {
                 </Box>
               </GridItem>
 
-              <GridItem>
-                <Box
-                  bg={cardBg}
-                  borderRadius="xl"
-                  border="3px solid"
-                  borderColor={borderColor}
-                  boxShadow={brandShadow}
-                  p={5}
-                  h="100%"
-                >
-                  <Stat>
-                    <StatLabel color="gray.400" fontFamily="heading" letterSpacing="wide">
-                      <Icon as={FiTarget} mr={2} color="shield.400" />
-                      Skill estimate
-                    </StatLabel>
-                    <StatNumber fontSize="3xl" color="shield.400" fontWeight="bold">
-                      {playerData.mu.toFixed(1)}
-                    </StatNumber>
-                    <StatHelpText color="gray.500" fontSize="xs">
-                      The system's best guess at true skill
-                    </StatHelpText>
-                  </Stat>
-                </Box>
-              </GridItem>
-
-              <GridItem>
-                <Box
-                  bg={cardBg}
-                  borderRadius="xl"
-                  border="3px solid"
-                  borderColor={borderColor}
-                  boxShadow={brandShadow}
-                  p={5}
-                  h="100%"
-                >
-                  <Stat>
-                    <StatLabel color="gray.400" fontFamily="heading" letterSpacing="wide">
-                      <Icon as={FiTrendingUp} mr={2} color="purple.400" />
-                      Rating confidence
-                    </StatLabel>
-                    <StatNumber fontSize="3xl" color="purple.400" fontWeight="bold">
-                      {playerData.sigma.toFixed(2)}
-                    </StatNumber>
-                    <StatHelpText color="gray.500" fontSize="xs">
-                      How settled this rating is — lower means more certain
-                    </StatHelpText>
-                  </Stat>
-                </Box>
+              <GridItem colSpan={{ base: 1, md: 2 }}>
+                <MMRBreakdown mu={playerData.mu} sigma={playerData.sigma} mmr={playerData.mmr} />
               </GridItem>
             </Grid>
           </Box>
@@ -460,9 +408,8 @@ const PlayerDetail: React.FC = () => {
           <Box
             bg={cardBg}
             borderRadius="xl"
-            border="3px solid"
-            borderColor={borderColor}
-            boxShadow={brandShadow}
+            border="1px solid"
+            borderColor="whiteAlpha.100"
             p={6}
           >
             <Heading size="md" fontFamily="heading" color="gray.300" mb={6}>
@@ -478,7 +425,7 @@ const PlayerDetail: React.FC = () => {
                   px={6} 
                   py={2}
                   fontFamily="heading"
-                  _selected={{ bg: 'brand.500', color: 'white', boxShadow: '3px 3px 0 var(--chakra-colors-space-900)' }}
+                  _selected={{ bg: 'brand.500', color: 'white' }}
                   _hover={{ bg: 'space.700' }}
                 >
                   <Icon as={FiZap} mr={2} /> Race Stats
@@ -490,7 +437,7 @@ const PlayerDetail: React.FC = () => {
                   px={6} 
                   py={2}
                   fontFamily="heading"
-                  _selected={{ bg: 'brand.500', color: 'white', boxShadow: '3px 3px 0 var(--chakra-colors-space-900)' }}
+                  _selected={{ bg: 'brand.500', color: 'white' }}
                   _hover={{ bg: 'space.700' }}
                 >
                   <Icon as={FiAward} mr={2} /> Trophy Case
@@ -566,13 +513,12 @@ const PlayerDetail: React.FC = () => {
           <Box
             bg={cardBg}
             borderRadius="xl"
-            border="3px solid"
-            borderColor={borderColor}
-            boxShadow={brandShadow}
-            p={6}
+            border="1px solid"
+            borderColor="whiteAlpha.100"
+            p={{ base: 3, md: 6 }}
           >
             <VStack align="stretch" spacing={4}>
-              <HStack justify="space-between" align="center">
+              <Flex justify="space-between" align="center" gap={3} flexWrap="wrap">
                 <Heading size="md" fontFamily="heading" color="gray.300">
                   Recent Matches
                   {playerData.recent_matches && playerData.recent_matches.length > 0 && (
@@ -598,20 +544,20 @@ const PlayerDetail: React.FC = () => {
                     ))}
                   </ButtonGroup>
                 </HStack>
-              </HStack>
+              </Flex>
 
               {playerData.recent_matches && playerData.recent_matches.length > 0 ? (
                 <>
                   <TableContainer>
-                    <Table variant="simple" size="sm">
+                    <Table variant="simple" size="sm" sx={{ 'th, td': { px: [2, null, 4] } }}>
                       <Thead>
                         <Tr>
-                          <Th color="gray.500" borderColor="space.700">Date</Th>
+                          <Th color="gray.500" borderColor="space.700" display={{ base: 'none', md: 'table-cell' }}>Date</Th>
                           <Th color="gray.500" borderColor="space.700">Map</Th>
-                          <Th color="gray.500" borderColor="space.700">Mode</Th>
-                          <Th color="gray.500" borderColor="space.700">Race</Th>
+                          <Th color="gray.500" borderColor="space.700" display={{ base: 'none', md: 'table-cell' }}>Mode</Th>
+                          <Th color="gray.500" borderColor="space.700" display={{ base: 'none', md: 'table-cell' }}>Race</Th>
                           <Th color="gray.500" borderColor="space.700">Result</Th>
-                          <Th color="gray.500" borderColor="space.700" isNumeric>Before</Th>
+                          <Th color="gray.500" borderColor="space.700" isNumeric display={{ base: 'none', md: 'table-cell' }}>Before</Th>
                           <Th color="gray.500" borderColor="space.700" isNumeric>After</Th>
                           <Th color="gray.500" borderColor="space.700" isNumeric>Change</Th>
                         </Tr>
@@ -625,16 +571,21 @@ const PlayerDetail: React.FC = () => {
                             onClick={() => navigate(`/history/${match.match_id}`)}
                             transition="all 0.2s"
                           >
-                            <Td borderColor="space.700">
+                            <Td borderColor="space.700" display={{ base: 'none', md: 'table-cell' }}>
                               <Text fontSize="xs" color="gray.400">
                                 {formatDateTime(match.played_at)}
                               </Text>
                             </Td>
-                            <Td borderColor="space.700" color="gray.300">{match.map_name}</Td>
-                            <Td borderColor="space.700">
+                            <Td borderColor="space.700" color="gray.300" whiteSpace={{ base: 'normal', md: 'nowrap' }}>
+                              {match.map_name}
+                              <Text fontSize="xs" color="gray.500" display={{ base: 'block', md: 'none' }}>
+                                {formatDateOnly(match.played_at)} · {match.game_mode}
+                              </Text>
+                            </Td>
+                            <Td borderColor="space.700" display={{ base: 'none', md: 'table-cell' }}>
                               <Badge size="sm" bg="space.700" color="gray.300">{match.game_mode}</Badge>
                             </Td>
-                            <Td borderColor="space.700">
+                            <Td borderColor="space.700" display={{ base: 'none', md: 'table-cell' }}>
                               <Badge bg={`${getRaceColor(match.race)}.500`} color="white">
                                 {match.race}
                               </Badge>
@@ -644,7 +595,7 @@ const PlayerDetail: React.FC = () => {
                                 {match.won ? 'Win' : 'Loss'}
                               </Badge>
                             </Td>
-                            <Td borderColor="space.700" isNumeric color="gray.400">{Math.round(match.mmr_before)}</Td>
+                            <Td borderColor="space.700" isNumeric color="gray.400" display={{ base: 'none', md: 'table-cell' }}>{Math.round(match.mmr_before)}</Td>
                             <Td borderColor="space.700" isNumeric color="gray.400">{Math.round(match.mmr_after)}</Td>
                             <Td borderColor="space.700" isNumeric>
                               <Text
@@ -653,7 +604,7 @@ const PlayerDetail: React.FC = () => {
                                 fontFamily="mono"
                               >
                                 {match.mmr_change >= 0 ? '+' : ''}
-                                {Math.round(match.mmr_change)}
+                                {displayedMMRChange(match.mmr_before, match.mmr_after)}
                               </Text>
                             </Td>
                           </Tr>
@@ -663,8 +614,8 @@ const PlayerDetail: React.FC = () => {
                   </TableContainer>
 
                   {/* Pagination Controls */}
-                  <HStack justify="center" pt={4}>
-                    <ButtonGroup size="sm" variant="outline">
+                  <HStack justify="center" pt={4} spacing={{ base: 1, md: 2 }} flexWrap="wrap">
+                    <ButtonGroup size="sm" variant="outline" flexWrap="wrap" justifyContent="center" spacing={1}>
                       <Button
                         onClick={() => handlePageChange(0)}
                         isDisabled={matchesOffset === 0}

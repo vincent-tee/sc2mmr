@@ -17,6 +17,10 @@ export const formatMMR = (value: number | null | undefined): string => {
   return Math.round(value).toLocaleString();
 };
 
+/** The change between two MMRs as shown on screen, so before + change always equals after. */
+export const displayedMMRChange = (before: number, after: number): number =>
+  Math.round(after) - Math.round(before);
+
 // =============================================================================
 // Date/Time Formatting (AEST)
 // =============================================================================

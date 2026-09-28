@@ -56,7 +56,6 @@ const REASON_OPTIONS: { value: JudgmentReason; label: string }[] = [
   { value: 'current_form', label: 'Current form' },
   { value: 'communication', label: 'Communication' },
   { value: 'map', label: 'Map' },
-  { value: 'known_synergy', label: 'Known synergy' },
   { value: 'other', label: 'Other' },
 ];
 

@@ -49,7 +49,7 @@ export const PlayerGridSkeleton: React.FC<PlayerGridSkeletonProps> = ({ count = 
 
 export const TeamResultSkeleton: React.FC = () => {
   return (
-    <Box bg="space.800" border="3px solid" borderColor="space.700" borderRadius="xl" p={6}>
+    <Box bg="space.800" border="1px solid" borderColor="whiteAlpha.100" borderRadius="xl" p={6}>
       <VStack spacing={4} align="stretch">
         <Skeleton height="24px" width="150px" startColor="space.700" endColor="space.600" />
         <Skeleton height="40px" width="200px" startColor="space.700" endColor="space.600" />

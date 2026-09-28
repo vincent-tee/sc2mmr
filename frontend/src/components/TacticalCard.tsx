@@ -23,7 +23,6 @@ const TacticalCard: React.FC<TacticalCardProps> = ({
   ...props
 }) => {
   const bgColor = useColorModeValue('white', 'space.800');
-  const borderColor = useColorModeValue('space.900', 'space.900');
   const hoverBorderColor = useColorModeValue('brand.500', 'brand.400');
   const isCommand = variant === 'command';
   const isAngled = variant === 'angled';
@@ -48,8 +47,8 @@ const TacticalCard: React.FC<TacticalCardProps> = ({
       role={onClick ? 'button' : undefined}
       aria-label={onClick ? 'Interactive card' : undefined}
       transition={`all ${transitions.base} ${transitions.easing.bounce}`}
-      border="3px solid"
-      borderColor={borderColor}
+      border="1px solid"
+      borderColor="whiteAlpha.100"
       borderLeftWidth={isCommand ? '6px' : '4px'}
       borderLeftColor={glowColor}
       borderRadius="2xl"

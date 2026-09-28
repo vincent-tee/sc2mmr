@@ -16,18 +16,20 @@ import {
   Divider,
   Button,
   Icon,
+  Flex,
 } from '@chakra-ui/react';
-import { FiZap } from 'react-icons/fi';
+import { FiShuffle, FiZap } from 'react-icons/fi';
 import { keyframes } from '@emotion/react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { playersApi, teamsApi, replaysApi } from '../../api/endpoints';
 import apiClient, { ApiClientError } from '../../api/client';
-import { Player, TeamSuggestionWithImpact } from '../../types/api';
+import { Player, TeamPlayer, TeamSuggestionWithImpact } from '../../types/api';
 import PageHeader from '../../components/PageHeader';
 import AnimatedNumber from '../../components/AnimatedNumber';
 import TeamSelector from './TeamSelector';
 import MapSelector from './MapSelector';
 import BalanceResults from './BalanceResults';
+import CaptainsDraft from './CaptainsDraft';
 import LoadingState, { TeamResultSkeleton } from '../../components/LoadingState';
 import { 
   copyToClipboard, 
@@ -49,6 +51,8 @@ const TeamGenerator: React.FC = () => {
   const [aiDifficulties, setAIDifficulties] = useState<Record<string, number>>({});
   const [selectedMap, setSelectedMap] = useState<string>('');
   const [availableMaps, setAvailableMaps] = useState<string[]>([]);
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [resultsTitle, setResultsTitle] = useState('Your teams');
 
   
   const toast = useToast({
@@ -124,6 +128,7 @@ const TeamGenerator: React.FC = () => {
       return response.data;
     },
     onSuccess: (data: TeamSuggestionWithImpact[]) => {
+      setResultsTitle('Your teams');
       setTeamSuggestions(data);
       
       // Clear any pending toasts and show single completion message
@@ -239,6 +244,38 @@ const TeamGenerator: React.FC = () => {
     }
   };
 
+  const toTeamPlayer = (player: Player): TeamPlayer => ({
+    id: player.id,
+    name: player.name,
+    mmr: player.mmr,
+    win_rate: player.win_rate,
+    total_games: player.total_games,
+    favorite_race: player.favorite_race,
+    is_core_player: player.is_core_player,
+    is_ai: player.is_ai,
+  });
+
+  const showDraftedTeams = async (team1: Player[], team2: Player[]): Promise<void> => {
+    const teamMMR = (team: Player[]) => team.reduce((sum, p) => sum + p.mmr, 0);
+    try {
+      const { data } = await teamsApi.predict(team1.map((p) => p.id), team2.map((p) => p.id));
+      setResultsTitle('Your drafted teams');
+      setTeamSuggestions([{
+        balance_prediction_id: null,
+        team_1: { players: team1.map(toTeamPlayer), avg_mmr: teamMMR(team1) / team1.length },
+        team_2: { players: team2.map(toTeamPlayer), avg_mmr: teamMMR(team2) / team2.length },
+        win_probability_team_1: data.team_1.win_probability,
+        win_probability_team_2: data.team_2.win_probability,
+        fairness_rating: '',
+        mmr_difference: Math.abs(teamMMR(team1) - teamMMR(team2)),
+        match_quality: data.match_quality * 100,
+      }]);
+      setDraftOpen(false);
+    } catch (error) {
+      toast({ title: "Couldn't score the drafted teams", description: (error as ApiClientError).userMessage, status: 'error' });
+    }
+  };
+
   const togglePlayer = (player: Player): void => {
     if (teamSuggestions.length > 0) {
       setTeamSuggestions([]);
@@ -263,6 +300,7 @@ const TeamGenerator: React.FC = () => {
   const clearSelection = (): void => {
     setSelectedPlayers([]);
     setTeamSuggestions([]);
+    setDraftOpen(false);
   };
 
   const generateTeams = (): void => {
@@ -273,6 +311,7 @@ const TeamGenerator: React.FC = () => {
   // Validation flags
   const minPlayers = 2;
   const canGenerate = selectedPlayers.length >= minPlayers;
+  const draftSquad = selectedPlayers.filter((p) => p.id > 0);
   const hasOddPlayers = selectedPlayers.length % 2 !== 0;
 
   // Export team composition
@@ -345,7 +384,7 @@ const TeamGenerator: React.FC = () => {
             color="brand.400"
             textAlign="center"
           >
-            Team Generator
+            Build Teams
           </Heading>
           <LoadingState variant="players" count={8} />
         </VStack>
@@ -357,7 +396,7 @@ const TeamGenerator: React.FC = () => {
     <Box position="relative">
       <PageHeader
         kicker="Matchmaking"
-        title="Team [Generator]"
+        title="Build [Teams]"
         description="Pick who's playing tonight — we'll do the math and hand you fair teams."
       />
 
@@ -503,10 +542,15 @@ const TeamGenerator: React.FC = () => {
             </Box>
           )}
 
+          {draftOpen && teamSuggestions.length === 0 && (
+            <CaptainsDraft squad={draftSquad} onComplete={showDraftedTeams} onCancel={() => setDraftOpen(false)} />
+          )}
+
           {/* Display Results */}
           {teamSuggestions.length > 0 && !balanceTeamsMutation.isPending && (
             <BalanceResults
               suggestions={teamSuggestions}
+              title={resultsTitle}
               onExport={handleExport}
               onExportAll={handleExportAll}
               onClear={() => {
@@ -518,7 +562,7 @@ const TeamGenerator: React.FC = () => {
         </VStack>
       </Container>
 
-      {selectedPlayers.length > 0 && teamSuggestions.length === 0 && (
+      {selectedPlayers.length > 0 && teamSuggestions.length === 0 && !draftOpen && (
         <Box
           position="fixed"
           bottom={0}
@@ -529,48 +573,44 @@ const TeamGenerator: React.FC = () => {
           borderTop="1px solid"
           borderColor="brand.500"
           py={3}
-          px={8}
+          px={{ base: 3, md: 8 }}
           zIndex={100}
           boxShadow="0 -10px 30px rgba(0, 0, 0, 0.5)"
           animation={`${slideInUp} 0.3s ease-out`}
         >
-          <Container maxW="container.xl">
-            <HStack justify="space-between" spacing={6}>
-              {/* Left: player count + avg MMR */}
-              <HStack spacing={5}>
+          <Container maxW="container.xl" px={{ base: 0, md: 4 }}>
+            <Flex justify="space-between" align="center" gap={{ base: 2, md: 6 }} flexWrap="wrap">
+              <HStack spacing={{ base: 3, md: 5 }} minW={0}>
                 <VStack align="start" spacing={0}>
                   <Text fontSize="10px" color="gray.500" fontWeight="black" textTransform="uppercase" letterSpacing="widest">
                     Squad
                   </Text>
                   <Text
-                    fontSize="xl"
+                    fontSize={{ base: 'lg', md: 'xl' }}
                     fontWeight="black"
                     color={hasOddPlayers ? 'yellow.400' : 'brand.400'}
                     fontFamily="heading"
+                    whiteSpace="nowrap"
                   >
                     {selectedPlayers.length} Players
                   </Text>
                 </VStack>
-                <Divider orientation="vertical" height="30px" borderColor="whiteAlpha.200" />
-                <VStack align="start" spacing={0}>
+                <Divider orientation="vertical" height="30px" borderColor="whiteAlpha.200" display={{ base: 'none', md: 'block' }} />
+                <VStack align="start" spacing={0} display={{ base: 'none', md: 'flex' }}>
                   <Text fontSize="10px" color="gray.500" fontWeight="black" textTransform="uppercase" letterSpacing="widest">
                     Avg MMR
                   </Text>
                   <Text fontSize="xl" fontWeight="black" color="gray.200" fontFamily="mono">
-                    {selectedPlayers.length > 0 ? (
-                      <AnimatedNumber
-                        value={selectedPlayers.reduce((s, p) => s + p.mmr, 0) / selectedPlayers.length}
-                        format={(n) => Math.round(n).toLocaleString()}
-                      />
-                    ) : (
-                      '—'
-                    )}
+                    <AnimatedNumber
+                      value={selectedPlayers.reduce((s, p) => s + p.mmr, 0) / selectedPlayers.length}
+                      format={(n) => Math.round(n).toLocaleString()}
+                    />
                   </Text>
                 </VStack>
                 {aiSuggestion && hasOddPlayers && (
                   <>
-                    <Divider orientation="vertical" height="30px" borderColor="whiteAlpha.200" />
-                    <VStack align="start" spacing={0}>
+                    <Divider orientation="vertical" height="30px" borderColor="whiteAlpha.200" display={{ base: 'none', md: 'block' }} />
+                    <VStack align="start" spacing={0} display={{ base: 'none', md: 'flex' }}>
                       <Text fontSize="10px" color="yellow.500" fontWeight="black" textTransform="uppercase" letterSpacing="widest">
                         Suggested AI
                       </Text>
@@ -582,44 +622,39 @@ const TeamGenerator: React.FC = () => {
                 )}
               </HStack>
 
-              {/* Right: map selector + actions */}
-              <HStack spacing={3}>
-                <MapSelector
-                  selectedMap={selectedMap}
-                  availableMaps={availableMaps}
-                  onMapChange={setSelectedMap}
-                />
-                <Divider orientation="vertical" height="30px" borderColor="whiteAlpha.200" />
+              <HStack spacing={2} flexWrap="wrap" justify="flex-end">
+                <Box>
+                  <MapSelector
+                    selectedMap={selectedMap}
+                    availableMaps={availableMaps}
+                    onMapChange={setSelectedMap}
+                  />
+                </Box>
                 <Button
-                  variant="ghost"
-                  colorScheme="gray"
-                  onClick={clearSelection}
-                  fontFamily="heading"
-                  size="sm"
+                  variant="outline"
+                  size="md"
+                  leftIcon={<Icon as={FiShuffle} />}
+                  onClick={() => setDraftOpen(true)}
+                  isDisabled={draftSquad.length < minPlayers}
+                  title={draftSquad.length < selectedPlayers.length ? "Guests and AI aren't included in a draft" : undefined}
                 >
-                  Clear
+                  Draft
                 </Button>
                 <Button
                   colorScheme="brand"
                   size="md"
-                  px={8}
-                  fontSize="lg"
+                  px={{ base: 4, md: 8 }}
                   fontWeight="black"
                   fontFamily="heading"
                   leftIcon={<Icon as={FiZap} />}
                   onClick={generateTeams}
                   isLoading={balanceTeamsMutation.isPending}
                   isDisabled={!canGenerate}
-                  boxShadow="0 0 15px rgba(255, 107, 53, 0.25)"
-                  _hover={{
-                    transform: 'translateY(-1px)',
-                    boxShadow: '0 0 25px rgba(255, 107, 53, 0.45)',
-                  }}
                 >
-                  Launch Match
+                  Generate teams
                 </Button>
               </HStack>
-            </HStack>
+            </Flex>
           </Container>
         </Box>
       )}

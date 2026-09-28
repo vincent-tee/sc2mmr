@@ -107,7 +107,7 @@ async def get_mmr_leaderboard(
                 "rank": i + 1,
                 "player_id": p.id,
                 "name": p.name,
-                "value": round(p.mmr, 1),
+                "value": p.mmr,
                 "secondary_value": p.total_games,
                 "extra_info": f"{p.wins}W {p.losses}L",
                 "is_new": is_new,
@@ -268,8 +268,8 @@ async def get_specialist_leaderboard(
             "player_id": p.id,
             "name": p.name,
             "value": round(getattr(p, col.name), 1),
-            "secondary_value": round(p.mmr, 1),
-            "extra_info": f"Rank: {round(p.mmr, 0):.0f} MMR",
+            "secondary_value": p.mmr,
+            "extra_info": f"Rank: {p.mmr:.0f} MMR",
         }
         for i, p in enumerate(players)
     ]
@@ -508,8 +508,8 @@ async def get_race_leaderboard(
             "player_id": p.id,
             "name": p.name,
             "value": getattr(p, col.name),
-            "secondary_value": round(p.mmr, 1),
-            "extra_info": f"MMR: {round(p.mmr, 0)}",
+            "secondary_value": p.mmr,
+            "extra_info": f"MMR: {p.mmr:.0f}",
         }
         for i, p in enumerate(players)
     ]

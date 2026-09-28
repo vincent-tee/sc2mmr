@@ -43,8 +43,6 @@ import PageHeader from '../components/PageHeader';
 
 // Design tokens
 const cardBg = 'space.800';
-const borderColor = 'space.900';
-const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
 // =============================================================================
 // Animations
@@ -78,9 +76,8 @@ const RivalryMeter: React.FC<RivalryMeterProps> = React.memo(({ score, intensity
     <Box
       bg={cardBg}
       borderRadius="xl"
-      border="3px solid"
-      borderColor={borderColor}
-      boxShadow={brandShadow}
+      border="1px solid"
+      borderColor="whiteAlpha.100"
       p={6}
       position="relative"
       overflow="hidden"
@@ -221,7 +218,6 @@ const RivalryCard: React.FC<RivalryCardProps> = React.memo(({ rivalry, onClick }
       _hover={{
         borderColor: config.color,
         transform: 'translateY(-2px)',
-        boxShadow: brandShadow,
       }}
       onClick={onClick}
     >
@@ -376,9 +372,8 @@ const HeadToHead: React.FC = () => {
           <Box
             bg={cardBg}
             borderRadius="xl"
-            border="3px solid"
-            borderColor={borderColor}
-            boxShadow={brandShadow}
+            border="1px solid"
+            borderColor="whiteAlpha.100"
             p={6}
           >
             <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4} alignItems="end">
@@ -452,7 +447,6 @@ const HeadToHead: React.FC = () => {
                   h2hData.head_to_head.player2_wins > h2hData.head_to_head.player1_wins ? 2 : null
                 }
                 probabilityLabel="Win Rate"
-                oddsBarLabel="Head-to-Head Record"
               />
 
               {/* Rivalry Meter */}
@@ -464,21 +458,21 @@ const HeadToHead: React.FC = () => {
 
               {/* Stats Grid */}
               <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4} w="100%">
-                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl" boxShadow={brandShadow}>
+                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl">
                   <StatLabel color="gray.500" fontFamily="heading" letterSpacing="wide">Total Games</StatLabel>
                   <StatNumber color="brand.400" fontWeight="bold">{h2hData.head_to_head.total_games}</StatNumber>
                 </Stat>
-                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl" boxShadow={brandShadow}>
+                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl">
                   <StatLabel color="gray.500" fontFamily="heading" letterSpacing="wide">{h2hData.player1.name} Wins</StatLabel>
                   <StatNumber color="shield.400" fontWeight="bold">{h2hData.head_to_head.player1_wins}</StatNumber>
                   <StatHelpText>{getH2HWinRate(h2hData.head_to_head.player1_wins, h2hData.head_to_head.total_games)}</StatHelpText>
                 </Stat>
-                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl" boxShadow={brandShadow}>
+                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl">
                   <StatLabel color="gray.500" fontFamily="heading" letterSpacing="wide">{h2hData.player2.name} Wins</StatLabel>
                   <StatNumber color="accent.400" fontWeight="bold">{h2hData.head_to_head.player2_wins}</StatNumber>
                   <StatHelpText>{getH2HWinRate(h2hData.head_to_head.player2_wins, h2hData.head_to_head.total_games)}</StatHelpText>
                 </Stat>
-                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl" boxShadow={brandShadow}>
+                <Stat bg={cardBg} border="2px solid" borderColor="space.700" p={4} borderRadius="xl">
                   <StatLabel color="gray.500" fontFamily="heading" letterSpacing="wide">Avg MMR Swing</StatLabel>
                   <StatNumber color="gray.200" fontWeight="bold">±{Math.round(h2hData.head_to_head.avg_mmr_swing)}</StatNumber>
                 </Stat>

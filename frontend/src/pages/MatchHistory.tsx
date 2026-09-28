@@ -496,7 +496,7 @@ const MatchHistory: React.FC = () => {
   const header = (
     <PageHeader
       kicker="Battle Log"
-      title="Match [Archive]"
+      title="All [Matches]"
       description="Every game the squad has played, with the receipts to prove it."
       stats={[
         { label: 'Battles recorded', value: totalMatches },
@@ -629,7 +629,7 @@ const MatchHistory: React.FC = () => {
                   Page {safePage} of {totalPages} • Showing {pageMatches.length} of {filteredTotal} matches
                 </Text>
 
-                <HStack spacing={2}>
+                <HStack spacing={{ base: 1, md: 2 }} flexWrap="wrap" justify="center">
                   <IconButton
                     icon={<FiChevronsLeft />}
                     onClick={() => handlePageChange(1)}
@@ -637,7 +637,7 @@ const MatchHistory: React.FC = () => {
                     aria-label="First page"
                     variant="ghost"
                     colorScheme="cyan"
-                    size="lg"
+                    size={{ base: 'sm', md: 'lg' }}
                   />
                   <IconButton
                     icon={<FiChevronLeft />}
@@ -646,7 +646,7 @@ const MatchHistory: React.FC = () => {
                     aria-label="Previous page"
                     variant="ghost"
                     colorScheme="cyan"
-                    size="lg"
+                    size={{ base: 'sm', md: 'lg' }}
                   />
 
                   <ButtonGroup spacing={2}>
@@ -668,7 +668,7 @@ const MatchHistory: React.FC = () => {
                           onClick={() => handlePageChange(pageNum)}
                           variant={safePage === pageNum ? 'solid' : 'ghost'}
                           colorScheme="cyan"
-                          size="lg"
+                          size={{ base: 'sm', md: 'lg' }}
                           fontFamily="heading"
                           minW="50px"
                           bg={safePage === pageNum ? 'brand.500' : undefined}
@@ -690,7 +690,7 @@ const MatchHistory: React.FC = () => {
                     aria-label="Next page"
                     variant="ghost"
                     colorScheme="cyan"
-                    size="lg"
+                    size={{ base: 'sm', md: 'lg' }}
                   />
                   <IconButton
                     icon={<FiChevronsRight />}
@@ -699,7 +699,7 @@ const MatchHistory: React.FC = () => {
                     aria-label="Last page"
                     variant="ghost"
                     colorScheme="cyan"
-                    size="lg"
+                    size={{ base: 'sm', md: 'lg' }}
                   />
                 </HStack>
               </VStack>

@@ -150,9 +150,8 @@ const TeamTable: React.FC<{
       <Box
         bg="space.800"
         borderRadius="xl"
-        border="3px solid"
-        borderColor="space.900"
-        boxShadow="3px 3px 0 var(--chakra-colors-space-900)"
+        border="1px solid"
+        borderColor="whiteAlpha.100"
         overflow="hidden"
       >
         <Box p={4} bg={won ? winnerBg : loserBg}>

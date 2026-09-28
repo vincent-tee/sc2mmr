@@ -76,7 +76,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
   size = 'md',
 }) => {
   const cardBg = useColorModeValue('white', 'space.800');
-  const borderColorDefault = useColorModeValue('gray.200', 'space.900');
+  const borderColorDefault = useColorModeValue('gray.200', 'whiteAlpha.100');
   const avatarBorderColor = useColorModeValue('gray.800', 'space.900');
 
   const sizes: Record<CardSize, SizeConfig> = {
@@ -116,11 +116,9 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
     <Box
       bg={cardBg}
       borderRadius="xl"
-      border="3px solid"
+      border="1px solid"
       borderColor={isSelected ? 'brand.500' : borderColorDefault}
-      boxShadow={isSelected
-        ? '6px 6px 0 var(--chakra-colors-brand-500)'
-        : '4px 4px 0 var(--chakra-colors-space-900)'}
+      boxShadow={isSelected ? '0 0 0 2px var(--chakra-colors-brand-500)' : 'none'}
       p={sizeConfig.padding}
       cursor={onClick ? 'pointer' : 'default'}
       onClick={onClick}
@@ -131,8 +129,8 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
       aria-pressed={onClick ? isSelected : undefined}
       transition="all 0.25s cubic-bezier(0.68, -0.35, 0.265, 1.35)"
       _hover={onClick ? {
-        transform: 'translateY(-4px) rotate(1deg)',
-        boxShadow: '6px 6px 0 var(--chakra-colors-space-900)',
+        transform: 'translateY(-2px)',
+        boxShadow: isSelected ? '0 0 0 2px var(--chakra-colors-brand-500)' : '0 8px 20px rgba(0, 0, 0, 0.35)',
         borderColor: 'brand.400',
       } : {}}
       _focus={onClick ? {
@@ -174,7 +172,6 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
           bg={`${getRaceColor(primaryRace)}.500`}
           border="3px solid"
           borderColor={avatarBorderColor}
-          boxShadow="2px 2px 0 var(--chakra-colors-space-900)"
         />
 
         <VStack spacing={1.5} align="center" width="100%">

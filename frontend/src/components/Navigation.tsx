@@ -33,7 +33,6 @@ import {
   FiUsers,
   FiHome,
   FiChevronDown,
-  FiTarget,
   FiBarChart2,
   FiInfo,
   FiAward,
@@ -61,7 +60,6 @@ const primaryItems: NavItem[] = [
 
 // Overflow links in the "More" menu (labels match their page titles)
 const secondaryItems: NavItem[] = [
-  { path: '/predictor', label: 'Match Predictor', icon: FiTarget },
   { path: '/rating-system', label: 'How the Rating Works', icon: FiInfo },
   { path: '/achievements', label: 'Achievements', icon: FiAward },
   { path: '/h2h', label: 'Head to Head', icon: LuSwords },

@@ -78,7 +78,6 @@ const FailedUploads: React.FC = () => {
   // Design tokens
   const cardBg = 'space.800';
   const borderColor = 'space.900';
-  const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
   const errorBoxBg = 'space.900';
   const hoverBg = 'space.700';
   const expandedRowBg = 'space.900';
@@ -282,9 +281,8 @@ const FailedUploads: React.FC = () => {
           variant="left-accent"
           borderRadius="xl"
           bg="space.800"
-          border="3px solid"
-          borderColor={borderColor}
-          boxShadow={brandShadow}
+          border="1px solid"
+          borderColor="whiteAlpha.100"
         >
           <AlertIcon />
           <Box>
@@ -300,9 +298,8 @@ const FailedUploads: React.FC = () => {
         <Box
           bg={cardBg}
           borderRadius="xl"
-          border="3px solid"
-          borderColor={borderColor}
-          boxShadow={brandShadow}
+          border="1px solid"
+          borderColor="whiteAlpha.100"
           p={4}
         >
           <HStack spacing={4} justify="space-between">
@@ -367,9 +364,8 @@ const FailedUploads: React.FC = () => {
           <Box
             bg={cardBg}
             borderRadius="xl"
-            border="3px solid"
-            borderColor={borderColor}
-            boxShadow={brandShadow}
+            border="1px solid"
+            borderColor="whiteAlpha.100"
             overflow="hidden"
           >
             <Box overflowX="auto" maxW="100%">

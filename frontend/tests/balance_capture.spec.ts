@@ -27,6 +27,10 @@ test('record final teams and restore the locked assessment after navigation', as
     if (path === '/auth/status') response = { authenticated: true, auth_enabled: false, public_read: true };
     else if (path === '/players/' || path === '/players') response = players;
     else if (path === '/teams/balance') response = [suggestion];
+    else if (path === '/teams/predict') response = {
+      team_1: { win_probability: 52 }, team_2: { win_probability: 48 },
+      predicted_winner: 1, confidence: 'Low', match_quality: 0.74, factors: [] };
+    else if (path === '/teams/suggest-swaps') response = { current_match_quality: 0.74, current_win_probability: 0.52, suggestions: [] };
     else if (path.includes('ai-difficulties')) response = { difficulties: {} };
     else if (path.startsWith('/replays/matches')) response = { matches: [], total: 0 };
     else if (path === '/judgments' && route.request().method() === 'GET') response = saved ? [saved] : [];
@@ -53,11 +57,12 @@ test('record final teams and restore the locked assessment after navigation', as
   });
   await page.goto('http://sc2mmr.test/balance');
   for (const player of players) await page.getByText(player.name, { exact: true }).first().click();
-  await page.getByRole('button', { name: 'Launch Match' }).click();
-  await expect(page.getByText('Choose these teams for your game')).toBeVisible();
-  await page.getByLabel('Swap from Team 1').selectOption('1');
-  await page.getByLabel('Swap from Team 2').selectOption('3');
-  await page.getByRole('button', { name: 'Swap', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate teams' }).click();
+  await page.getByRole('button', { name: 'Adjust teams' }).click();
+  await page.getByRole('button', { name: 'Pick Alice to swap' }).click();
+  await page.getByRole('button', { name: 'Pick Carol to swap' }).click();
+  await expect(page.getByText('Adjusted')).toBeVisible();
+  await page.getByRole('button', { name: 'Record this game' }).click();
   await page.getByPlaceholder('Organizer name').fill('Organizer');
   await page.getByRole('spinbutton').fill('65');
   await page.getByRole('button', { name: 'Record Judgment' }).click();
@@ -66,11 +71,12 @@ test('record final teams and restore the locked assessment after navigation', as
   expect(submitted!['human_win_prob']).toBe(.65);
   await page.getByRole('button', { name: 'Start game with these teams' }).click();
   await expect(page.getByText(/Game #9 recorded/)).toBeVisible();
-  await expect(page.getByLabel('Swap from Team 1')).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Pick Bob to swap' })).toBeDisabled();
   await page.reload();
   for (const player of players) await page.getByText(player.name, { exact: true }).first().click();
-  await page.getByRole('button', { name: 'Launch Match' }).click();
+  await page.getByRole('button', { name: 'Generate teams' }).click();
   await expect(page.getByText(/Game #9 recorded/)).toBeVisible();
-  await expect(page.getByLabel('Swap from Team 1')).toBeDisabled();
+  await page.getByRole('button', { name: 'Adjust teams' }).click();
+  await expect(page.getByRole('button', { name: 'Pick Bob to swap' })).toBeDisabled();
   expect(errors).toEqual([]);
 });

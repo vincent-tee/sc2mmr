@@ -43,8 +43,6 @@ import type { IconType } from 'react-icons';
 
 // Design tokens
 const cardBg = 'space.800';
-const borderColor = 'space.900';
-const brandShadow = '3px 3px 0 var(--chakra-colors-space-900)';
 
 // Upload status enum
 const UPLOAD_STATUS = {
@@ -316,7 +314,6 @@ const UploadReplays: React.FC = () => {
             _hover={{
               borderColor: 'brand.500',
               transform: 'translateY(-2px)',
-              boxShadow: brandShadow,
             }}
           >
             <input {...getInputProps()} />
@@ -357,9 +354,8 @@ const UploadReplays: React.FC = () => {
           <Box
             bg={cardBg}
             borderRadius="xl"
-            border="3px solid"
-            borderColor={borderColor}
-            boxShadow={brandShadow}
+            border="1px solid"
+            borderColor="whiteAlpha.100"
             p={6}
           >
             <VStack spacing={4} align="stretch">
