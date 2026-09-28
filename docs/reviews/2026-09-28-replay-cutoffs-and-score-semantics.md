@@ -320,3 +320,39 @@ stay unknown (414, 452, 595, 738, 740, 801, 822, 867, 882, 903). Match 1168 goes
 Unknown games count as neither win nor loss: `Match.is_rated` (NULL-safe) filters recent form, streaks,
 race/build win rates, head-to-head, rivalries, coaching, achievement streaks, calibration and the MMR
 chart; the UI and commentary show "No result".
+
+### Unknowns resolved and follow-ups — 2026-09-28 (end of day)
+
+- **Review queue is empty on prod.** `review_queue` (`backend/app/services/match_results.py`) now lists only
+  unknown results plus suggested results that another recording contradicts. A new result type,
+  `not_rateable` (`backend/app/match_result.py`), is set via `POST /match-results/{id}/not-rateable`. It is
+  never rated and never queued.
+- **The 11 unknowns:**
+  - 595 (free-for-all), 740 (3v3v3) and 452 (a 4-minute abandoned game) were marked `not_rateable`.
+  - 801, 882, 414 and 738 were confirmed as Team 2 wins from end-state evidence: Team 1 lost 6–7 bases in the
+    last 3 minutes, or its army collapsed.
+  - 903, 867 and 822 were confirmed as Team 2 wins using the leaver finding below. Its threshold (n ≥ 15, ≥ 80%,
+    p < 0.01) was fixed before the test ran.
+- **Finding (candidate rule, not implemented):** in 876 prod two-team replays, when a replay has no result and
+  the recording ends because a player left, the leaver's team lost:
+  - ChrisO: 234 of 238 (98%), p≈3e-64.
+  - Any leaver: 287 of 294.
+  - Control: in recorded-result games where ChrisO left last, his team lost 23% of 437.
+  - The scan script was a scratchpad one-off (`recorder_prior.py`); rebuild it under `backend/scripts/` if
+    the rule is pursued.
+- Recap no longer crashes on winnerless games: `_generate_mvp_analysis` returns `None`
+  (`backend/app/match_commentary.py`).
+
+**Still open (next session):**
+- [ ] **Leaver rule as a third winner rule:** recorded result → clear supply lead → the recorder-leave loser
+  → unknown. This changes rating inputs, so it needs:
+  1. an agreement check against the supply rule on games both can call;
+  2. a chronological re-rate of history versus the current rule (McNemar);
+  3. a backup, a full rebuild, and owner sign-off.
+- [ ] **Parser: non-two-team games with a recorded result are still rated.** Mark free-for-all, 3v3v3 and
+  other multi-team games `not_rateable` at upload.
+- [ ] **Parser: `determine_game_mode` falls back to 2v2** for games it can't classify
+  (`backend/app/replay_parser.py`). 595 (1v1 FFA) and 740 (3v3v3) were stored as "2v2".
+- [ ] **Uploads that raise `WinnerDeterminationError`** (no result, no clear lead) are logged to Failed uploads
+  before the team-experience check runs. A non-squad game of that kind would clutter Failed uploads. Check
+  the experience rule first.
