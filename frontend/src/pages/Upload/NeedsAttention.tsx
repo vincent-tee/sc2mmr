@@ -92,17 +92,16 @@ const NeedsAttention: React.FC = () => {
           icon={FiHelpCircle}
           title="Results to review"
           isClear={review.isSuccess && review.data.total === 0}
-          clearText="Every rated game has a recorded or confirmed result."
+          clearText="Every game has a recorded result, a clear supply lead or a confirmed winner."
           to="/results-review"
           linkLabel="Review results"
         >
           <HStack spacing={5} flexWrap="wrap">
-            <Count value={review.data?.total} label="Suggested" />
-            <Count value={review.data?.conflicts} label="Doubtful" tone="yellow.300" />
+            <Count value={review.data?.total} label="Need a winner" tone="yellow.300" />
           </HStack>
           <Text fontSize="sm" color="gray.500" mt={2}>
-            These replays didn&apos;t record a winner, so one was suggested from team stats.
-            Confirming needs the admin token.
+            No recorded winner and no clear supply lead, so these aren&apos;t rated yet.
+            Picking a winner needs the admin token.
           </Text>
           {review.data && review.data.unchecked > 0 && (
             <Text fontSize="sm" color="gray.500" mt={1}>

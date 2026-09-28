@@ -47,22 +47,21 @@ def review_item(match: Match) -> ReviewItem:
 
 
 def review_queue(db: Session) -> list[ReviewItem]:
-    """Unknown and suggested results, most doubtful first.
+    """Games that need a person to say who won, most doubtful first.
 
-    Unknown results come first because those games are unrated until someone
-    says who won, then disagreements, then suggested results from closest to
-    clearest.
+    That is every unknown result, plus any suggested one that another
+    recording of the same game contradicts. A suggested result from a clear
+    supply lead is not listed: it already has a winner.
     """
     reviewable = Match.result_source.in_([ResultSource.UNKNOWN, ResultSource.SUGGESTED])
     items = [review_item(m) for m in db.query(Match).filter(reviewable)]
+    needs_person = [item for item in items
+                    if item.match.result_source == ResultSource.UNKNOWN or item.other_recordings_disagree]
 
     def order(item: ReviewItem):
-        ratio = item.supply_ratio or 1.0
-        unknown = item.match.result_source == ResultSource.UNKNOWN
-        return (not unknown, not item.other_recordings_disagree, not item.conflicts,
-                -ratio if item.conflicts else ratio)
+        return (not item.other_recordings_disagree, -(item.supply_ratio or 1.0), item.match.played_at)
 
-    return sorted(items, key=order)
+    return sorted(needs_person, key=order)
 
 
 class ResultChangeError(ValueError):

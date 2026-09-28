@@ -170,11 +170,8 @@ const ResultsReview: React.FC = () => {
       <PageHeader
         kicker="Housekeeping"
         title="Results to [Review]"
-        description="These replays didn't record who won, so a winner was suggested from team stats. Confirm or correct them."
-        stats={data ? [
-          { label: 'To review', value: data.total },
-          { label: 'Doubtful', value: data.conflicts },
-        ] : undefined}
+        description="These replays didn't record who won and neither team had a clear supply lead, so they aren't rated until someone picks the winner."
+        stats={data ? [{ label: 'Need a winner', value: data.total }] : undefined}
         actions={
           <Button as={RouterLink} to="/upload" size="sm" variant="ghost" color="gray.400" leftIcon={<LuArrowLeft />}>
             Back to upload
@@ -209,7 +206,7 @@ const ResultsReview: React.FC = () => {
           {isLoading && <LoadingState message="Loading results to review..." />}
           {isError && <Text color="red.300">Couldn&apos;t load the review queue.</Text>}
           {data && data.items.length === 0 && (
-            <EmptyState title="Nothing to review" description="Every rated game has a recorded or confirmed result." />
+            <EmptyState title="Nothing to review" description="Every game has a recorded result, a clear supply lead or a confirmed winner." />
           )}
           {data?.items.slice(0, shown).map((item) => (
             <ReviewCard

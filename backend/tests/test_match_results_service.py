@@ -33,14 +33,23 @@ def winners(db, match):
     return {mp.team_number for mp in db.query(MatchPlayer).filter_by(match_id=match.id) if mp.won}
 
 
-def test_queue_puts_supply_conflicts_first_largest_gap_first(db_session):
-    agreeing = ingest(db_session, replay("agrees", supply=(150.0, 40.0), when=1))
-    small_gap = ingest(db_session, replay("small-gap", supply=(90.0, 100.0), when=2))
-    big_gap = ingest(db_session, replay("big-gap", supply=(30.0, 150.0), when=3))
-    ingest(db_session, replay("known", source=ResultSource.REPLAY, when=4))
+def test_queue_lists_only_games_that_need_a_person(db_session):
+    ingest(db_session, replay("clear-lead", supply=(150.0, 40.0), when=1))
+    ingest(db_session, replay("known", source=ResultSource.REPLAY, when=2))
+    closest = ingest(db_session, replay("closest", supply=(100.0, 101.0), when=3))
+    less_close = ingest(db_session, replay("less-close", supply=(100.0, 120.0), when=4))
+    contradicted = ingest(db_session, replay("contradicted", supply=(150.0, 40.0), when=5))
+    contradicted.result_evidence = {**contradicted.result_evidence,
+                                    "other_recordings": [{"replay_hash": "x", "winner_team": 2}]}
+    db_session.commit()
+    settle_unrecorded_results(db_session, dry_run=False)
+    contradicted.result_source = ResultSource.SUGGESTED
+    for mp in contradicted.participants:
+        mp.won = int(mp.team_number == 1)
+    db_session.commit()
+
     queue = review_queue(db_session)
-    assert [item.match.id for item in queue] == [big_gap.id, small_gap.id, agreeing.id]
-    assert [item.conflicts for item in queue] == [True, True, False]
+    assert [item.match.id for item in queue] == [contradicted.id, less_close.id, closest.id]
 
 
 def test_confirming_the_same_winner_does_not_schedule_a_rebuild(db_session):
@@ -149,11 +158,12 @@ def client(db_engine):
 
 
 def test_review_and_confirm_over_http(client, db_session):
-    match = ingest(db_session, replay("http", supply=(20.0, 100.0)))
+    match = ingest(db_session, replay("http", supply=(100.0, 110.0)))
+    settle_unrecorded_results(db_session, dry_run=False)
     queue = client.get("/match-results/review").json()
-    assert (queue["total"], queue["conflicts"]) == (1, 1)
+    assert queue["total"] == 1
     item = queue["items"][0]
-    assert (item["winner_team"], item["supply_favourite_team"], item["supply_ratio"]) == (1, 2, 5.0)
+    assert (item["result_source"], item["winner_team"], item["supply_favourite_team"]) == (ResultSource.UNKNOWN, None, 2)
     assert item["rosters"] == [{"team": 1, "players": ["Ann"]}, {"team": 2, "players": ["Bob"]}]
 
     assert client.post(f"/match-results/{match.id}/confirm", json={"winner_team": 5, "confirmed_by": "V"}).status_code == 400
