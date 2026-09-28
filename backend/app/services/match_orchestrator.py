@@ -314,5 +314,5 @@ class MatchOrchestrator:
     def _trigger_post_processing(self, match: Match, result: ProcessedMatchResult):
         from app.services.ingestion import post_process_match
 
-        post_process_match(self.db, int(match.id), True, result.replay_file_path, optimize=True)
+        post_process_match(self.db, int(match.id), True, result.replay_file_path)
 

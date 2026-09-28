@@ -1244,7 +1244,7 @@ def upload_replay_advanced(
         )
         step_times["rating_update"] = (time.time() - step_start) * 1000
 
-        post_process_match(db, int(match.id), created, replay_file_path, optimize=True)
+        post_process_match(db, int(match.id), created, replay_file_path)
 
         total_time_ms = (time.time() - start_time) * 1000
 

@@ -212,13 +212,11 @@ def run_optional_processing(db: Session, name: str, action: Callable) -> None:
         logging.getLogger(__name__).exception("%s failed", name)
 
 
-def post_process_match(db: Session, match_id: int, created: bool, replay_path=None,
-                       optimize: bool = False) -> None:
+def post_process_match(db: Session, match_id: int, created: bool, replay_path=None) -> None:
     from .achievement_service import AchievementService
     from .balance_capture import BalancePredictionService
     from .ml_features_service import MLFeaturesService
     from .rivalry_service import RivalryService
-    from ..auto_adaptive import trigger_auto_optimization
 
     def award_achievements(work):
         for mp in work.query(MatchPlayer).filter(MatchPlayer.match_id == match_id):
@@ -232,5 +230,3 @@ def post_process_match(db: Session, match_id: int, created: bool, replay_path=No
     if created:
         run_optional_processing(db, "Achievements", award_achievements)
         run_optional_processing(db, "Rivalry calculation", RivalryService.calculate_all_rivalries)
-        if optimize:
-            run_optional_processing(db, "Optimization", trigger_auto_optimization)

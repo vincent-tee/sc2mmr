@@ -102,7 +102,7 @@ def test_optional_failure_cannot_commit_partial_changes(db_session, replay):
 
 def test_post_processing_a_new_match_does_not_raise(db_session, replay):
     match, created = ingest_match(db_session, replay, require_experience=False)
-    post_process_match(db_session, match.id, created, optimize=True)
+    post_process_match(db_session, match.id, created)
 
 
 def test_app_engine_waits_for_sqlite_writer_lock():
