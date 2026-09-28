@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-from ..models import Player, MatchPlayer, PlayerMatchMetrics
+from ..models import Match, Player, MatchPlayer, PlayerMatchMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,8 @@ class CoachingService:
     def get_tips(player_id: int, db: Session, limit: int = 2) -> List[str]:
         recent_losses = (
             db.query(MatchPlayer)
-            .filter(MatchPlayer.player_id == player_id, MatchPlayer.won == 0)
+            .join(Match, MatchPlayer.match_id == Match.id)
+            .filter(MatchPlayer.player_id == player_id, MatchPlayer.won == 0, Match.is_rated)
             .order_by(MatchPlayer.id.desc())
             .limit(10)
             .all()

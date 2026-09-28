@@ -96,7 +96,10 @@ class MatchCommentaryGenerator:
                 "This was an extended battle with both teams fighting for position. "
             )
 
-        overview += f"Team {'1' if team_1_won else '2'} emerged victorious."
+        if match.is_rated:
+            overview += f"Team {'1' if team_1_won else '2'} emerged victorious."
+        else:
+            overview += "The replay didn't record a winner."
 
         return overview
 
@@ -225,7 +228,7 @@ class MatchCommentaryGenerator:
                 style = "balanced"
 
             # Build commentary
-            result = "won" if mp.won else "lost"
+            result = ("won" if mp.won else "lost") if mp.match.is_rated else "played"
             mmr_change = (
                 f"+{int(abs(mp.mmr_change))}"
                 if mp.mmr_change > 0
@@ -350,10 +353,11 @@ class MatchCommentaryGenerator:
             total_damage = sum(m.damage_dealt for m in metrics_list)
             total_resources = sum(m.total_resources_collected for m in metrics_list)
 
-            won = team[0]["match_player"].won
+            match_player = team[0]["match_player"]
+            outcome = ("won" if match_player.won else "lost") if match_player.match.is_rated else "played"
 
             analysis = (
-                f"Team {team_num} {'won' if won else 'lost'} with an average impact of {avg_impact:.1f}/100. "
+                f"Team {team_num} {outcome} with an average impact of {avg_impact:.1f}/100. "
                 f"The team showed {'strong' if avg_econ > 60 else 'moderate'} economic play ({avg_econ:.1f}) "
                 f"and {'aggressive' if avg_combat > 60 else 'defensive'} combat ({avg_combat:.1f}). "
                 f"Combined, they destroyed {total_damage:,} resources' worth of enemy army and ended with "
@@ -403,10 +407,8 @@ class MatchCommentaryGenerator:
         else:
             closeness = "decisive"
 
-        summary = (
-            f"In this {closeness} {match.game_mode.value} match on {match.map_name}, "
-            f"Team {'1' if team_1_won else '2'} secured the victory. "
-        )
+        outcome = f"Team {'1' if team_1_won else '2'} secured the victory" if match.is_rated else "no winner was recorded"
+        summary = f"In this {closeness} {match.game_mode.value} match on {match.map_name}, {outcome}. "
 
         if impact_diff < 10:
             summary += (

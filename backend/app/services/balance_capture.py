@@ -299,7 +299,7 @@ class BalancePredictionService:
         Calibration of the upload-time TrueSkill predictions already stored on
         Match rows — the baseline every balancing method must beat.
         """
-        query = db.query(Match).filter(Match.predicted_team1_win_prob.isnot(None))
+        query = db.query(Match).filter(Match.predicted_team1_win_prob.isnot(None), Match.is_rated)
         if days:
             cutoff = datetime.utcnow() - timedelta(days=days)
             query = query.filter(Match.played_at >= cutoff)

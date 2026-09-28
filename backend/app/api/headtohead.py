@@ -260,6 +260,7 @@ def get_head_to_head(player1_id: int, player2_id: int, db: Session = Depends(get
     WHERE mp1.player_id = :p1_id 
       AND mp2.player_id = :p2_id
       AND mp1.team_number != mp2.team_number
+      AND (m.result_source IS NULL OR m.result_source != 'unknown')
     ORDER BY m.played_at DESC
     LIMIT 5
     """)
@@ -291,6 +292,7 @@ def get_head_to_head(player1_id: int, player2_id: int, db: Session = Depends(get
     WHERE mp1.player_id = :p1_id 
       AND mp2.player_id = :p2_id
       AND mp1.team_number != mp2.team_number
+      AND (m.result_source IS NULL OR m.result_source != 'unknown')
     GROUP BY m.map_name
     ORDER BY total DESC
     LIMIT 10

@@ -34,6 +34,7 @@ import type { Player, MatchWithPlayers } from '../types/api';
 /** Compact match row for the battles feed */
 const MatchRow: React.FC<{ match: MatchWithPlayers; onClick: () => void }> = ({ match, onClick }) => {
   const allPlayers = match.players || [];
+  const rated = match.result_source !== 'unknown';
   const winners = allPlayers.filter((p) => p.won);
   const losers = allPlayers.filter((p) => !p.won);
   const winnerNames = winners.map((p) => p.player_name).join(', ');
@@ -76,7 +77,7 @@ const MatchRow: React.FC<{ match: MatchWithPlayers; onClick: () => void }> = ({ 
           {match.map_name}
         </Text>
         <Text fontSize="xs" color="gray.500" noOfLines={1}>
-          {winnerNames ? `Won by ${winnerNames}` : `Team ${match.winner_team} won`} · {formatDateTimeShort(match.played_at)}
+          {!rated ? 'No result' : winnerNames ? `Won by ${winnerNames}` : `Team ${match.winner_team} won`} · {formatDateTimeShort(match.played_at)}
         </Text>
       </Box>
       <AvatarGroup size="xs" max={5} flexShrink={0}>
@@ -87,7 +88,7 @@ const MatchRow: React.FC<{ match: MatchWithPlayers; onClick: () => void }> = ({ 
             name={player.player_name}
             size="xs"
             bg={`${getRaceColor(player.race)}.500`}
-            opacity={player.won ? 1 : 0.4}
+            opacity={player.won || !rated ? 1 : 0.4}
             borderColor={player.won ? `${teamColor}.400` : 'space.800'}
           />
         ))}

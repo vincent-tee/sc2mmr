@@ -63,9 +63,10 @@ import { GAME_MODES } from '../types/api';
 const PlayerHighlightCard: React.FC<{
   player: MatchPlayerSummary;
   isMVP: boolean;
-}> = ({ player, isMVP }) => {
-  const borderColor = player.won ? 'green.400' : 'red.400';
-  const highlightBg = player.won ? 'rgba(72, 187, 120, 0.1)' : 'rgba(245, 101, 101, 0.1)';
+  rated: boolean;
+}> = ({ player, isMVP, rated }) => {
+  const borderColor = !rated ? 'whiteAlpha.300' : player.won ? 'green.400' : 'red.400';
+  const highlightBg = !rated ? 'whiteAlpha.50' : player.won ? 'rgba(72, 187, 120, 0.1)' : 'rgba(245, 101, 101, 0.1)';
 
   return (
     <Box
@@ -371,6 +372,7 @@ const MatchCard: React.FC<{
                     key={player.player_id}
                     player={player}
                     isMVP={player.player_id === match.mvp_player_id}
+                    rated={match.result_source !== 'unknown'}
                   />
                 ))}
               </VStack>
@@ -393,6 +395,7 @@ const MatchCard: React.FC<{
                     key={player.player_id}
                     player={player}
                     isMVP={player.player_id === match.mvp_player_id}
+                    rated={match.result_source !== 'unknown'}
                   />
                 ))}
               </VStack>

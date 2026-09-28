@@ -249,6 +249,7 @@ class AchievementService:
             db.query(MatchPlayer)
             .filter(MatchPlayer.player_id == player_id)
             .join(Match)
+            .filter(Match.is_rated)
             .order_by(Match.played_at)
             .all()
         )

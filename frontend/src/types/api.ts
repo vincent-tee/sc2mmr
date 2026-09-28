@@ -68,6 +68,7 @@ export interface RecentMatch {
   map_name: string;
   race: string;
   won: boolean;
+  rated: boolean;
   team_number: number;
   mmr_before: number;
   mmr_after: number;

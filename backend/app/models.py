@@ -17,8 +17,12 @@ from sqlalchemy import (
     JSON,
     UniqueConstraint,
     Index,
+    or_,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
+
+from .match_result import ResultSource
 import enum
 
 
@@ -242,6 +246,16 @@ class Match(Base):
     result_evidence: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     result_confirmed_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     result_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    @hybrid_property
+    def is_rated(self) -> bool:
+        """Whether the game has a winner; unknown results count as neither a win nor a loss."""
+        return self.result_source != ResultSource.UNKNOWN
+
+    @is_rated.inplace.expression
+    @classmethod
+    def _is_rated_expression(cls):
+        return or_(cls.result_source.is_(None), cls.result_source != ResultSource.UNKNOWN)
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(

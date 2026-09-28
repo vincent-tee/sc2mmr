@@ -196,7 +196,7 @@ async def get_recent_form_leaderboard(
             weight = 0.5 ** (rank / half_life_matches)
             weighted_sum += mp.mmr_after * weight
             weight_total += weight
-            if i < 5 and mp.won:
+            if i < 5 and mp.won and mp.match.is_rated:
                 recent_wins += 1
 
         if weight_total == 0:
@@ -422,6 +422,7 @@ async def get_winstreak_leaderboard(
             db.query(MatchPlayer.won)
             .filter(MatchPlayer.player_id == player.id)
             .join(Match)
+            .filter(Match.is_rated)
             .order_by(Match.played_at)
             .all()
         )
@@ -527,7 +528,10 @@ async def get_squad_meta_report(db: Session = Depends(get_db)):
 
     wr_map = {}
     for r in [Race.TERRAN, Race.PROTOSS, Race.ZERG]:
-        wr = db.query(func.avg(MatchPlayer.won)).filter(MatchPlayer.race == r).scalar()
+        wr = (
+            db.query(func.avg(MatchPlayer.won)).join(Match)
+            .filter(MatchPlayer.race == r, Match.is_rated).scalar()
+        )
         count = (
             db.query(func.count(MatchPlayer.id)).filter(MatchPlayer.race == r).scalar()
         )
@@ -540,7 +544,8 @@ async def get_squad_meta_report(db: Session = Depends(get_db)):
             func.count(MatchPlayer.id).label("c"),
         )
         .join(MatchPlayer)
-        .filter(PerformanceFeatures.detected_build_type.isnot(None))
+        .join(Match, MatchPlayer.match_id == Match.id)
+        .filter(PerformanceFeatures.detected_build_type.isnot(None), Match.is_rated)
         .group_by(PerformanceFeatures.detected_build_type)
         .having(func.count(MatchPlayer.id) >= 10)
         .order_by(desc("wr"))

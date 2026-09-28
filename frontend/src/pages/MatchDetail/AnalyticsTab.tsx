@@ -86,7 +86,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ matchData, playerMetrics, m
                       <Text fontWeight="bold" color="gray.100" noOfLines={1} maxW={{ base: '96px', md: 'none' }}>{player.player_name}</Text>
                       {isTop && <Badge colorScheme="yellow" variant="subtle" fontSize="2xs">MVP</Badge>}
                     </HStack>
-                    <Text fontSize="xs" color="gray.500">Team {player.team_number} · {player.won ? 'won' : 'lost'}</Text>
+                    <Text fontSize="xs" color="gray.500">Team {player.team_number}{matchData.match.result_source === 'unknown' ? '' : player.won ? ' · won' : ' · lost'}</Text>
                   </Td>
                   <ScoreCell value={metrics.overall_impact} highlight />
                   <ScoreCell value={metrics.economic_score} />

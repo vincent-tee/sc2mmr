@@ -317,5 +317,6 @@ replays were previously unreadable), then ratings are rebuilt. The earlier re-ra
 p=0.18, not significant) was accepted as the cost of correct history. On prod: 11 of 100 suggested
 results flip (incl. 1028); of the 377 rechecked, 252 have a recorded result, 115 a clear supply lead, and 10
 stay unknown (414, 452, 595, 738, 740, 801, 822, 867, 882, 903). Match 1168 goes to Team 2 (286.5 vs 153.5).
-Known gap: form, head-to-head, rivalry, race win-rate and achievement code still read `won=0` as a loss, so
-an unknown game counts as a loss there until it is confirmed.
+Unknown games count as neither win nor loss: `Match.is_rated` (NULL-safe) filters recent form, streaks,
+race/build win rates, head-to-head, rivalries, coaching, achievement streaks, calibration and the MMR
+chart; the UI and commentary show "No result".

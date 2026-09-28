@@ -867,7 +867,7 @@ def get_balance_quality_metrics(db: Session = Depends(get_db)):
     import statistics
 
     # Get all matches with their team compositions
-    matches = db.query(Match).filter(Match.played_at.isnot(None)).all()
+    matches = db.query(Match).filter(Match.played_at.isnot(None), Match.is_rated).all()
 
     match_data = []
     for match in matches:

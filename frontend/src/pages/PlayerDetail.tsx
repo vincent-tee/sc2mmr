@@ -566,8 +566,8 @@ const PlayerDetail: React.FC = () => {
                         {playerData.recent_matches.map((match: RecentMatch) => (
                           <Tr
                             key={match.match_id}
-                            bg={match.won ? 'rgba(72, 187, 120, 0.1)' : 'rgba(245, 101, 101, 0.1)'}
-                            _hover={{ bg: match.won ? 'rgba(72, 187, 120, 0.2)' : 'rgba(245, 101, 101, 0.2)', cursor: 'pointer' }}
+                            bg={!match.rated ? 'whiteAlpha.50' : match.won ? 'rgba(72, 187, 120, 0.1)' : 'rgba(245, 101, 101, 0.1)'}
+                            _hover={{ bg: !match.rated ? 'whiteAlpha.100' : match.won ? 'rgba(72, 187, 120, 0.2)' : 'rgba(245, 101, 101, 0.2)', cursor: 'pointer' }}
                             onClick={() => navigate(`/history/${match.match_id}`)}
                             transition="all 0.2s"
                           >
@@ -591,8 +591,8 @@ const PlayerDetail: React.FC = () => {
                               </Badge>
                             </Td>
                             <Td borderColor="space.700">
-                              <Badge bg={match.won ? 'green.500' : 'red.500'} color="white">
-                                {match.won ? 'Win' : 'Loss'}
+                              <Badge bg={!match.rated ? 'gray.600' : match.won ? 'green.500' : 'red.500'} color="white">
+                                {!match.rated ? 'No result' : match.won ? 'Win' : 'Loss'}
                               </Badge>
                             </Td>
                             <Td borderColor="space.700" isNumeric color="gray.400" display={{ base: 'none', md: 'table-cell' }}>{Math.round(match.mmr_before)}</Td>

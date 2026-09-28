@@ -66,7 +66,7 @@ def _calculate_recent_form(db: Session, player_id: int, num_games: int = 5) -> O
     matches = (
         db.query(MatchPlayer)
         .join(Match)
-        .filter(MatchPlayer.player_id == player_id)
+        .filter(MatchPlayer.player_id == player_id, Match.is_rated)
         .order_by(desc(Match.played_at))
         .limit(num_games)
         .all()
@@ -96,7 +96,7 @@ def _batch_recent_form(db: Session, player_ids: List[int], num_games: int = 5) -
             .label("rn"),
         )
         .join(Match, MatchPlayer.match_id == Match.id)
-        .filter(MatchPlayer.player_id.in_(player_ids))
+        .filter(MatchPlayer.player_id.in_(player_ids), Match.is_rated)
         .subquery()
     )
     rows = (
@@ -342,6 +342,7 @@ def get_player_details(
                     "map_name": mp.match.map_name,
                     "race": mp.race.value,
                     "won": bool(mp.won),
+                    "rated": bool(mp.match.is_rated),
                     "team_number": mp.team_number,
                     "mmr_before": round(mp.mmr_before or 0, 1),
                     "mmr_after": round(mp.mmr_after or 0, 1),
@@ -384,6 +385,7 @@ def get_player_mmr_history(
         .options(joinedload(MatchPlayer.match))
         .filter(MatchPlayer.player_id == player_id)
         .join(Match)
+        .filter(Match.is_rated)
         .order_by(Match.played_at.desc())
         .limit(limit)
         .all()

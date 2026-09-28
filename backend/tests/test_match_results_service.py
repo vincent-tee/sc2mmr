@@ -189,3 +189,22 @@ def test_backfill_rechecks_unknown_and_unrates_games_without_a_clear_winner(db_s
     assert disputed.result_source == ResultSource.UNKNOWN
     assert disputed.result_evidence == {"frame": 9, "team_supply": {"1": 50.0, "2": 60.0}}
     assert winners(db_session, disputed) == set()
+
+
+def test_unknown_games_are_neither_wins_nor_losses(db_session):
+    from app.api.players import _batch_recent_form, _calculate_recent_form
+
+    won = ingest(db_session, replay("won", when=1))
+    unchecked_result = ingest(db_session, replay("unchecked", when=2))
+    unchecked_result.result_source = None
+    unknown = ingest(db_session, replay("unknown", supply=(100.0, 110.0), when=3))
+    settle_unrecorded_results(db_session, dry_run=False)
+    assert unknown.result_source == ResultSource.UNKNOWN
+
+    rated_ids = {m.id for m in db_session.query(Match).filter(Match.is_rated)}
+    assert rated_ids == {won.id, unchecked_result.id}
+
+    ann = next(mp.player_id for mp in won.participants if mp.team_number == 1)
+    bob = next(mp.player_id for mp in won.participants if mp.team_number == 2)
+    assert _calculate_recent_form(db_session, ann) == 1.0
+    assert _batch_recent_form(db_session, [ann, bob]) == {ann: 1.0, bob: 0.0}

@@ -22,7 +22,7 @@ class RivalryService:
         }
 
         # Get all matches
-        matches = db.query(Match).order_by(Match.played_at).all()
+        matches = db.query(Match).filter(Match.is_rated).order_by(Match.played_at).all()
 
         rivalry_data = {}  # (p1_id, p2_id) -> stats
 
