@@ -66,9 +66,6 @@ class TeamSuggestionResponse(BaseModel):
     team_2_avg_impact: float = 0.0
     impact_balance_score: float = 1.0
     impact_difference: float = 0.0
-    # Combined historical pair/trio synergy of the split; the frontend shows a
-    # chemistry badge when positive. Computed by GroupSynergy in the balancer.
-    total_synergy: float = 0.0
 
 
 class CustomPlayerInfo(BaseModel):
@@ -122,18 +119,7 @@ def balance_with_custom_players(
     if len(player_infos) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 players total")
 
-    # Fetch synergy data
-    from ..models import GroupSynergy
-
-    synergies = (
-        db.query(GroupSynergy).filter(GroupSynergy.player_count.in_([2, 3])).all()
-    )
-    synergy_map = {s.player_ids_key: s.synergy_score for s in synergies}
-
-    # Generate suggestions
-    suggestions = TeamBalancer.generate_team_suggestions(
-        player_infos, top_n=request.top_n, synergy_data=synergy_map
-    )
+    suggestions = TeamBalancer.generate_team_suggestions(player_infos, top_n=request.top_n)
 
     # Convert to response format
     responses = []
@@ -170,7 +156,6 @@ def balance_with_custom_players(
                 team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
                 impact_balance_score=analysis["balance"]["impact_balance_score"],
                 impact_difference=analysis["balance"]["impact_difference"],
-                total_synergy=analysis["balance"]["total_synergy"],
             )
         )
 
@@ -455,7 +440,6 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
                     team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
                     impact_balance_score=analysis["balance"]["impact_balance_score"],
                     impact_difference=analysis["balance"]["impact_difference"],
-                    total_synergy=analysis["balance"]["total_synergy"],
                 )
             )
 
@@ -495,7 +479,7 @@ def quick_balance(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
 
 
 # =============================================================================
-# Composite-Objective Balancing (win-prob + spread + components + synergy)
+# Composite-Objective Balancing (win-prob + quality + spread + components)
 # =============================================================================
 
 
@@ -505,9 +489,6 @@ class CompositeTeamSuggestionResponse(TeamSuggestionResponse):
     composite_score: float
     skill_spread_diff: float
     component_imbalance: float
-    synergy_imbalance: float
-    team_1_synergy: float
-    team_2_synergy: float
 
 
 class BalanceCompositeRequest(BaseModel):
@@ -528,12 +509,10 @@ def balance_teams_composite(
     Generate balanced teams using the composite objective.
 
     Unlike /teams/balance (pure MMR-sum difference), this ranks splits by:
-    - predicted win probability closest to 50% (TrueSkill, plus XGBoost
-      re-rank of the top candidates when the model is trained)
+    - predicted win probability closest to 50% (TrueSkill)
     - TrueSkill match quality (uncertainty-aware)
-    - penalties for within-team skill-spread mismatch, team-profile
-      (combat/economic/efficiency/impact/aggression) imbalance, and
-      one-sided synergy
+    - penalties for within-team skill-spread mismatch and team-profile
+      (combat/economic/efficiency/impact/aggression) imbalance
 
     Every suggestion is logged for calibration tracking and resolved
     against the actual outcome when the replay is uploaded.
@@ -603,9 +582,6 @@ def balance_teams_composite(
                     composite_score=round(suggestion.composite_score, 4),
                     skill_spread_diff=round(suggestion.skill_spread_diff, 1),
                     component_imbalance=round(suggestion.component_imbalance, 4),
-                    synergy_imbalance=round(suggestion.synergy_imbalance, 2),
-                    team_1_synergy=round(suggestion.team_1_synergy, 2),
-                    team_2_synergy=round(suggestion.team_2_synergy, 2),
                 )
             )
         return responses

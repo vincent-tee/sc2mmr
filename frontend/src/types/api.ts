@@ -293,7 +293,6 @@ export interface TeamSuggestion {
   match_quality: number;
   impact_balance_score?: number;
   impact_difference?: number;
-  total_synergy?: number;
   tactical_forecast?: TacticalForecast;
 }
 

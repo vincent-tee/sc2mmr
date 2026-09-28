@@ -92,10 +92,8 @@ class BalancePredictionService:
                     "playstyle_balance_score": getattr(
                         s, "playstyle_balance_score", None
                     ),
-                    "total_synergy": getattr(s, "total_synergy", None),
                     "skill_spread_diff": getattr(s, "skill_spread_diff", None),
                     "component_imbalance": getattr(s, "component_imbalance", None),
-                    "synergy_imbalance": getattr(s, "synergy_imbalance", None),
                 }
                 prediction = BalancePredictionService.record_suggestion(
                     db,

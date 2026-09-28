@@ -267,7 +267,7 @@ const BalanceResults: React.FC<BalanceResultsProps> = ({
       <Box bg="space.800" p={2} borderRadius="xl" border="2px solid" borderColor="space.700" mb={6}>
         <HStack spacing={2} overflowX="auto" pb={2}>
           {suggestions.map((_, index) => {
-            const labels = ['OPTIMAL', 'TACTICAL', 'ALT 1', 'ALT 2'];
+            const labels = ['OPTIMAL', 'ALT 1', 'ALT 2', 'ALT 3'];
             return (
               <Button
                 key={index}
@@ -332,8 +332,6 @@ const getSuggestionDescription = (index: number): string => {
   switch (index) {
     case 0:
       return 'Optimal Balance: The mathematically superior split with the smallest possible skill gap between teams.';
-    case 1:
-      return 'Tactical Synergy: Prioritizes player chemistry. Groups players who historically win more often when on the same side.';
     default:
       return 'Alternative Config: A competitive alternative configuration with high match quality.';
   }
@@ -423,7 +421,7 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
     }
   };
 
-  const labels = ['Optimal Balance', 'Tactical Synergy', 'Alternative Config'];
+  const labels = ['Optimal Balance', 'Alternative Config', 'Alternative Config'];
 
 
   const label = labels[index] || `Config ${index + 1}`;
@@ -431,8 +429,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
 
   const activeColor = isRecommended ? 'shield.400' : 'brand.400';
   const glowIntensity = isRecommended ? '20px' : '10px';
-
-  const synergy_score = suggestion.total_synergy || 0;
 
   const vsScreenData = {
     team1: {
@@ -443,7 +439,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
       })),
       totalMMR: Math.round(suggestion.team_1.players.reduce((sum, p) => sum + p.mmr, 0)),
       winProbability: suggestion.win_probability_team_1,
-      synergyBonus: synergy_score > 0 ? synergy_score : undefined,
     },
     team2: {
       players: suggestion.team_2.players.map(p => ({
@@ -453,7 +448,6 @@ const TeamSuggestionCard: React.FC<TeamSuggestionCardProps> = ({
       })),
       totalMMR: Math.round(suggestion.team_2.players.reduce((sum, p) => sum + p.mmr, 0)),
       winProbability: suggestion.win_probability_team_2,
-      synergyBonus: synergy_score < 0 ? Math.abs(synergy_score) : undefined,
     },
     matchInfo: {
       mapName: `${suggestion.team_1.players.length}v${suggestion.team_2.players.length} Match`,

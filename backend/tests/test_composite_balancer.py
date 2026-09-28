@@ -38,14 +38,12 @@ class TestCompositeScore:
             match_quality=0.8,
             skill_spread_diff=0.0,
             component_imbalance=0.0,
-            synergy_imbalance=0.0,
         )
         lopsided = TeamBalancer.compute_composite_score(
             win_probability=0.85,
             match_quality=0.8,
             skill_spread_diff=0.0,
             component_imbalance=0.0,
-            synergy_imbalance=0.0,
         )
         assert even > lopsided
 
@@ -55,14 +53,12 @@ class TestCompositeScore:
             match_quality=0.8,
             skill_spread_diff=0.0,
             component_imbalance=0.0,
-            synergy_imbalance=0.0,
         )
         spread = TeamBalancer.compute_composite_score(
             win_probability=0.5,
             match_quality=0.8,
             skill_spread_diff=300.0,
             component_imbalance=0.0,
-            synergy_imbalance=0.0,
         )
         assert spread < flat
 
@@ -72,7 +68,6 @@ class TestCompositeScore:
             match_quality=1.0,
             skill_spread_diff=0.0,
             component_imbalance=0.0,
-            synergy_imbalance=0.0,
         )
         assert perfect == pytest.approx(
             DEFAULT_COMPOSITE_WEIGHTS["closeness"] + DEFAULT_COMPOSITE_WEIGHTS["quality"]
@@ -84,7 +79,6 @@ class TestCompositeScore:
             match_quality=0.0,
             skill_spread_diff=1000.0,
             component_imbalance=1.0,
-            synergy_imbalance=100.0,
         )
         assert 0.0 <= score <= 1.0
 

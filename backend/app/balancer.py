@@ -55,14 +55,8 @@ class TeamSuggestion:
     team_2_avg_impact: float = 0.0
     impact_balance_score: float = 1.0
     playstyle_balance_score: float = 1.0
-    total_synergy: float = 0.0
-    # Composite-objective breakdown (populated by all objectives; drives the
-    # sort only when objective="composite")
-    team_1_synergy: float = 0.0
-    team_2_synergy: float = 0.0
     skill_spread_diff: float = 0.0
     component_imbalance: float = 0.0
-    synergy_imbalance: float = 0.0
     composite_score: float = 0.0
     balance_prediction_id: Optional[int] = None
 
@@ -74,7 +68,6 @@ DEFAULT_COMPOSITE_WEIGHTS: Dict[str, float] = {
     "quality": 0.25,  # TrueSkill match quality (uncertainty-aware)
     "spread": 0.10,  # within-team MMR std-dev mismatch penalty
     "components": 0.05,  # per-metric team-profile imbalance penalty
-    "synergy": 0.05,  # synergy imbalance penalty
 }
 
 
@@ -296,7 +289,6 @@ class TeamBalancer:
         match_quality: float,
         skill_spread_diff: float,
         component_imbalance: float,
-        synergy_imbalance: float,
         weights: Optional[Dict[str, float]] = None,
     ) -> float:
         """
@@ -304,21 +296,19 @@ class TeamBalancer:
 
         Rewards a predicted win probability near 50% and high TrueSkill
         quality (which accounts for rating uncertainty); penalizes skill
-        spread mismatch, team-profile imbalance, and one-sided synergy.
+        spread mismatch and team-profile imbalance.
         """
         w = weights or DEFAULT_COMPOSITE_WEIGHTS
 
         closeness = 1.0 - 2.0 * abs(win_probability - 0.5)
 
         spread_penalty = min(skill_spread_diff / 400.0, 1.0)
-        synergy_penalty = min(synergy_imbalance / 40.0, 1.0)
 
         score = (
             w["closeness"] * closeness
             + w["quality"] * match_quality
             - w["spread"] * spread_penalty
             - w["components"] * component_imbalance
-            - w["synergy"] * synergy_penalty
         )
         return max(0.0, min(1.0, score))
 
@@ -326,7 +316,6 @@ class TeamBalancer:
     def generate_team_suggestions(
         players: List[PlayerInfo],
         top_n: int = 10,
-        synergy_data: Optional[Dict[str, float]] = None,
         objective: str = "mmr",
         composite_weights: Optional[Dict[str, float]] = None,
     ) -> List[TeamSuggestion]:
@@ -358,30 +347,6 @@ class TeamBalancer:
             )
             playstyle_balance = TeamBalancer.calculate_playstyle_balance(team_1, team_2)
 
-            team1_synergy = 0.0
-            team2_synergy = 0.0
-            if synergy_data:
-
-                def get_syn(p_ids):
-                    key = ",".join(map(str, sorted(p_ids)))
-                    return synergy_data.get(key, 0.0)
-
-                for pair in combinations([p.id for p in team_1], 2):
-                    team1_synergy += get_syn(pair)
-                for pair in combinations([p.id for p in team_2], 2):
-                    team2_synergy += get_syn(pair)
-
-                if len(team_1) >= 3:
-                    for trio in combinations([p.id for p in team_1], 3):
-                        team1_synergy += get_syn(trio)
-                if len(team_2) >= 3:
-                    for trio in combinations([p.id for p in team_2], 3):
-                        team2_synergy += get_syn(trio)
-
-            total_synergy = team1_synergy + team2_synergy
-            synergy_imbalance = abs(team1_synergy - team2_synergy)
-            balanced_synergy_score = total_synergy - synergy_imbalance
-
             skill_spread_diff = TeamBalancer.calculate_skill_spread_diff(
                 team_1, team_2
             )
@@ -393,7 +358,6 @@ class TeamBalancer:
                 match_quality=match_quality,
                 skill_spread_diff=skill_spread_diff,
                 component_imbalance=component_imbalance,
-                synergy_imbalance=synergy_imbalance,
                 weights=composite_weights,
             )
 
@@ -410,12 +374,8 @@ class TeamBalancer:
                     team_2_avg_impact=t2_impact,
                     impact_balance_score=impact_balance,
                     playstyle_balance_score=playstyle_balance,
-                    total_synergy=balanced_synergy_score,
-                    team_1_synergy=team1_synergy,
-                    team_2_synergy=team2_synergy,
                     skill_spread_diff=skill_spread_diff,
                     component_imbalance=component_imbalance,
-                    synergy_imbalance=synergy_imbalance,
                     composite_score=composite_score,
                 )
             )
@@ -443,43 +403,20 @@ class TeamBalancer:
             if len(unique_suggestions) >= top_n * 2:
                 break
 
-        if objective == "composite":
-            # Composite already encodes synergy; no showcase reordering
-            return unique_suggestions[:top_n]
-
-        if len(unique_suggestions) < 2:
-            return unique_suggestions[:top_n]
-
-        final = [unique_suggestions[0]]
-        synergy_sorted = sorted(
-            unique_suggestions[1:], key=lambda x: x.total_synergy, reverse=True
-        )
-        if synergy_sorted:
-            final.append(synergy_sorted[0])
-            remaining = [s for s in unique_suggestions if s not in final]
-            final.extend(remaining)
-
-        return final[:top_n]
+        return unique_suggestions[:top_n]
 
     @staticmethod
-    def _load_balance_inputs(
+    def _load_player_infos(
         db: Session,
         player_ids: List[int],
         map_name: Optional[str] = None,
-    ) -> Tuple[List[PlayerInfo], Dict[str, float]]:
-        """Load PlayerInfos (with map-specialist adjustment) and synergy map."""
+    ) -> List[PlayerInfo]:
+        """Load PlayerInfos (with map-specialist adjustment)."""
         players = db.query(Player).filter(Player.id.in_(player_ids)).all()
         if len(players) != len(player_ids):
             found_ids = {p.id for p in players}
             missing_ids = set(player_ids) - found_ids
             raise ValueError(f"Players not found: {missing_ids}")
-
-        from .models import GroupSynergy
-
-        synergies = (
-            db.query(GroupSynergy).filter(GroupSynergy.player_count.in_([2, 3])).all()
-        )
-        synergy_map = {s.player_ids_key: s.synergy_score for s in synergies}
 
         player_infos = []
         for p in players:
@@ -505,7 +442,7 @@ class TeamBalancer:
                     elif win_rate <= 0.4:
                         info.mmr -= 50
             player_infos.append(info)
-        return player_infos, synergy_map
+        return player_infos
 
     @staticmethod
     def balance_teams(
@@ -514,12 +451,8 @@ class TeamBalancer:
         top_n: int = 10,
         map_name: Optional[str] = None,
     ) -> List[TeamSuggestion]:
-        player_infos, synergy_map = TeamBalancer._load_balance_inputs(
-            db, player_ids, map_name
-        )
-        return TeamBalancer.generate_team_suggestions(
-            player_infos, top_n, synergy_data=synergy_map
-        )
+        player_infos = TeamBalancer._load_player_infos(db, player_ids, map_name)
+        return TeamBalancer.generate_team_suggestions(player_infos, top_n)
 
     @staticmethod
     def _load_composite_weights(db: Session) -> Dict[str, float]:
@@ -549,14 +482,11 @@ class TeamBalancer:
         top_n: int = 10,
         map_name: Optional[str] = None,
     ) -> List[TeamSuggestion]:
-        player_infos, synergy_map = TeamBalancer._load_balance_inputs(
-            db, player_ids, map_name
-        )
+        player_infos = TeamBalancer._load_player_infos(db, player_ids, map_name)
         weights = TeamBalancer._load_composite_weights(db)
         suggestions = TeamBalancer.generate_team_suggestions(
             player_infos,
             top_n=top_n,
-            synergy_data=synergy_map,
             objective="composite",
             composite_weights=weights,
         )
@@ -612,6 +542,5 @@ class BalancerStats:
                 "impact_difference": round(
                     abs(suggestion.team_1_avg_impact - suggestion.team_2_avg_impact), 2
                 ),
-                "total_synergy": round(suggestion.total_synergy, 1),
             },
         }
