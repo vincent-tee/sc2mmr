@@ -110,7 +110,8 @@ class BackfillResponse(BaseModel):
 
 @router.post("/backfill", response_model=BackfillResponse, dependencies=[Depends(require_admin)])
 def backfill(limit: int = Query(25, ge=1, le=200), dry_run: bool = True, after_id: int = 0,
-             db: Session = Depends(get_db)):
-    report = backfill_result_sources(db, limit=limit, dry_run=dry_run, after_id=after_id)
+             recheck_unknown: bool = False, db: Session = Depends(get_db)):
+    report = backfill_result_sources(db, limit=limit, dry_run=dry_run, after_id=after_id,
+                                     recheck_unknown=recheck_unknown)
     return BackfillResponse(dry_run=dry_run, **report.__dict__)
 

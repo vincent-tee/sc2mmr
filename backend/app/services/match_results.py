@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..match_result import ResultSource, supply_favourite
 from ..models import Match, MatchPlayer
-from ..replay_parser import ReplayData, parse_replay
+from ..replay_parser import ReplayData, WinnerDeterminationError, parse_replay
 from . import replay_storage
 from .derived_data import mark_stale
 
@@ -121,14 +121,17 @@ def classify_from_replay(match: Match, parsed: ReplayData) -> tuple[str, Optiona
 
 
 def backfill_result_sources(db: Session, limit: int, dry_run: bool, after_id: int = 0,
-                            parse: Callable[[str], ReplayData] = parse_replay) -> BackfillReport:
+                            parse: Callable[[str], ReplayData] = parse_replay,
+                            recheck_unknown: bool = False) -> BackfillReport:
     """Label up to `limit` unchecked matches; repeat until `remaining` is 0.
 
     Dry runs write nothing, so page through them with `after_id`.
     """
     report = BackfillReport()
-    pending = (db.query(Match).filter(Match.result_source.is_(None), Match.id > after_id)
-               .order_by(Match.id))
+    unchecked = Match.result_source.is_(None)
+    if recheck_unknown:
+        unchecked = unchecked | (Match.result_source == ResultSource.UNKNOWN)
+    pending = db.query(Match).filter(unchecked, Match.id > after_id).order_by(Match.id)
     for match in pending.limit(limit).all():
         report.checked += 1
         report.last_id = match.id
@@ -141,6 +144,12 @@ def backfill_result_sources(db: Session, limit: int, dry_run: bool, after_id: in
             continue
         try:
             parsed = parse(local)
+        except WinnerDeterminationError as no_clear_winner:
+            report.suggested += 1
+            if not dry_run:
+                match.result_source = ResultSource.SUGGESTED
+                match.result_evidence = no_clear_winner.team_stats or None
+            continue
         except Exception as error:
             logger.warning("Could not re-read replay for match %s: %s", match.id, error)
             report.unreadable += 1
@@ -163,6 +172,6 @@ def backfill_result_sources(db: Session, limit: int, dry_run: bool, after_id: in
             match.result_source, match.result_evidence = source, evidence
     if not dry_run:
         db.commit()
-    report.remaining = db.query(Match).filter(Match.result_source.is_(None)).count()
+    report.remaining = db.query(Match).filter(unchecked).count()
     return report
 

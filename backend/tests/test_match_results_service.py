@@ -146,3 +146,21 @@ def test_replay_falls_back_to_its_hash_when_the_stored_path_is_elsewhere(monkeyp
     with open(local, "rb") as copy:
         assert copy.read() == b"replay-bytes"
     assert replay_storage.materialize_match_replay("/nowhere/x.SC2Replay", "unknown") is None
+
+
+def test_backfill_labels_games_without_a_clear_winner_as_suggested_and_rechecks_unknown(db_session, monkeypatch):
+    from app.replay_parser import WinnerDeterminationError
+    monkeypatch.setattr(match_results.replay_storage, "materialize_match_replay", lambda stored, _hash: stored)
+    disputed = unchecked(db_session, replay("disputed"), "disputed")
+    disputed.result_source = ResultSource.UNKNOWN
+    db_session.commit()
+
+    def parse(path):
+        raise WinnerDeterminationError("no clear winner", team_stats={"frame": 9, "team_supply": {"1": 50.0, "2": 60.0}})
+
+    assert backfill_result_sources(db_session, limit=10, dry_run=False, parse=parse).checked == 0
+    report = backfill_result_sources(db_session, limit=10, dry_run=False, parse=parse, recheck_unknown=True)
+    assert (report.suggested, report.remaining) == (1, 0)
+    assert disputed.result_source == ResultSource.SUGGESTED
+    assert disputed.result_evidence == {"frame": 9, "team_supply": {"1": 50.0, "2": 60.0}}
+    assert winners(db_session, disputed) == {1}
