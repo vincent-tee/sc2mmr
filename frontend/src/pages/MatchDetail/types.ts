@@ -15,7 +15,7 @@ export interface MatchCommentary {
   commentary?: string; // Simple format
   overview?: string;
   key_moments?: string[];
-  mvp_analysis?: MvpAnalysis;
+  mvp_analysis?: MvpAnalysis | null;
   player_performances?: Record<string, string>;
   team_analysis?: {
     team_1: string;

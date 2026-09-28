@@ -270,7 +270,7 @@ class MatchCommentaryGenerator:
         return performances
 
     @staticmethod
-    def _generate_mvp_analysis(players_with_metrics: List[Dict]) -> Dict:
+    def _generate_mvp_analysis(players_with_metrics: List[Dict]) -> Optional[Dict]:
         """Identify and analyze the MVP of the match."""
         # Separate winning and losing teams
         winners = [p for p in players_with_metrics if p["match_player"].won]
@@ -326,7 +326,7 @@ class MatchCommentaryGenerator:
 
             return analysis
 
-        return {"player_name": "Unknown", "reasoning": "MVP could not be determined."}
+        return None
 
     @staticmethod
     def _generate_team_analysis(players_with_metrics: List[Dict]) -> Dict:

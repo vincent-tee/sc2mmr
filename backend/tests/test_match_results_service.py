@@ -236,3 +236,15 @@ def test_not_rateable_games_are_unrated_and_leave_the_queue(db_session):
     assert review_queue(db_session) == []
     assert ffa.id not in {m.id for m in db_session.query(Match).filter(Match.is_rated)}
     assert settle_unrecorded_results(db_session, dry_run=True).changed == []
+
+
+def test_recap_of_a_game_without_a_winner_has_no_mvp(db_session):
+    from app.match_commentary import MatchCommentaryGenerator
+
+    unknown = ingest(db_session, replay("recap-unknown", supply=(100.0, 110.0)))
+    settle_unrecorded_results(db_session, dry_run=False)
+
+    recap = MatchCommentaryGenerator.generate_match_summary(db_session, unknown.id)
+    assert recap["mvp_analysis"] is None
+    assert "didn't record a winner" in recap["overview"]
+    assert "no winner was recorded" in recap["match_summary"]

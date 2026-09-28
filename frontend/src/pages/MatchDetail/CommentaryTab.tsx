@@ -49,7 +49,7 @@ const CommentaryTab: React.FC<CommentaryTabProps> = ({ commentary, isLoading }) 
               <HStack spacing={2} mb={1} flexWrap="wrap">
                 <Text fontWeight="bold" color="gray.50">MVP: {mvp.player_name}</Text>
                 <Badge variant="subtle" colorScheme="yellow">Team {mvp.team}</Badge>
-                {mvp.impact_score !== null && (
+                {mvp.impact_score != null && (
                   <Badge variant="subtle" colorScheme="green" fontFamily="mono">Impact {mvp.impact_score.toFixed(1)}</Badge>
                 )}
               </HStack>
