@@ -10,7 +10,7 @@ from itertools import combinations
 
 from ..database import get_db
 from ..balancer import TeamBalancer, BalancerStats
-from ..models import Player, MatchPlayer, PlayerSynergy
+from ..models import Player, MatchPlayer
 from ..services.ai_mmr_service import get_ai_mmr, get_all_ai_difficulties
 from ..services.balance_capture import BalancePredictionService
 
@@ -831,16 +831,6 @@ class PredictMatchRequest(BaseModel):
     team_2_ids: List[int]
 
 
-class SynergyInfo(BaseModel):
-    """Synergy information between two players."""
-
-    player1_name: str
-    player2_name: str
-    games_together: int
-    win_rate: float
-    synergy_score: float
-
-
 class TeamPredictionInfo(BaseModel):
     """Detailed team prediction info."""
 
@@ -848,9 +838,6 @@ class TeamPredictionInfo(BaseModel):
     total_mmr: float
     avg_mmr: float
     win_probability: float
-    synergies: List[SynergyInfo]
-    avg_synergy_score: float
-    team_chemistry: str  # "Strong", "Average", "Weak", "Unknown"
 
 
 class MatchPredictionResponse(BaseModel):
@@ -860,7 +847,6 @@ class MatchPredictionResponse(BaseModel):
     team_2: TeamPredictionInfo
     predicted_winner: int  # 1 or 2
     confidence: str  # "High", "Medium", "Low"
-    upset_potential: bool  # True if underdog has good synergy
     match_quality: float
     factors: List[str]  # Explanation of prediction factors
 
@@ -872,7 +858,6 @@ def predict_match(request: PredictMatchRequest, db: Session = Depends(get_db)):
 
     Factors in:
     - Team MMR difference
-    - Player synergies (historical performance together)
     - Match quality (how competitive the match should be)
 
     Args:
@@ -902,59 +887,6 @@ def predict_match(request: PredictMatchRequest, db: Session = Depends(get_db)):
     win_prob_t1 = TeamBalancer.calculate_win_probability(t1_info, t2_info)
     match_quality = TeamBalancer.calculate_match_quality(t1_info, t2_info)
 
-    # Get synergies for each team
-    def get_team_synergies(players: List[Player]) -> tuple:
-        synergies = []
-        total_score = 0
-        count = 0
-
-        for i, p1 in enumerate(players):
-            for p2 in players[i + 1 :]:
-                # Ensure player1_id < player2_id for lookup
-                pid1, pid2 = min(p1.id, p2.id), max(p1.id, p2.id)
-                syn = (
-                    db.query(PlayerSynergy)
-                    .filter(
-                        PlayerSynergy.player1_id == pid1,
-                        PlayerSynergy.player2_id == pid2,
-                    )
-                    .first()
-                )
-
-                if syn and syn.games_together >= 3:
-                    wr = (
-                        syn.wins_together / syn.games_together
-                        if syn.games_together > 0
-                        else 0.5
-                    )
-                    synergies.append(
-                        SynergyInfo(
-                            player1_name=p1.name if p1.id == pid1 else p2.name,
-                            player2_name=p2.name if p2.id == pid2 else p1.name,
-                            games_together=syn.games_together,
-                            win_rate=round(wr * 100, 1),
-                            synergy_score=round(syn.synergy_score, 1),
-                        )
-                    )
-                    total_score += syn.synergy_score
-                    count += 1
-
-        avg_score = total_score / count if count > 0 else 50.0
-
-        if avg_score >= 52:
-            chemistry = "Strong"
-        elif avg_score >= 48:
-            chemistry = "Average"
-        elif count > 0:
-            chemistry = "Weak"
-        else:
-            chemistry = "Unknown"
-
-        return synergies, avg_score, chemistry
-
-    t1_synergies, t1_avg_syn, t1_chem = get_team_synergies(team_1_players)
-    t2_synergies, t2_avg_syn, t2_chem = get_team_synergies(team_2_players)
-
     # Calculate MMR totals
     t1_total_mmr = sum(p.mmr for p in team_1_players)
     t2_total_mmr = sum(p.mmr for p in team_2_players)
@@ -970,11 +902,6 @@ def predict_match(request: PredictMatchRequest, db: Session = Depends(get_db)):
     elif mmr_diff < 200:
         factors.append("Very close MMR - could go either way")
 
-    if t1_chem == "Strong" and t2_chem != "Strong":
-        factors.append("Team 1 has better synergy")
-    elif t2_chem == "Strong" and t1_chem != "Strong":
-        factors.append("Team 2 has better synergy")
-
     if match_quality > 0.4:
         factors.append("High match quality - competitive game expected")
     elif match_quality < 0.2:
@@ -988,15 +915,6 @@ def predict_match(request: PredictMatchRequest, db: Session = Depends(get_db)):
     else:
         confidence = "Low"
 
-    # Check for upset potential
-    upset_potential = False
-    if win_prob_t1 < 0.4 and t1_chem == "Strong":
-        upset_potential = True
-        factors.append("⚡ Upset alert: Team 1 underdogs have strong chemistry!")
-    elif win_prob_t1 > 0.6 and t2_chem == "Strong":
-        upset_potential = True
-        factors.append("⚡ Upset alert: Team 2 underdogs have strong chemistry!")
-
     predicted_winner = 1 if win_prob_t1 >= 0.5 else 2
 
     # Build response
@@ -1009,9 +927,6 @@ def predict_match(request: PredictMatchRequest, db: Session = Depends(get_db)):
             total_mmr=round(t1_total_mmr, 1),
             avg_mmr=round(t1_avg_mmr, 1),
             win_probability=round(win_prob_t1 * 100, 1),
-            synergies=t1_synergies,
-            avg_synergy_score=round(t1_avg_syn, 1),
-            team_chemistry=t1_chem,
         ),
         team_2=TeamPredictionInfo(
             players=[
@@ -1021,13 +936,9 @@ def predict_match(request: PredictMatchRequest, db: Session = Depends(get_db)):
             total_mmr=round(t2_total_mmr, 1),
             avg_mmr=round(t2_avg_mmr, 1),
             win_probability=round((1 - win_prob_t1) * 100, 1),
-            synergies=t2_synergies,
-            avg_synergy_score=round(t2_avg_syn, 1),
-            team_chemistry=t2_chem,
         ),
         predicted_winner=predicted_winner,
         confidence=confidence,
-        upset_potential=upset_potential,
         match_quality=round(match_quality, 3),
         factors=factors if factors else ["Evenly matched teams"],
     )

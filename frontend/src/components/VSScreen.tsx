@@ -12,7 +12,6 @@ import {
   Badge,
   Button,
   useColorModeValue,
-  Tooltip,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { formatMMR, getRaceColor } from '../utils/formatting';
@@ -31,8 +30,6 @@ interface TeamData {
   players: TeamPlayerInfo[];
   totalMMR: number;
   winProbability?: number;
-  /** Historical pair/trio synergy bonus baked into this team's win probability (BalanceResults only). */
-  synergyBonus?: number;
 }
 
 interface MatchInfo {
@@ -355,13 +352,6 @@ const TeamPanel: React.FC<TeamPanelProps> = ({ team, teamNumber, isWinner, side,
                   >
                     {team.winProbability.toFixed(1)}%
                   </Text>
-                  {team.synergyBonus !== undefined && team.synergyBonus > 0 && (
-                    <Tooltip label={`Chemistry bonus: +${team.synergyBonus.toFixed(0)} synergy points from historical pairings`}>
-                      <Badge colorScheme="purple" variant="solid" fontSize="10px" px={1} borderRadius="full">
-                        +{team.synergyBonus.toFixed(0)}
-                      </Badge>
-                    </Tooltip>
-                  )}
                 </HStack>
               </VStack>
             )}

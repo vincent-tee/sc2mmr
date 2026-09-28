@@ -1,12 +1,10 @@
 /**
- * Lineup Predictor - Enhanced match prediction with synergy analysis
+ * Lineup Predictor - match prediction for a chosen lineup
  *
  * Features:
  * - Team selection with player search
  * - Win probability prediction
- * - Team synergy and chemistry analysis
  * - Confidence indicators with visual feedback
- * - Upset potential alerts
  * - Match quality scoring
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -53,7 +51,6 @@ import {
   FiAlertTriangle,
   FiCheckCircle,
   FiActivity,
-  FiHeart,
   FiShuffle,
   FiRepeat,
   FiArrowRight,
@@ -68,7 +65,7 @@ import PageHeader from '../components/PageHeader';
 import PlayerCard from '@/components/PlayerCard';
 import AnimatedNumber from '@/components/AnimatedNumber';
 import RosterSelector from './TeamGenerator/TeamSelector';
-import type { Player, MatchPredictionResponse, SynergyInfo, TeamChemistry } from '@/types/api';
+import type { Player, MatchPredictionResponse } from '@/types/api';
 
 interface DraftPlayerRef {
   id: number;
@@ -117,17 +114,6 @@ const pulseGlow = keyframes`
   50% { box-shadow: 0 0 40px rgba(0, 212, 255, 0.8); }
 `;
 
-const upsetPulse = keyframes`
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 20px rgba(255, 179, 0, 0.4);
-  }
-  50% {
-    transform: scale(1.02);
-    box-shadow: 0 0 40px rgba(255, 179, 0, 0.8);
-  }
-`;
-
 const slideInUp = keyframes`
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
@@ -137,20 +123,6 @@ const confidencePulse = keyframes`
   0%, 100% { opacity: 0.8; }
   50% { opacity: 1; }
 `;
-
-// Chemistry badge colors
-const getChemistryConfig = (chemistry: TeamChemistry) => {
-  switch (chemistry) {
-    case 'Strong':
-      return { colorScheme: 'green', icon: FiHeart, label: 'Strong Chemistry' };
-    case 'Average':
-      return { colorScheme: 'blue', icon: FiActivity, label: 'Average Chemistry' };
-    case 'Weak':
-      return { colorScheme: 'red', icon: FiAlertTriangle, label: 'Weak Chemistry' };
-    default:
-      return { colorScheme: 'gray', icon: FiActivity, label: 'Unknown' };
-  }
-};
 
 // Confidence badge config
 const getConfidenceConfig = (confidence: string) => {
@@ -612,7 +584,6 @@ const LineupPredictor: React.FC = () => {
               bg={team1Bg}
               borderColor="brand.500"
               iconColor="brand.400"
-              prediction={prediction?.team_1}
             />
 
             <TeamSelector
@@ -626,7 +597,6 @@ const LineupPredictor: React.FC = () => {
               bg={team2Bg}
               borderColor="accent.500"
               iconColor="accent.400"
-              prediction={prediction?.team_2}
             />
           </Grid>
 
@@ -680,7 +650,7 @@ const LineupPredictor: React.FC = () => {
             <Alert status="info" borderRadius="md" maxW="600px" bg={overlayBg}>
               <AlertIcon />
               <Text fontSize="sm">
-                Select players for both teams. Predictions include win probability, team synergy, and upset potential.
+                Select players for both teams. Predictions include win probability and match quality.
               </Text>
             </Alert>
             <Button
@@ -752,13 +722,13 @@ const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
       bg={cardBg}
       borderRadius="xl"
       border="3px solid"
-      borderColor={prediction.upset_potential ? 'yellow.500' : borderColor}
-      boxShadow={prediction.upset_potential ? '0 0 20px rgba(255, 179, 0, 0.4)' : brandShadow}
+      borderColor={borderColor}
+      boxShadow={brandShadow}
       p={6}
-      animation={prediction.upset_potential ? `${upsetPulse} 2s ease-in-out infinite` : `${slideInUp} 0.5s ease-out`}
+      animation={`${slideInUp} 0.5s ease-out`}
     >
       <VStack spacing={6}>
-        {/* Header with confidence and upset alert */}
+        {/* Header with confidence */}
         <Flex justify="space-between" align="center" w="full" flexWrap="wrap" gap={2}>
           <HStack>
             <Icon as={FiTarget} color="brand.400" boxSize={6} />
@@ -784,21 +754,6 @@ const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
               </Badge>
             </Tooltip>
 
-            {prediction.upset_potential && (
-              <Badge
-                colorScheme="yellow"
-                variant="solid"
-                fontSize="sm"
-                px={3}
-                py={1}
-                borderRadius="full"
-              >
-                <HStack spacing={1}>
-                  <Icon as={FiZap} />
-                  <Text>UPSET ALERT!</Text>
-                </HStack>
-              </Badge>
-            )}
           </HStack>
         </Flex>
 
@@ -838,7 +793,6 @@ const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
                 </StatHelpText>
               </Stat>
 
-              <ChemistryBadge chemistry={prediction.team_1.team_chemistry} />
             </VStack>
           </Box>
 
@@ -900,7 +854,6 @@ const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
                 </StatHelpText>
               </Stat>
 
-              <ChemistryBadge chemistry={prediction.team_2.team_chemistry} />
             </VStack>
           </Box>
         </Grid>
@@ -965,61 +918,6 @@ const PredictionDisplay: React.FC<PredictionDisplayProps> = ({
   );
 };
 
-// Chemistry Badge Component
-interface ChemistryBadgeProps {
-  chemistry: TeamChemistry;
-}
-
-const ChemistryBadge: React.FC<ChemistryBadgeProps> = ({ chemistry }) => {
-  const config = getChemistryConfig(chemistry);
-
-  return (
-    <Tooltip label={`Team chemistry based on historical performance together`}>
-      <Badge colorScheme={config.colorScheme} fontSize="xs" px={2} py={1}>
-        <HStack spacing={1}>
-          <Icon as={config.icon} />
-          <Text>{config.label}</Text>
-        </HStack>
-      </Badge>
-    </Tooltip>
-  );
-};
-
-// Synergy Display Component
-interface SynergyDisplayProps {
-  synergies: SynergyInfo[];
-}
-
-const SynergyDisplay: React.FC<SynergyDisplayProps> = ({ synergies }) => {
-  if (synergies.length === 0) {
-    return (
-      <Text fontSize="xs" color="gray.500" fontStyle="italic">
-        No synergy data available
-      </Text>
-    );
-  }
-
-  return (
-    <VStack align="stretch" spacing={2}>
-      {synergies.slice(0, 3).map((syn, idx) => (
-        <HStack key={idx} justify="space-between" p={2} bg="rgba(0, 0, 0, 0.2)" borderRadius="sm">
-          <Text fontSize="xs" color="gray.300">
-            {syn.player1_name} + {syn.player2_name}
-          </Text>
-          <HStack spacing={2}>
-            <Badge colorScheme={syn.win_rate >= 50 ? 'green' : 'red'} fontSize="xs">
-              {syn.win_rate.toFixed(0)}% WR
-            </Badge>
-            <Text fontSize="xs" color="gray.500">
-              ({syn.games_together} games)
-            </Text>
-          </HStack>
-        </HStack>
-      ))}
-    </VStack>
-  );
-};
-
 // Team Selector Component
 interface TeamSelectorProps {
   teamNumber: number;
@@ -1032,7 +930,6 @@ interface TeamSelectorProps {
   bg: string;
   borderColor: string;
   iconColor: string;
-  prediction?: MatchPredictionResponse['team_1'];
 }
 
 const TeamSelector: React.FC<TeamSelectorProps> = ({
@@ -1045,7 +942,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
   getPlayerById,
   borderColor,
   iconColor,
-  prediction,
 }) => {
   const [recruitSearch, setRecruitSearch] = useState('');
   const [recruitOpen, setRecruitOpen] = useState(false);
@@ -1090,32 +986,14 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
 
         {/* Stats Row */}
         {teamPlayers.length > 0 && (
-          <SimpleGrid columns={2} spacing={3}>
+          <SimpleGrid columns={1} spacing={3}>
             <Box p={3} bg="space.900" borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100">
               <Text fontSize="10px" fontWeight="black" color="gray.500" textTransform="uppercase" letterSpacing="widest" mb={1}>Total Power</Text>
               <Text fontSize="xl" fontWeight="black" color={iconColor} fontFamily="mono">
                 <AnimatedNumber value={totalMMR} decimals={0} />
               </Text>
             </Box>
-            {prediction && (
-              <Box p={3} bg="space.900" borderRadius="xl" border="1px solid" borderColor="whiteAlpha.100">
-                <Text fontSize="10px" fontWeight="black" color="gray.500" textTransform="uppercase" letterSpacing="widest" mb={1}>Synergy Score</Text>
-                <Text fontSize="xl" fontWeight="black" color={iconColor} fontFamily="mono">
-                  <AnimatedNumber value={prediction.avg_synergy_score} decimals={1} />
-                </Text>
-              </Box>
-            )}
           </SimpleGrid>
-        )}
-
-        {/* Synergy Info */}
-        {prediction && prediction.synergies.length > 0 && (
-          <Box>
-            <Text fontSize="xs" fontWeight="black" color="gray.500" mb={2} textTransform="uppercase" letterSpacing="widest">
-              Team Synergies
-            </Text>
-            <SynergyDisplay synergies={prediction.synergies} />
-          </Box>
         )}
 
         {/* Player List */}

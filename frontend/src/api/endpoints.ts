@@ -16,7 +16,6 @@ import type {
   ReplayUploadResponse,
   PlayerImpact,
   MatchPlayerMetrics,
-  PlayerSynergy,
   HealthCheckResponse,
   MatchPredictionResponse,
 } from '@/types/api';
@@ -276,8 +275,6 @@ export interface ImpactApi {
   getPlayerMatchMetrics: (playerId: number, limit?: number) => Promise<AxiosResponse<MatchPlayerMetrics[]>>;
   getMatchDamageTimeline: (playerId: number, matchId: number | string) => Promise<AxiosResponse<Record<string, number>>>;
   getMatchCoordination: (matchId: number) => Promise<AxiosResponse<unknown>>;
-  getPlayerSynergies: (playerId: number, minGames?: number) => Promise<AxiosResponse<PlayerSynergy[]>>;
-  getTopSynergies: (minGames?: number, limit?: number) => Promise<AxiosResponse<PlayerSynergy[]>>;
   getLeaderboard: (category: string, minGames?: number, limit?: number) => Promise<AxiosResponse<LeaderboardEntry[]>>;
   getPlayerAttackPatterns: (playerId: number, limit?: number) => Promise<AxiosResponse<unknown>>;
 }
@@ -305,20 +302,6 @@ export const impactApi: ImpactApi = {
   // Get team coordination analysis for a match
   getMatchCoordination: (matchId: number) => {
     return apiClient.get(`/impact/matches/${matchId}/coordination`);
-  },
-
-  // Get player synergies
-  getPlayerSynergies: (playerId: number, minGames = 3) => {
-    return apiClient.get<PlayerSynergy[]>(`/impact/players/${playerId}/synergies`, {
-      params: { min_games: minGames }
-    });
-  },
-
-  // Get top synergies
-  getTopSynergies: (minGames = 5, limit = 10) => {
-    return apiClient.get<PlayerSynergy[]>('/impact/synergies/top', {
-      params: { min_games: minGames, limit }
-    });
   },
 
   // Get impact leaderboard

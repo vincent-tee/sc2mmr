@@ -327,7 +327,7 @@ class MatchCommentaryGenerator:
 
     @staticmethod
     def _generate_team_analysis(players_with_metrics: List[Dict]) -> Dict:
-        """Analyze team composition and synergy."""
+        """Analyze team composition."""
         team_1 = [p for p in players_with_metrics if p["match_player"].team_number == 1]
         team_2 = [p for p in players_with_metrics if p["match_player"].team_number == 2]
 

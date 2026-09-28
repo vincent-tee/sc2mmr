@@ -14,18 +14,15 @@ import {
   Text,
   HStack,
   Badge,
-  Flex,
   useColorModeValue,
 } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 import { keyframes } from '@emotion/react';
 import {
   type LeaderboardEntry,
-  type DuoLeaderboardEntry,
   type LeaderboardCategoryKey,
   getRankMedal,
   formatLeaderboardValue,
-  isDuoCategory,
 } from '@/types/leaderboard';
 import { getRaceEmoji, getRaceColor } from '@/utils/formatting';
 import { spacing, radii, transitions } from '@/theme/tokens';
@@ -36,7 +33,7 @@ import { spacing, radii, transitions } from '@/theme/tokens';
 
 export interface LeaderboardTableProps {
   /** Leaderboard entries */
-  entries: LeaderboardEntry[] | DuoLeaderboardEntry[];
+  entries: LeaderboardEntry[];
   /** Category key for formatting */
   category: LeaderboardCategoryKey;
   /** Show race icon */
@@ -240,87 +237,6 @@ const StandardRow: React.FC<StandardRowProps> = memo(({
 
 StandardRow.displayName = 'StandardRow';
 
-// =============================================================================
-// Duo Entry Row Component
-// =============================================================================
-
-interface DuoRowProps {
-  entry: DuoLeaderboardEntry;
-  clickable: boolean;
-  onRowClick: (playerId: number) => void;
-  rowBgColor: string;
-  hoverBgColor: string;
-  textColor: string;
-  isTopThree: boolean;
-}
-
-const DuoRow: React.FC<DuoRowProps> = memo(({
-  entry,
-  clickable,
-  onRowClick,
-  rowBgColor,
-  hoverBgColor,
-  textColor,
-  isTopThree,
-}) => {
-  return (
-    <Tr
-      bg={isTopThree ? 'whiteAlpha.50' : rowBgColor}
-      transition={`all ${transitions.base} ${transitions.easing.easeInOut}`}
-      _hover={{
-        bg: hoverBgColor,
-      }}
-    >
-      <Td borderColor="whiteAlpha.100" py={3}>
-        <MedalBadge rank={entry.rank} />
-      </Td>
-      <Td borderColor="whiteAlpha.100" py={3}>
-        <Flex align="center" wrap="wrap" gap={2}>
-          <Text
-            fontWeight={isTopThree ? 'bold' : 'medium'}
-            fontFamily="heading"
-            letterSpacing="wide"
-            color={isTopThree ? 'brand.300' : textColor}
-            cursor={clickable ? 'pointer' : 'default'}
-            onClick={clickable ? () => onRowClick(entry.player1_id) : undefined}
-            _hover={clickable ? { textDecoration: 'underline' } : {}}
-          >
-            {entry.player1_name}
-          </Text>
-          <Text color="gray.500" fontSize="sm">
-            &
-          </Text>
-          <Text
-            fontWeight={isTopThree ? 'bold' : 'medium'}
-            fontFamily="heading"
-            letterSpacing="wide"
-            color={isTopThree ? 'brand.300' : textColor}
-            cursor={clickable ? 'pointer' : 'default'}
-            onClick={clickable ? () => onRowClick(entry.player2_id) : undefined}
-            _hover={clickable ? { textDecoration: 'underline' } : {}}
-          >
-            {entry.player2_name}
-          </Text>
-        </Flex>
-      </Td>
-      <Td borderColor="whiteAlpha.100" py={3} isNumeric>
-        <Text
-          fontFamily="mono"
-          fontWeight="bold"
-          fontSize="md"
-          color={isTopThree ? 'shield.400' : 'gray.200'}
-        >
-          {entry.wins_together}W
-        </Text>
-        <Text fontSize="xs" color="gray.500">
-          {(entry.win_rate * 100).toFixed(0)}% WR
-        </Text>
-      </Td>
-    </Tr>
-  );
-});
-
-DuoRow.displayName = 'DuoRow';
 
 // =============================================================================
 // Main Component
@@ -347,9 +263,6 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
   const handleRowClick = useCallback((playerId: number) => {
     navigate(`/players/${playerId}`);
   }, [navigate]);
-
-  // Type guard for duo entries
-  const isDuo = isDuoCategory(category);
 
   // Limit entries if maxRows is set
   const displayedEntries = maxRows ? entries.slice(0, maxRows) : entries;
@@ -380,7 +293,7 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
         textAlign="center"
       >
         <Text fontSize="4xl" mb={3}>
-          {isDuo ? '🤝' : '🏆'}
+          🏆
         </Text>
         <Text color="gray.500" fontSize="lg">
           {emptyMessage}
@@ -415,7 +328,7 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
               letterSpacing="wider"
               fontSize="xs"
             >
-              {isDuo ? 'Duo' : 'Player'}
+              Player
             </Th>
             <Th
               borderColor={borderColor}
@@ -424,28 +337,13 @@ const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
               fontSize="xs"
               isNumeric
             >
-              {isDuo ? 'Wins' : 'Value'}
+              Value
             </Th>
           </Tr>
         </Thead>
         <Tbody>
           {displayedEntries.map((entry) => {
             const isTopThree = entry.rank <= 3;
-
-            if (isDuo) {
-              return (
-                <DuoRow
-                  key={`${(entry as DuoLeaderboardEntry).player1_id}-${(entry as DuoLeaderboardEntry).player2_id}`}
-                  entry={entry as DuoLeaderboardEntry}
-                  clickable={clickable}
-                  onRowClick={handleRowClick}
-                  rowBgColor="transparent"
-                  hoverBgColor={hoverBgColor}
-                  textColor={textColor}
-                  isTopThree={isTopThree}
-                />
-              );
-            }
 
             return (
               <StandardRow

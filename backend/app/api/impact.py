@@ -1,5 +1,5 @@
 """
-API endpoints for player impact and synergy statistics.
+API endpoints for player impact statistics.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,7 +10,7 @@ import json
 from collections import defaultdict
 
 from ..database import get_db
-from ..models import Player, MatchPlayer, PlayerMatchMetrics, PlayerSynergy
+from ..models import Player, MatchPlayer, PlayerMatchMetrics
 from ..impact_service import ImpactService
 from ..damage_timeline import DamageTimeline, DamageTimelineExtractor
 
@@ -70,28 +70,6 @@ class MatchMetricsResponse(BaseModel):
     # Other
     apm: float
     first_expansion_timing: Optional[int]
-
-
-class SynergyResponse(BaseModel):
-    """Synergy between two players."""
-
-    player1_id: int
-    player1_name: str
-    player2_id: int
-    player2_name: str
-    games_together: int
-    wins_together: int
-    win_rate: float
-    synergy_score: float
-    avg_combined_impact: float
-
-
-class PlayerSynergyListResponse(BaseModel):
-    """List of synergies for a player."""
-
-    player_id: int
-    player_name: str
-    synergies: List[SynergyResponse]
 
 
 @router.get("/players", response_model=List[PlayerImpactResponse])
@@ -205,89 +183,6 @@ def get_player_match_metrics(
             )
 
     return results
-
-
-@router.get("/players/{player_id}/synergies", response_model=PlayerSynergyListResponse)
-def get_player_synergies(
-    player_id: int, min_games: int = 3, db: Session = Depends(get_db)
-):
-    """
-    Get synergies for a specific player.
-
-    Args:
-        player_id: Player ID
-        min_games: Minimum games together
-        db: Database session
-
-    Returns:
-        List of synergies with other players
-    """
-    player = db.query(Player).filter(Player.id == player_id).first()
-    if not player:
-        raise HTTPException(status_code=404, detail="Player not found")
-
-    synergies = ImpactService.get_player_synergies(db, player_id, min_games)
-
-    synergy_responses = []
-    for other_player, synergy in synergies:
-        # Determine which is player1 and player2
-        if synergy.player1_id == player_id:
-            p1_id, p1_name = player.id, player.name
-            p2_id, p2_name = other_player.id, other_player.name
-        else:
-            p1_id, p1_name = other_player.id, other_player.name
-            p2_id, p2_name = player.id, player.name
-
-        synergy_responses.append(
-            SynergyResponse(
-                player1_id=p1_id,
-                player1_name=p1_name,
-                player2_id=p2_id,
-                player2_name=p2_name,
-                games_together=synergy.games_together,
-                wins_together=synergy.wins_together,
-                win_rate=synergy.win_rate_together,
-                synergy_score=synergy.synergy_score,
-                avg_combined_impact=synergy.avg_combined_impact,
-            )
-        )
-
-    return PlayerSynergyListResponse(
-        player_id=player.id, player_name=player.name, synergies=synergy_responses
-    )
-
-
-@router.get("/synergies/top", response_model=List[SynergyResponse])
-def get_top_synergies(
-    min_games: int = 5, limit: int = 10, db: Session = Depends(get_db)
-):
-    """
-    Get top player synergies across all players.
-
-    Args:
-        min_games: Minimum games together
-        limit: Maximum results
-        db: Database session
-
-    Returns:
-        List of top synergies
-    """
-    top_synergies = ImpactService.get_top_synergies(db, min_games, limit)
-
-    return [
-        SynergyResponse(
-            player1_id=player1.id,
-            player1_name=player1.name,
-            player2_id=player2.id,
-            player2_name=player2.name,
-            games_together=synergy.games_together,
-            wins_together=synergy.wins_together,
-            win_rate=synergy.win_rate_together,
-            synergy_score=synergy.synergy_score,
-            avg_combined_impact=synergy.avg_combined_impact,
-        )
-        for player1, player2, synergy in top_synergies
-    ]
 
 
 @router.get("/leaderboard/{category}")

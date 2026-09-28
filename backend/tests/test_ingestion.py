@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.exceptions import ValidationError
-from app.models import Base, Match, MatchPlayer, Player, PlayerAlias, PlayerSynergy, Race, GameMode
+from app.models import Base, Match, MatchPlayer, Player, PlayerAlias, Race, GameMode
 from app.replay_parser import ReplayData, PlayerData
 from app.rating_system import RatingSystem
 from app.services.ingestion import ingest_match, post_process_match, run_optional_processing
@@ -47,17 +47,15 @@ def test_rating_failure_rolls_back_commits_and_retry_succeeds(db_session, replay
     assert all(p.total_games == 1 for p in db_session.query(Player))
 
 
-def test_longer_observer_replay_preserves_rating_and_synergy(db_session, replay):
+def test_longer_observer_replay_preserves_rating(db_session, replay):
     match, _ = ingest_match(db_session, replay, require_experience=False)
     before = player_state(db_session)
-    synergy_before = [(s.games_together, s.wins_together) for s in db_session.query(PlayerSynergy)]
     longer = replace(replay, replay_hash="observer-file", duration_seconds=900)
     refreshed, created = ingest_match(db_session, longer, "/stored/observer.SC2Replay", require_experience=False)
     assert not created
     assert refreshed.id == match.id
     assert refreshed.duration_seconds == 900
     assert player_state(db_session) == before
-    assert [(s.games_together, s.wins_together) for s in db_session.query(PlayerSynergy)] == synergy_before
     assert db_session.query(MatchPlayer).count() == 4
 
 

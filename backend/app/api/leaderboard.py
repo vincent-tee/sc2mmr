@@ -5,7 +5,7 @@ from sqlalchemy import func, desc, case, cast, Float
 from pydantic import BaseModel
 
 from ..database import get_db
-from ..models import Player, PlayerSynergy, MatchPlayer, PlayerMatchMetrics, Match
+from ..models import Player, MatchPlayer, PlayerMatchMetrics, Match
 from ..services import AchievementService
 from .players import compute_activity_flags, active_only_clause
 
@@ -26,18 +26,6 @@ class LeaderboardEntry(BaseModel):
     # secondary_value doubles as win rate % for this category.
     games_played: Optional[int] = None
     form_icon: Optional[str] = None
-
-
-class DuoLeaderboardEntry(BaseModel):
-    rank: int
-    player1_id: int
-    player1_name: str
-    player2_id: int
-    player2_name: str
-    wins_together: int
-    games_together: int
-    win_rate: float
-    synergy_score: float
 
 
 class CategoryInfo(BaseModel):
@@ -85,79 +73,7 @@ async def get_leaderboard_categories():
             "unit": "wins",
             "icon": "🔥",
         },
-        {
-            "key": "duos",
-            "name": "Best Duos",
-            "description": "Most successful partnerships",
-            "unit": "wins",
-            "icon": "👥",
-        },
-        {
-            "key": "trios",
-            "name": "Best Trios",
-            "description": "Most successful trios",
-            "unit": "wins",
-            "icon": "👨‍👩‍👦",
-        },
     ]
-
-
-class TrioLeaderboardEntry(BaseModel):
-    rank: int
-    player_ids: List[int]
-    player_names: List[str]
-    wins_together: int
-    games_together: int
-    win_rate: float
-    synergy_score: float
-
-
-@router.get("/trios", response_model=List[TrioLeaderboardEntry])
-async def get_trios_leaderboard(
-    limit: int = Query(20, ge=1, le=50),
-    min_games: int = Query(5, ge=2),
-    sort_by: str = Query("wins", enum=["wins", "winrate", "synergy"]),
-    db: Session = Depends(get_db),
-):
-    from ..models import GroupSynergy
-
-    results = (
-        db.query(GroupSynergy)
-        .filter(GroupSynergy.player_count == 3)
-        .filter(GroupSynergy.matches_played >= min_games)
-        .all()
-    )
-    trios = []
-    for res in results:
-        p_ids = [int(pid) for pid in res.player_ids_key.split(",")]
-        players = db.query(Player).filter(Player.id.in_(p_ids), Player.is_ai == 0).all()
-        if len(players) < 3:
-            continue
-        player_map = {p.id: p.name for p in players}
-        names = [player_map.get(pid, "Unknown") for pid in p_ids]
-        trios.append(
-            {
-                "rank": 0,
-                "player_ids": p_ids,
-                "player_names": names,
-                "wins_together": res.matches_won,
-                "games_together": res.matches_played,
-                "win_rate": round(res.win_rate * 100, 1),
-                "synergy_score": round(50.0 + (res.synergy_score * 2.5), 1),
-                "sort_val": getattr(
-                    res,
-                    "matches_won"
-                    if sort_by == "wins"
-                    else "win_rate"
-                    if sort_by == "winrate"
-                    else "synergy_score",
-                ),
-            }
-        )
-    trios.sort(key=lambda x: x["sort_val"], reverse=True)
-    for idx, t in enumerate(trios):
-        t["rank"] = idx + 1
-    return trios[:limit]
 
 
 @router.get("/mmr", response_model=List[LeaderboardEntry])
@@ -562,56 +478,6 @@ async def get_longest_matches_leaderboard(
             "extra_info": f"{e['match'].map_name}",
         }
         for i, e in enumerate(ranked)
-    ]
-
-
-@router.get("/duos", response_model=List[DuoLeaderboardEntry])
-async def get_duos_leaderboard(
-    limit: int = Query(20, ge=1, le=50),
-    min_games: int = Query(10, ge=3),
-    sort_by: str = Query("wins", enum=["wins", "winrate", "synergy"]),
-    db: Session = Depends(get_db),
-):
-    from sqlalchemy.orm import joinedload
-
-    query = (
-        db.query(PlayerSynergy)
-        .options(joinedload(PlayerSynergy.player1), joinedload(PlayerSynergy.player2))
-        .filter(PlayerSynergy.games_together >= min_games)
-    )
-    if sort_by == "wins":
-        query = query.order_by(desc(PlayerSynergy.wins_together))
-    elif sort_by == "synergy":
-        query = query.order_by(desc(PlayerSynergy.synergy_score))
-    results = query.all()
-    duos = []
-    for s in results:
-        if s.player1.is_ai or s.player2.is_ai:
-            continue
-        wr = (s.wins_together / s.games_together * 100) if s.games_together > 0 else 0
-        duos.append(
-            {
-                "synergy": s,
-                "win_rate": wr,
-                "p1_name": s.player1.name if s.player1 else "Unknown",
-                "p2_name": s.player2.name if s.player2 else "Unknown",
-            }
-        )
-    if sort_by == "winrate":
-        duos.sort(key=lambda x: x["win_rate"], reverse=True)
-    return [
-        {
-            "rank": i + 1,
-            "player1_id": d["synergy"].player1_id,
-            "player1_name": d["p1_name"],
-            "player2_id": d["synergy"].player2_id,
-            "player2_name": d["p2_name"],
-            "wins_together": d["synergy"].wins_together,
-            "games_together": d["synergy"].games_together,
-            "win_rate": round(d["win_rate"], 1),
-            "synergy_score": round(d["synergy"].synergy_score, 1),
-        }
-        for i, d in enumerate(duos[:limit])
     ]
 
 

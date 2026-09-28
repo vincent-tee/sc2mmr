@@ -24,7 +24,6 @@ class TacticalForecastService:
         forecast = {
             "map_specialists": [],
             "playstyle_alerts": [],
-            "synergy_warnings": [],
             "key_matchups": [],
         }
 

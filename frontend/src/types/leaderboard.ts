@@ -6,7 +6,6 @@
  * - Combat (in-game contribution)
  * - Win Rate (fundamental stat)
  * - Win Streak (engagement/fun)
- * - Duos (partnership rankings)
  */
 import { formatDuration } from '@/utils/formatting';
 
@@ -31,19 +30,6 @@ export interface LeaderboardEntry {
   form_icon?: string | null;
 }
 
-/** Duo leaderboard entry for partnership rankings */
-export interface DuoLeaderboardEntry {
-  rank: number;
-  player1_id: number;
-  player1_name: string;
-  player2_id: number;
-  player2_name: string;
-  wins_together: number;
-  games_together: number;
-  win_rate: number;
-  synergy_score: number;
-}
-
 // =============================================================================
 // Leaderboard Category Types
 // =============================================================================
@@ -54,19 +40,7 @@ export type LeaderboardCategoryKey =
   | 'combat'
   | 'winrate'
   | 'winstreak'
-  | 'longest-matches'
-  | 'duos'
-  | 'trios';
-
-export interface TrioLeaderboardEntry {
-  rank: number;
-  player_ids: number[];
-  player_names: string[];
-  wins_together: number;
-  games_together: number;
-  win_rate: number;
-  synergy_score: number;
-}
+  | 'longest-matches';
 
 /** Squad-wide meta report: race win rates and the archetypes that win most */
 export interface MetaReportResponse {
@@ -131,20 +105,6 @@ export const LEADERBOARD_CATEGORIES: LeaderboardCategory[] = [
     unit: 'time',
     icon: '⏱️',
   },
-  {
-    key: 'duos',
-    name: 'Best Duos',
-    description: 'Most successful partnerships',
-    unit: 'wins',
-    icon: '👥',
-  },
-  {
-    key: 'trios',
-    name: 'Best Trios',
-    description: 'Most successful trios',
-    unit: 'wins',
-    icon: '👨‍👩‍👦',
-  },
 ];
 
 /** Get category by key */
@@ -185,7 +145,3 @@ export function getRankMedal(rank: number): string {
   }
 }
 
-/** Check if category uses duo format */
-export function isDuoCategory(category: LeaderboardCategoryKey): boolean {
-  return category === 'duos';
-}

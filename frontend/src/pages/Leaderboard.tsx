@@ -33,9 +33,9 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { keyframes } from '@emotion/react';
-import { FiActivity, FiTrendingUp, FiUsers } from 'react-icons/fi';
+import { FiActivity, FiTrendingUp } from 'react-icons/fi';
 import type { IconType } from 'react-icons';
-import { LuTrophy, LuSwords, LuFlame, LuUsersRound, LuCrown } from 'react-icons/lu';
+import { LuTrophy, LuSwords, LuFlame, LuCrown } from 'react-icons/lu';
 import { leaderboardApi } from '../api/leaderboard';
 import { playersApi } from '../api/endpoints';
 import RankBadge from '../components/RankBadge';
@@ -46,8 +46,6 @@ import {
   LEADERBOARD_CATEGORIES,
   LeaderboardCategoryKey,
   LeaderboardEntry,
-  DuoLeaderboardEntry,
-  TrioLeaderboardEntry,
   formatLeaderboardValue,
 } from '../types/leaderboard';
 
@@ -71,8 +69,6 @@ const CATEGORY_ICONS: Record<string, IconType> = {
   combat: LuSwords,
   winrate: FiTrendingUp,
   winstreak: LuFlame,
-  duos: FiUsers,
-  trios: LuUsersRound,
 };
 
 // =============================================================================
@@ -453,165 +449,6 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(
 
 StandardTable.displayName = 'StandardTable';
 
-interface DuoTableProps {
-  entries: DuoLeaderboardEntry[];
-  onPlayerClick: (playerId: number) => void;
-}
-
-const DuoTable: React.FC<DuoTableProps> = React.memo(({ entries, onPlayerClick }) => {
-  const hoverBg = useColorModeValue('whiteAlpha.100', 'whiteAlpha.100');
-
-  return (
-    <Table variant="simple" size="md">
-      <Thead>
-        <Tr>
-          <Th color="gray.500" width="70px" borderColor="whiteAlpha.100">Rank</Th>
-          <Th color="gray.500" borderColor="whiteAlpha.100">Partnership</Th>
-          <Th color="gray.500" isNumeric borderColor="whiteAlpha.100">Wins</Th>
-          <Th color="gray.500" isNumeric display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
-            Win Rate
-          </Th>
-          <Th color="gray.500" isNumeric display={{ base: 'none', lg: 'table-cell' }} borderColor="whiteAlpha.100">
-            Synergy
-          </Th>
-        </Tr>
-      </Thead>
-      <Tbody>
-        {entries.map((entry) => (
-          <Tr
-            key={`${entry.player1_id}-${entry.player2_id}`}
-            transition="all 0.15s ease"
-            _hover={{ bg: hoverBg }}
-          >
-            <Td borderColor="whiteAlpha.100">
-              <RankCell rank={entry.rank} />
-            </Td>
-            <Td borderColor="whiteAlpha.100">
-              <HStack spacing={2}>
-                <Text
-                  fontWeight="700"
-                  color="gray.100"
-                  cursor="pointer"
-                  _hover={{ color: 'brand.400' }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPlayerClick(entry.player1_id);
-                  }}
-                >
-                  {entry.player1_name}
-                </Text>
-                <Text color="gray.500">&</Text>
-                <Text
-                  fontWeight="700"
-                  color="gray.100"
-                  cursor="pointer"
-                  _hover={{ color: 'brand.400' }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPlayerClick(entry.player2_id);
-                  }}
-                >
-                  {entry.player2_name}
-                </Text>
-              </HStack>
-            </Td>
-            <Td isNumeric borderColor="whiteAlpha.100">
-              <Text fontWeight="700" color={entry.rank <= 3 ? 'shield.400' : 'brand.400'} fontFamily="mono">
-                {entry.wins_together}
-              </Text>
-            </Td>
-            <Td isNumeric display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
-              <Badge colorScheme={entry.win_rate >= 60 ? 'green' : entry.win_rate >= 50 ? 'yellow' : 'red'}>
-                {entry.win_rate.toFixed(1)}%
-              </Badge>
-            </Td>
-            <Td isNumeric display={{ base: 'none', lg: 'table-cell' }} borderColor="whiteAlpha.100">
-              <Text color="gray.400" fontFamily="mono">
-                {entry.synergy_score.toFixed(1)}
-              </Text>
-            </Td>
-          </Tr>
-        ))}
-      </Tbody>
-    </Table>
-  );
-});
-
-DuoTable.displayName = 'DuoTable';
-
-interface TrioTableProps {
-  entries: TrioLeaderboardEntry[];
-  onPlayerClick: (playerId: number) => void;
-}
-
-const TrioTable: React.FC<TrioTableProps> = React.memo(({ entries, onPlayerClick }) => {
-  const hoverBg = useColorModeValue('whiteAlpha.100', 'whiteAlpha.100');
-
-  return (
-    <Table variant="simple" size="md">
-      <Thead>
-        <Tr>
-          <Th color="gray.500" width="70px" borderColor="whiteAlpha.100">Rank</Th>
-          <Th color="gray.500" borderColor="whiteAlpha.100">Trio Partnership</Th>
-          <Th color="gray.500" isNumeric borderColor="whiteAlpha.100">Wins</Th>
-          <Th color="gray.500" isNumeric display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
-            Win Rate
-          </Th>
-          <Th color="gray.500" isNumeric display={{ base: 'none', lg: 'table-cell' }} borderColor="whiteAlpha.100">
-            Synergy
-          </Th>
-        </Tr>
-      </Thead>
-      <Tbody>
-        {entries.map((entry) => (
-          <Tr key={entry.player_ids.join('-')} transition="all 0.15s ease" _hover={{ bg: hoverBg }}>
-            <Td borderColor="whiteAlpha.100">
-              <RankCell rank={entry.rank} />
-            </Td>
-            <Td borderColor="whiteAlpha.100">
-              <HStack spacing={2} flexWrap="wrap">
-                {entry.player_names.map((name, idx) => (
-                  <React.Fragment key={idx}>
-                    <Text
-                      fontWeight="700"
-                      color="gray.100"
-                      cursor="pointer"
-                      _hover={{ color: 'brand.400' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onPlayerClick(entry.player_ids[idx]);
-                      }}
-                    >
-                      {name}
-                    </Text>
-                    {idx < entry.player_names.length - 1 && <Text color="gray.500">&</Text>}
-                  </React.Fragment>
-                ))}
-              </HStack>
-            </Td>
-            <Td isNumeric borderColor="whiteAlpha.100">
-              <Text fontWeight="700" color={entry.rank <= 3 ? 'shield.400' : 'brand.400'} fontFamily="mono">
-                {entry.wins_together}
-              </Text>
-            </Td>
-            <Td isNumeric display={{ base: 'none', md: 'table-cell' }} borderColor="whiteAlpha.100">
-              <Badge colorScheme={entry.win_rate >= 60 ? 'green' : entry.win_rate >= 50 ? 'yellow' : 'red'}>
-                {entry.win_rate.toFixed(1)}%
-              </Badge>
-            </Td>
-            <Td isNumeric display={{ base: 'none', lg: 'table-cell' }} borderColor="whiteAlpha.100">
-              <Text color="gray.400" fontFamily="mono">
-                {entry.synergy_score.toFixed(1)}
-              </Text>
-            </Td>
-          </Tr>
-        ))}
-      </Tbody>
-    </Table>
-  );
-});
-
-TrioTable.displayName = 'TrioTable';
 
 // =============================================================================
 // Main Component
@@ -665,9 +502,8 @@ const Leaderboard: React.FC = () => {
     [activeCategory]
   );
 
-  const isTeamCategory = activeCategory === 'duos' || activeCategory === 'trios';
-  const standardEntries = !isTeamCategory && data ? (data as LeaderboardEntry[]) : [];
-  const showPodium = !isTeamCategory && standardEntries.length >= 3;
+  const standardEntries = data ? (data as LeaderboardEntry[]) : [];
+  const showPodium = standardEntries.length >= 3;
 
   return (
     <Box minH="100vh" pb={16}>
@@ -743,18 +579,12 @@ const Leaderboard: React.FC = () => {
                 borderColor="whiteAlpha.100"
                 overflowX="auto"
               >
-                {activeCategory === 'duos' ? (
-                  <DuoTable entries={data as DuoLeaderboardEntry[]} onPlayerClick={handlePlayerClick} />
-                ) : activeCategory === 'trios' ? (
-                  <TrioTable entries={data as TrioLeaderboardEntry[]} onPlayerClick={handlePlayerClick} />
-                ) : (
-                  <StandardTable
-                    entries={showPodium ? standardEntries.slice(3) : standardEntries}
-                    category={activeCategory}
-                    onPlayerClick={handlePlayerClick}
-                    raceById={raceById}
-                  />
-                )}
+                <StandardTable
+                  entries={showPodium ? standardEntries.slice(3) : standardEntries}
+                  category={activeCategory}
+                  onPlayerClick={handlePlayerClick}
+                  raceById={raceById}
+                />
               </Box>
             </>
           ) : (

@@ -227,7 +227,7 @@ export const CATEGORY_INFO: Record<AchievementCategory, CategoryInfo> = {
   teamwork: {
     name: 'Teamwork',
     icon: '🤝',
-    description: 'Team synergy achievements',
+    description: 'Wins with the same teammate',
   },
   variety: {
     name: 'Variety',

@@ -254,12 +254,11 @@ export interface TacticalPlaystyleAlert {
   confidence: number;
 }
 
-/** Pre-match strategic insights: map form, playstyle risks, synergy/matchup notes */
+/** Pre-match strategic insights: map form, playstyle risks, matchup notes */
 export interface TacticalForecast {
   map_specialists: TacticalMapSpecialist[];
   playstyle_alerts: TacticalPlaystyleAlert[];
   // Reserved for future use by the backend forecast service; always empty today.
-  synergy_warnings: unknown[];
   key_matchups: unknown[];
 }
 
@@ -400,15 +399,6 @@ export interface PredictionPlayerInfo {
   sigma: number;
 }
 
-export interface SynergyInfo {
-  player1_name: string;
-  player2_name: string;
-  games_together: number;
-  win_rate: number;
-  synergy_score: number;
-}
-
-export type TeamChemistry = 'Strong' | 'Average' | 'Weak' | 'Unknown';
 export type PredictionConfidence = 'High' | 'Medium' | 'Low';
 
 export interface TeamPredictionInfo {
@@ -416,9 +406,6 @@ export interface TeamPredictionInfo {
   total_mmr: number;
   avg_mmr: number;
   win_probability: number;
-  synergies: SynergyInfo[];
-  avg_synergy_score: number;
-  team_chemistry: TeamChemistry;
 }
 
 export interface MatchPredictionResponse {
@@ -426,7 +413,6 @@ export interface MatchPredictionResponse {
   team_2: TeamPredictionInfo;
   predicted_winner: 1 | 2;
   confidence: PredictionConfidence;
-  upset_potential: boolean;
   match_quality: number;
   factors: string[];
 }

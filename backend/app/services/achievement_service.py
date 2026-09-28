@@ -7,14 +7,14 @@ Handles achievement calculation, tracking, and awarding.
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_, desc
+from sqlalchemy import func, and_, desc
+from sqlalchemy.orm import aliased
 
 from ..models import (
     Player,
     Match,
     MatchPlayer,
     PlayerMatchMetrics,
-    PlayerSynergy,
     Achievement,
     PlayerAchievement,
     AchievementCategory,
@@ -284,24 +284,24 @@ class AchievementService:
             or 0
         )
 
-        # Get synergy stats
-        synergies = (
-            db.query(PlayerSynergy)
-            .filter(
-                or_(
-                    PlayerSynergy.player1_id == player_id,
-                    PlayerSynergy.player2_id == player_id,
-                )
-            )
+        teammate = aliased(MatchPlayer)
+        games_with_each_teammate = (
+            db.query(func.count(teammate.id), func.sum(MatchPlayer.won))
+            .select_from(MatchPlayer)
+            .join(teammate, and_(
+                teammate.match_id == MatchPlayer.match_id,
+                teammate.team_number == MatchPlayer.team_number,
+                teammate.player_id != MatchPlayer.player_id,
+            ))
+            .filter(MatchPlayer.player_id == player_id)
+            .group_by(teammate.player_id)
             .all()
         )
-
-        best_duo_wins = max([s.wins_together for s in synergies], default=0)
-        best_duo_winrate = 0
-        for s in synergies:
-            if s.games_together >= 10:
-                wr = (s.wins_together / s.games_together) * 100
-                best_duo_winrate = max(best_duo_winrate, wr)
+        best_duo_wins = max((wins or 0 for _, wins in games_with_each_teammate), default=0)
+        best_duo_winrate = max(
+            ((wins or 0) / games * 100 for games, wins in games_with_each_teammate if games >= 10),
+            default=0,
+        )
 
         # Get unique play days
         unique_days = (

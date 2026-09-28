@@ -6,8 +6,6 @@ import { AxiosResponse } from 'axios';
 import apiClient from './client';
 import type {
   LeaderboardEntry,
-  DuoLeaderboardEntry,
-  TrioLeaderboardEntry,
   LeaderboardCategoryKey,
   MetaReportResponse,
 } from '@/types/leaderboard';
@@ -52,20 +50,6 @@ export interface LeaderboardApi {
     limit?: number
   ) => Promise<AxiosResponse<LeaderboardEntry[]>>;
 
-  /** Get best duos leaderboard */
-  getDuos: (
-    limit?: number,
-    minGames?: number,
-    sortBy?: 'wins' | 'winrate' | 'synergy'
-  ) => Promise<AxiosResponse<DuoLeaderboardEntry[]>>;
-
-  /** Get best trios leaderboard */
-  getTrios: (
-    limit?: number,
-    minGames?: number,
-    sortBy?: 'wins' | 'winrate' | 'synergy'
-  ) => Promise<AxiosResponse<TrioLeaderboardEntry[]>>;
-
   getMetaReport: () => Promise<AxiosResponse<MetaReportResponse>>;
 
   /** Generic getter by category key */
@@ -74,11 +58,10 @@ export interface LeaderboardApi {
     options?: {
       limit?: number;
       minGames?: number;
-      sortBy?: string;
       activeOnly?: boolean;
     }
   ) => Promise<
-    AxiosResponse<LeaderboardEntry[] | DuoLeaderboardEntry[] | TrioLeaderboardEntry[]>
+    AxiosResponse<LeaderboardEntry[]>
   >;
 }
 
@@ -119,25 +102,13 @@ export const leaderboardApi: LeaderboardApi = {
     });
   },
 
-  getDuos: (limit = 20, minGames = 5, sortBy = 'wins') => {
-    return apiClient.get<DuoLeaderboardEntry[]>('/leaderboard/duos', {
-      params: { limit, min_games: minGames, sort_by: sortBy },
-    });
-  },
-
-  getTrios: (limit = 20, minGames = 5, sortBy = 'wins') => {
-    return apiClient.get<TrioLeaderboardEntry[]>('/leaderboard/trios', {
-      params: { limit, min_games: minGames, sort_by: sortBy },
-    });
-  },
-
   getMetaReport: () => {
     return apiClient.get<MetaReportResponse>('/leaderboard/meta-report');
   },
 
   getByCategory: (category, options = {}) => {
 
-    const { limit = 20, minGames, sortBy, activeOnly } = options;
+    const { limit = 20, minGames, activeOnly } = options;
 
     switch (category) {
       case 'mmr':
@@ -152,18 +123,6 @@ export const leaderboardApi: LeaderboardApi = {
         return leaderboardApi.getWinStreak(limit);
       case 'longest-matches':
         return leaderboardApi.getLongestMatches(limit);
-      case 'duos':
-        return leaderboardApi.getDuos(
-          limit,
-          minGames || 5,
-          (sortBy as 'wins' | 'winrate' | 'synergy') || 'wins'
-        );
-      case 'trios':
-        return leaderboardApi.getTrios(
-          limit,
-          minGames || 5,
-          (sortBy as 'wins' | 'winrate' | 'synergy') || 'wins'
-        );
       default:
         return leaderboardApi.getMMR(limit, minGames);
     }
