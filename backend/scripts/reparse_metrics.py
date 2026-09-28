@@ -10,12 +10,14 @@
 Examples:
   python3 scripts/reparse_metrics.py shard --replays replays --shard 0 --of 8 --out /tmp/rows
   DATABASE_URL=sqlite:////tmp/prod.db python3 scripts/reparse_metrics.py diff --rows /tmp/rows
-  python3 scripts/reparse_metrics.py push --rows /tmp/rows --api https://... --token ... [--apply]
+  SC2MMR_GROUP_PASSWORD=... python3 scripts/reparse_metrics.py push --rows /tmp/rows --api https://... --token ... [--apply]
 """
 
 import argparse
+import http.cookiejar
 import json
 import logging
+import os
 import sys
 import time
 import urllib.request
@@ -67,8 +69,20 @@ def diff_or_apply(args, dry_run: bool) -> None:
     print(json.dumps(report.summary(), indent=2))
 
 
+def signed_in_opener(api: str) -> urllib.request.OpenerDirector:
+    """An opener that has signed in with SC2MMR_GROUP_PASSWORD when the server needs it."""
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    password = os.environ.get("SC2MMR_GROUP_PASSWORD")
+    if password:
+        opener.open(urllib.request.Request(
+            f"{api.rstrip('/')}/auth/login", data=json.dumps({"password": password}).encode(),
+            method="POST", headers={"Content-Type": "application/json"}), timeout=60)
+    return opener
+
+
 def push(args) -> None:
     batch, sent = [], 0
+    opener = signed_in_opener(args.api)
 
     def send(rows):
         body = json.dumps({"rows": rows}).encode()
@@ -76,7 +90,7 @@ def push(args) -> None:
             f"{args.api.rstrip('/')}/maintenance/metrics-reparse?dry_run={'false' if args.apply else 'true'}",
             data=body, method="POST",
             headers={"Content-Type": "application/json", "X-Admin-Token": args.token})
-        with urllib.request.urlopen(request, timeout=300) as response:
+        with opener.open(request, timeout=300) as response:
             return json.loads(response.read())
 
     totals = {"matches": 0, "unmatched_replays": 0, "players_updated": 0, "players_unmatched": 0}

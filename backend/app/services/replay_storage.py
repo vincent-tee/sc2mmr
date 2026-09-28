@@ -115,3 +115,18 @@ def materialize_local_copy(stored_path: str) -> Optional[str]:
         blob.download_to_filename(tmp.name)
         return tmp.name
     return stored_path if os.path.exists(stored_path) else None
+
+
+def materialize_match_replay(stored_path: str, replay_hash: Optional[str]) -> Optional[str]:
+    """A local copy of a match's replay, falling back to its hash when the stored
+    path is from another machine (rows seeded from a laptop keep laptop paths)."""
+    local = materialize_local_copy(stored_path)
+    if local or not replay_hash:
+        return local
+    content = fetch_replay_by_hash(replay_hash)
+    if content is None:
+        return None
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".SC2Replay")
+    with tmp:
+        tmp.write(content)
+    return tmp.name

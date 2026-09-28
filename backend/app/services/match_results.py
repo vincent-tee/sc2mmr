@@ -133,7 +133,7 @@ def backfill_result_sources(db: Session, limit: int, dry_run: bool, after_id: in
         report.checked += 1
         report.last_id = match.id
         stored = str(match.replay_file_path or "")
-        local = replay_storage.materialize_local_copy(stored)
+        local = replay_storage.materialize_match_replay(stored, match.replay_hash)
         if not local:
             report.missing_file += 1
             if not dry_run:

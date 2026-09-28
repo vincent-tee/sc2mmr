@@ -77,8 +77,8 @@ def unchecked(db, data, path):
 
 
 def test_backfill_labels_without_changing_winners(db_session, monkeypatch, tmp_path):
-    monkeypatch.setattr(match_results.replay_storage, "materialize_local_copy",
-                        lambda stored: stored if stored and "missing" not in stored else None)
+    monkeypatch.setattr(match_results.replay_storage, "materialize_match_replay",
+                        lambda stored, _hash: stored if stored and "missing" not in stored else None)
     parses = {
         "has-result": replay("has-result", source=ResultSource.REPLAY),
         "no-result": replay("no-result"),
@@ -137,3 +137,12 @@ def test_review_and_confirm_over_http(client, db_session):
     assert flipped["item"]["result_source"] == ResultSource.CONFIRMED
     assert client.get("/match-results/review").json()["total"] == 0
 
+
+
+def test_replay_falls_back_to_its_hash_when_the_stored_path_is_elsewhere(monkeypatch, tmp_path):
+    from app.services import replay_storage
+    monkeypatch.setattr(replay_storage, "fetch_replay_by_hash", lambda h: b"replay-bytes" if h == "abc" else None)
+    local = replay_storage.materialize_match_replay("/home/someone-else/replays/abc.SC2Replay", "abc")
+    with open(local, "rb") as copy:
+        assert copy.read() == b"replay-bytes"
+    assert replay_storage.materialize_match_replay("/nowhere/x.SC2Replay", "unknown") is None
