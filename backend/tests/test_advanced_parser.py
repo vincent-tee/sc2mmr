@@ -32,9 +32,10 @@ from app.advanced_parser import (
 
 
 def make_player_metrics(pid_names):
-    """Build a {pid: PlayerMetrics} dict for the given {pid: name} mapping."""
+    """Build a {pid: PlayerMetrics} dict for the given {pid: name} mapping;
+    odd pids play on team 1 and even pids on team 2."""
     return {
-        pid: PlayerMetrics(player_name=name, race="Terran", team=1, won=True)
+        pid: PlayerMetrics(player_name=name, race="Terran", team=1 if pid % 2 else 2, won=True)
         for pid, name in pid_names.items()
     }
 
@@ -244,11 +245,11 @@ class TestMineralPatchDepletionIsNotAKill:
     """See docs/reviews/2026-09-16-parser-field-audit.md section 4."""
 
     def test_mineral_field_depletion_excluded_from_units_killed(self):
-        metrics = make_player_metrics({1: "Miner"})
+        metrics = make_player_metrics({1: "Miner", 2: "Enemy"})
         events = [
             unit_died_event("MineralField750", killer_pid=1, second=100),
             unit_died_event("LabMineralField", killer_pid=1, second=200),
-            unit_died_event("Zergling", killer_pid=1, owner_pid=1, second=300),
+            unit_died_event("Zergling", killer_pid=1, owner_pid=2, second=300),
         ]
         _process_tracker_events(events, metrics, game_duration=600)
         assert metrics[1].units_killed == 1
@@ -272,8 +273,8 @@ class TestKillEventsRecordsKillerVictimAndLocation:
         assert kill_events[0]["game_second"] == 42
 
     def test_kill_events_none_by_default_is_backward_compatible(self):
-        metrics = make_player_metrics({1: "Killer"})
-        event = unit_died_event("Zergling", killer_pid=1, second=10)
+        metrics = make_player_metrics({1: "Killer", 2: "Victim"})
+        event = unit_died_event("Zergling", killer_pid=1, owner_pid=2, second=10)
         _process_tracker_events([event], metrics, game_duration=600)
         assert metrics[1].units_killed == 1
 
@@ -327,3 +328,38 @@ class TestWorkersCreatedVsPeakActiveWorkers:
 
         assert metrics[1].workers_created == 0
         assert metrics[1].peak_active_workers == 50
+
+
+class TestFriendlyFireIsNotAKill:
+    """See docs/reviews/2026-09-28-replay-cutoffs-and-score-semantics.md."""
+
+    def test_killing_a_teammates_or_own_unit_counts_as_their_loss_not_a_kill(self):
+        metrics = make_player_metrics({1: "Shooter", 3: "Teammate", 2: "Enemy"})
+        events = [
+            unit_died_event("Zergling", killer_pid=1, owner_pid=3, second=10),
+            unit_died_event("Zergling", killer_pid=1, owner_pid=1, second=20),
+            unit_died_event("Zergling", killer_pid=1, owner_pid=2, second=30),
+        ]
+        kills = []
+        _process_tracker_events(events, metrics, game_duration=600, kill_events=kills)
+        assert metrics[1].units_killed == 1
+        assert (metrics[3].units_lost, metrics[1].units_lost) == (1, 1)
+        assert [k["victim_name"] for k in kills] == ["Enemy"]
+
+
+class TestSupplyBlockUsesRealIntervalsOnce:
+    def test_each_blocked_snapshot_counts_until_the_next_one(self):
+        from app.metric_accounting import supply_blocked_seconds
+        assert supply_blocked_seconds([(0.0, False), (7.1, True), (14.2, True), (21.3, False)]) == 14
+        assert supply_blocked_seconds([(0.0, True), (7.1, True), (8.0, False)]) == 8
+        assert supply_blocked_seconds([(5.0, True)]) == 0
+
+    def test_parser_counts_a_blocked_snapshot_once(self):
+        metrics = make_player_metrics({1: "Blocked"})
+        blocked, free = dict(food_used=20, food_made=20), dict(food_used=10, food_made=20)
+        events = [
+            SimpleNamespace(name="PlayerStatsEvent", pid=1, frame=0, **blocked),
+            SimpleNamespace(name="PlayerStatsEvent", pid=1, frame=160, **free),
+        ]
+        _process_tracker_events(events, metrics, game_duration=600, total_frames=13440)
+        assert metrics[1].supply_block_seconds == 7

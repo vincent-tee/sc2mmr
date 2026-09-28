@@ -25,6 +25,7 @@ from .replay_parser import (
 )
 from .damage_timeline import DamageTimelineExtractor, DamageTimeline
 from .replay_clock import frame_to_real_second
+from .metric_accounting import counts_for, is_opponent_kill, replay_stats_cutoffs, supply_blocked_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,10 @@ class PlayerMetrics:
     apm: float = 0.0
     supply_block_seconds: int = 0
     lethality_score: float = 0.0
+
+    # Stats count up to this point: when the player left, or when the recording ended.
+    stats_cutoff_second: Optional[int] = None
+    stats_cutoff_reason: Optional[str] = None
 
     # Unit composition: every observed unit type name -> count. Not
     # truncated -- rare counter-units matter for coordination analysis.
@@ -358,11 +363,17 @@ def parse_replay_advanced(
 
         # Process tracker events for detailed metrics
         kill_events: List[Dict] = []
+        cutoffs = replay_stats_cutoffs(replay)
+        for pid, (frame, reason) in cutoffs.items():
+            if pid in player_metrics_dict:
+                player_metrics_dict[pid].stats_cutoff_second = int(frame_to_real_second(
+                    frame, replay.game_length.seconds, getattr(replay, "frames", None)))
+                player_metrics_dict[pid].stats_cutoff_reason = reason
         if hasattr(replay, "tracker_events"):
             _process_tracker_events(
                 replay.tracker_events, player_metrics_dict, replay.game_length.seconds,
                 total_frames=getattr(replay, "frames", None),
-                kill_events=kill_events,
+                kill_events=kill_events, cutoffs=cutoffs,
             )
 
         # Extract damage timelines for each player
@@ -494,7 +505,7 @@ def parse_replay_advanced(
 
 def _process_tracker_events(
     events: List, player_metrics: Dict, game_duration: int, total_frames: Optional[int] = None,
-    kill_events: Optional[List[Dict]] = None,
+    kill_events: Optional[List[Dict]] = None, cutoffs: Optional[Dict[int, tuple]] = None,
 ):
     """
     Process tracker events to extract detailed metrics.
@@ -548,21 +559,16 @@ def _process_tracker_events(
     spending_ratio_count: Dict[int, int] = {}
     last_invested: Dict[int, int] = {}
 
-    for event in events:
-        # Supply Block Detection
-        if event.name == "PlayerStatsEvent":
-            pid = event.pid
-            if pid in player_metrics:
-                # Supply block: food_used >= food_made and not at 200 supply
-                if event.food_used >= event.food_made and event.food_made < 200:
-                    player_metrics[
-                        pid
-                    ].supply_block_seconds += 10  # Stats events occur every 10s
+    supply_snapshots: Dict[int, List[tuple]] = {}
 
+    cutoffs = cutoffs or {}
+
+    for event in events:
+        frame = getattr(event, "frame", 0)
         # Unit born events
         if event.name == "UnitBornEvent":
             pid = event.control_pid
-            if pid in player_metrics:
+            if pid in player_metrics and counts_for(pid, frame, cutoffs):
                 # Try to get unit type name from various possible attributes
                 try:
                     unit_name = (
@@ -632,10 +638,15 @@ def _process_tracker_events(
             is_worker = unit_name in ["SCV", "Probe", "Drone"]
             second = getattr(event, "second", 0)
             k_pid = o_pid = None
+            owner_pid = getattr(getattr(getattr(event, "unit", None), "owner", None), "pid", None)
+            killer_pid = getattr(event, "killer_pid", None)
 
-            # Track Kills
-            if hasattr(event, "killer_pid") and event.killer_pid in player_metrics:
-                k_pid = event.killer_pid
+            # Track Kills: only units belonging to the other team, so
+            # friendly fire and neutral objects don't count as kills.
+            if killer_pid in player_metrics and owner_pid in player_metrics and is_opponent_kill(
+                player_metrics[killer_pid].team, player_metrics[owner_pid].team
+            ) and counts_for(killer_pid, frame, cutoffs):
+                k_pid = killer_pid
                 if unit_cost is not None:
                     player_metrics[k_pid].army_value_killed += unit_cost
                 else:
@@ -654,7 +665,7 @@ def _process_tracker_events(
             # Track Losses (Owner)
             if event.unit and hasattr(event.unit, "owner"):
                 owner = event.unit.owner
-                if hasattr(owner, "pid") and owner.pid in player_metrics:
+                if hasattr(owner, "pid") and owner.pid in player_metrics and counts_for(owner.pid, frame, cutoffs):
                     o_pid = owner.pid
                     if unit_cost is not None:
                         player_metrics[o_pid].army_value_lost += unit_cost
@@ -686,7 +697,7 @@ def _process_tracker_events(
         # PlayerStatsEvent - contains resource collection, army values, workers
         elif event.name == "PlayerStatsEvent":
             pid = event.pid
-            if pid in player_metrics:
+            if pid in player_metrics and counts_for(pid, frame, cutoffs):
                 # Use current resources + used resources as a proxy for total collected
                 # (Since total collected is not a direct attribute)
                 min_collected = (
@@ -718,13 +729,13 @@ def _process_tracker_events(
                     event, "minerals_killed_army", 0
                 ) + getattr(event, "vespene_killed_army", 0)
 
-                # Supply Block Detection
-                # food_used >= food_made and not at 200 supply (max)
-                if (
+                blocked = (
                     getattr(event, "food_used", 0) >= getattr(event, "food_made", 0)
                     and getattr(event, "food_made", 0) < 200
-                ):
-                    player_metrics[pid].supply_block_seconds += 10
+                )
+                supply_snapshots.setdefault(pid, []).append(
+                    (frame_to_real_second(getattr(event, "frame", 0), game_duration, total_frames), blocked)
+                )
 
                 workers = getattr(event, "workers_active_count", 0)
                 if workers > player_metrics[pid].peak_active_workers:
@@ -776,6 +787,7 @@ def _process_tracker_events(
         )
 
     for pid, metrics in player_metrics.items():
+        metrics.supply_block_seconds = supply_blocked_seconds(supply_snapshots.get(pid, []))
         if spending_ratio_count.get(pid, 0) > 0:
             metrics.spending_efficiency = (
                 spending_ratio_sum[pid] / spending_ratio_count[pid]
@@ -966,14 +978,13 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
 
     # ==========================================================================
     # EFFICIENCY SCORE (0-100) - Resource conversion efficiency
-    # Metrics: spending_efficiency, APM, Supply Blocks
+    # Metrics: spending_efficiency, Supply Blocks
     # ==========================================================================
     spending_score = min(100, metrics.spending_efficiency * 100)
-    apm_score = min(100, (metrics.apm / 150) * 100) if metrics.apm > 0 else 50
     # Supply block penalty: 1 pt per 10s blocked, cap at -50 pts
     supply_penalty = max(-50, -(metrics.supply_block_seconds / 10))
 
-    metrics.efficiency_score = max(0, (spending_score + apm_score) / 2 + supply_penalty)
+    metrics.efficiency_score = max(0, spending_score + supply_penalty)
 
     # ==========================================================================
     # TEAM CONTRIBUTION SCORE (0-100) - Teamwork in team fights

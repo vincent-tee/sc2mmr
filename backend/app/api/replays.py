@@ -190,6 +190,8 @@ class MatchResponse(BaseModel):
     replay_hash: Optional[str] = None
     predicted_team1_win_prob: Optional[float] = None
     predicted_team2_win_prob: Optional[float] = None
+    result_source: Optional[str] = None
+    result_evidence: Optional[dict] = None
 
     winner_team: int = 0
     players: List[MatchPlayerSummary] = []
@@ -265,6 +267,10 @@ class MatchPlayerResponse(BaseModel):
     damage_taken: Optional[int] = None
     kill_death_ratio: Optional[float] = None
     supply_block_seconds: Optional[int] = None
+    workers_killed: Optional[int] = None
+    workers_lost: Optional[int] = None
+    stats_cutoff_second: Optional[int] = None
+    stats_cutoff_reason: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -490,6 +496,7 @@ def get_matches(limit: int = 50, offset: int = 0, db: Session = Depends(get_db))
                 map_name=str(m.map_name),
                 duration_seconds=int(m.duration_seconds),
                 replay_hash=str(m.replay_hash or ""),
+                result_source=m.result_source,
             )
             for m in matches
         ],
@@ -610,6 +617,7 @@ def get_matches_with_players(
                 map_name=str(match.map_name),
                 duration_seconds=int(match.duration_seconds),
                 replay_hash=str(match.replay_hash or ""),
+                result_source=match.result_source,
                 winner_team=winner_team,
                 players=player_summaries,
                 mvp_player_id=mvp_id,
@@ -671,6 +679,10 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
                 ),
                 workers_created=metrics.workers_created if metrics else None,
                 army_value_built=metrics.army_value_built if metrics else None,
+                workers_killed=metrics.workers_killed if metrics else None,
+                workers_lost=metrics.workers_lost if metrics else None,
+                stats_cutoff_second=metrics.stats_cutoff_second if metrics else None,
+                stats_cutoff_reason=metrics.stats_cutoff_reason if metrics else None,
                 army_value_killed=metrics.army_value_killed if metrics else None,
                 army_value_lost=metrics.army_value_lost if metrics else None,
                 units_killed=metrics.units_killed if metrics else None,
@@ -720,6 +732,8 @@ def get_match_details(match_id: int, db: Session = Depends(get_db)):
             replay_hash=str(match.replay_hash or ""),
             predicted_team1_win_prob=team1_prob,
             predicted_team2_win_prob=team2_prob,
+            result_source=match.result_source,
+            result_evidence=match.result_evidence,
         ),
         players=players_data,
     )

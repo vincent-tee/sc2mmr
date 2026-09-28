@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.replay_parser import calculate_game_fingerprint, parse_replay
-from app.services.unified_parser import UnifiedParser
 
 
 def make_fake_player(name="TestPlayer", team_id=1, result="Win", is_human=True):
@@ -51,7 +50,7 @@ class TestFingerprintNoneSafety:
             None.lower()
 
         # calculate_game_fingerprint itself still requires a str; the fix is
-        # upstream (parse_replay/UnifiedParser resolving None -> "Unknown Map")
+        # upstream (parse_replay resolving None -> "Unknown Map")
         fp = calculate_game_fingerprint("Unknown Map", datetime.utcnow(), ["a", "b"])
         assert len(fp) == 64
 
@@ -87,12 +86,3 @@ class TestParseReplayMapNameFallback:
             data = parse_replay("/fake/path.SC2Replay")
 
         assert data.map_name == "Unknown Map"
-
-
-class TestUnifiedParserMapNameFallback:
-    def test_clean_name_handles_none(self):
-        parser = UnifiedParser()
-        player = MagicMock()
-        player.name = None
-        player.clan_tag = None
-        assert parser._clean_name(player) == "Unknown"

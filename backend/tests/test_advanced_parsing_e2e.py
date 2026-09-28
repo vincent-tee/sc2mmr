@@ -15,7 +15,6 @@ from app.models import (
     GameMode,
     Race,
 )
-from app.services.pi_calculator import PICalculator, MatchAverages
 from app.services.enhanced_parser import (
     EnhancedPlayerFeatures,
     BuildOrderEvent,
@@ -168,15 +167,3 @@ class TestPerformanceFeaturesStorage:
         assert retrieved_mp is not None
         assert retrieved_mp.performance_features is not None
         assert retrieved_mp.performance_features.detected_build_type == "macro"
-
-    def test_pim_calculation(self, match_with_players):
-        """Verify PIM calculation."""
-        calculator = PICalculator()
-        match_averages = MatchAverages()
-        metrics1 = match_with_players["metrics1"]
-
-        pim, breakdown = calculator.calculate_pim(metrics1, match_averages)
-        # PIM should be in valid range (-0.5 to +0.5)
-        assert -0.5 <= pim <= 0.5
-        # Breakdown total should match PIM
-        assert abs(breakdown.total - pim) < 0.001

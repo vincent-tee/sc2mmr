@@ -71,8 +71,8 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ matchData, playerMetrics, m
               <Th isNumeric>Economy</Th>
               <Th isNumeric>Combat</Th>
               <Th isNumeric>Efficiency</Th>
-              <Th isNumeric>Damage</Th>
-              <Th isNumeric>Dmg ratio</Th>
+              <Th isNumeric>Army killed</Th>
+              <Th isNumeric>Killed ÷ lost</Th>
             </Tr>
           </Thead>
           <Tbody>

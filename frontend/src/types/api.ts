@@ -78,6 +78,15 @@ export interface RecentMatch {
 // Match Types
 // =============================================================================
 
+/** Where a match's winner came from; null means not yet checked. */
+export type ResultSource = 'replay' | 'suggested' | 'confirmed' | 'unknown';
+
+export interface ResultEvidence {
+  frame?: number;
+  team_supply?: Record<string, number>;
+  other_recordings?: { replay_hash: string; winner_team: number }[];
+}
+
 export interface Match {
   id: number;
   played_at: string;
@@ -87,6 +96,8 @@ export interface Match {
   replay_hash: string | null;
   predicted_team1_win_prob: number | null;
   predicted_team2_win_prob: number | null;
+  result_source?: ResultSource | null;
+  result_evidence?: ResultEvidence | null;
 }
 
 // Enhanced match types for match history with player summaries
@@ -113,6 +124,7 @@ export interface MatchWithPlayers {
   replay_hash: string | null;
   predicted_team1_win_prob: number | null;
   predicted_team2_win_prob: number | null;
+  result_source?: ResultSource | null;
   winner_team: number;
   players: MatchPlayerSummary[];
   mvp_player_id: number | null;
@@ -165,6 +177,10 @@ export interface MatchPlayer {
   damage_taken: number | null;
   kill_death_ratio: number | null;
   supply_block_seconds: number | null;
+  workers_killed?: number | null;
+  workers_lost?: number | null;
+  stats_cutoff_second?: number | null;
+  stats_cutoff_reason?: 'left' | 'recording_end' | null;
 }
 
 export interface PlayerHistoryEntry {

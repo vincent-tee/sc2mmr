@@ -31,6 +31,7 @@ from typing import List, Optional
 import mpyq  # type: ignore
 from s2protocol import versions  # type: ignore
 
+from .match_result import ResultSource
 from .models import GameMode, Race
 from .replay_parser import (
     PlayerData,
@@ -190,4 +191,5 @@ def parse_replay_s2protocol(
         players=players_data,
         replay_hash=calculate_replay_hash(file_path),
         game_fingerprint=game_fp,
+        result_source=ResultSource.CONFIRMED if manual_winner_team is not None else ResultSource.REPLAY,
     )

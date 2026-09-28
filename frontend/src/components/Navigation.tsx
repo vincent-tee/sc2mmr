@@ -37,6 +37,7 @@ import {
   FiInfo,
   FiAward,
   FiAlertCircle,
+  FiHelpCircle,
   FiCrosshair,
 } from 'react-icons/fi';
 import { LuTrophy, LuSwords } from 'react-icons/lu';
@@ -63,6 +64,7 @@ const secondaryItems: NavItem[] = [
   { path: '/rating-system', label: 'How the Rating Works', icon: FiInfo },
   { path: '/achievements', label: 'Achievements', icon: FiAward },
   { path: '/h2h', label: 'Head to Head', icon: LuSwords },
+  { path: '/results-review', label: 'Results to Review', icon: FiHelpCircle },
   { path: '/failed-uploads', label: 'Failed Uploads', icon: FiAlertCircle },
 ];
 

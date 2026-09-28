@@ -21,6 +21,7 @@ from .api import (
     headtohead,
     judgments,
     maintenance,
+    match_results,
 )
 from .auth import RequireSessionMiddleware
 from .auth import router as auth_router
@@ -84,6 +85,7 @@ app.include_router(leaderboard.router)
 app.include_router(headtohead.router)
 app.include_router(judgments.router)
 app.include_router(maintenance.router)
+app.include_router(match_results.router)
 
 
 @app.get("/")

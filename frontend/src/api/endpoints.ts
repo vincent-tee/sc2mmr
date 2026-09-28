@@ -90,7 +90,7 @@ export const playersApi: PlayersApi = {
 // =============================================================================
 
 export interface TeamsApi {
-  balance: (playerIds: number[], topN?: number, mapName?: string) => Promise<AxiosResponse<TeamSuggestion[]>>;
+  balance: (playerIds: number[], topN?: number) => Promise<AxiosResponse<TeamSuggestion[]>>;
   quickBalance: (playerIds: number[]) => Promise<AxiosResponse<TeamSuggestion[]>>;
   getAIDifficulties: () => Promise<AxiosResponse<{ difficulties: Record<string, number>, config_path: string }>>;
   predict: (team1Ids: number[], team2Ids: number[]) => Promise<AxiosResponse<MatchPredictionResponse>>;
@@ -98,11 +98,10 @@ export interface TeamsApi {
 
 export const teamsApi: TeamsApi = {
   // Balance teams (primary feature!)
-  balance: (playerIds: number[], topN = 10, mapName?: string) => {
+  balance: (playerIds: number[], topN = 10) => {
     return apiClient.post<TeamSuggestion[]>('/teams/balance', {
       player_ids: playerIds,
       top_n: topN,
-      map_name: mapName
     });
   },
 

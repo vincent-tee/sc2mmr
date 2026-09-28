@@ -27,7 +27,6 @@ import { Player, TeamPlayer, TeamSuggestionWithImpact } from '../../types/api';
 import PageHeader from '../../components/PageHeader';
 import AnimatedNumber from '../../components/AnimatedNumber';
 import TeamSelector from './TeamSelector';
-import MapSelector from './MapSelector';
 import BalanceResults from './BalanceResults';
 import CaptainsDraft from './CaptainsDraft';
 import LoadingState, { TeamResultSkeleton } from '../../components/LoadingState';
@@ -49,8 +48,6 @@ const TeamGenerator: React.FC = () => {
     TeamSuggestionWithImpact[]
   >([]);
   const [aiDifficulties, setAIDifficulties] = useState<Record<string, number>>({});
-  const [selectedMap, setSelectedMap] = useState<string>('');
-  const [availableMaps, setAvailableMaps] = useState<string[]>([]);
   const [draftOpen, setDraftOpen] = useState(false);
   const [resultsTitle, setResultsTitle] = useState('Your teams');
 
@@ -84,20 +81,6 @@ const TeamGenerator: React.FC = () => {
     fetchAI();
   }, []);
 
-  // Fetch available maps
-  useEffect(() => {
-    const fetchMaps = async () => {
-      try {
-        const response = await replaysApi.getMatches(100);
-        const maps = Array.from(new Set(response.data.matches.map(m => m.map_name))).sort();
-        setAvailableMaps(maps);
-      } catch (error) {
-        console.error('Failed to fetch maps', error);
-      }
-    };
-    fetchMaps();
-  }, []);
-
   const players = playersData || [];
   // Only show players who have actual game history; 0-game players are ghost/manual entries
   const activePlayers = players.filter(p => p.total_games > 0);
@@ -124,7 +107,7 @@ const TeamGenerator: React.FC = () => {
         return response.data;
       }
 
-      const response = await teamsApi.balance(realIds, 4, selectedMap);
+      const response = await teamsApi.balance(realIds, 4);
       return response.data;
     },
     onSuccess: (data: TeamSuggestionWithImpact[]) => {
@@ -623,13 +606,6 @@ const TeamGenerator: React.FC = () => {
               </HStack>
 
               <HStack spacing={2} flexWrap="wrap" justify="flex-end">
-                <Box>
-                  <MapSelector
-                    selectedMap={selectedMap}
-                    availableMaps={availableMaps}
-                    onMapChange={setSelectedMap}
-                  />
-                </Box>
                 <Button
                   variant="outline"
                   size="md"

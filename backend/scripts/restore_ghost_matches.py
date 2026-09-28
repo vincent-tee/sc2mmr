@@ -76,7 +76,7 @@ def restore_ghost_matches():
 
                 filename = os.path.basename(file_path)
                 orchestrator.orchestrate_match(
-                    file_path=file_path, filename=filename, use_advanced_parser=True
+                    file_path=file_path, filename=filename
                 )
                 restored_count += 1
                 logger.info(f"Successfully restored match {match_id}")

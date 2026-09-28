@@ -236,6 +236,13 @@ class Match(Base):
     )  # 0.0 to 1.0
     # Note: team1 + team2 should equal 1.0 (complementary probabilities)
 
+    # Where the winner came from (app.match_result.ResultSource); NULL means
+    # not yet checked. Evidence holds team supply at the last common snapshot.
+    result_source: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    result_evidence: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    result_confirmed_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    result_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
@@ -352,6 +359,8 @@ class PlayerMatchMetrics(Base):
     units_killed: Mapped[int] = mapped_column(Integer, default=0)
     kill_death_ratio: Mapped[float] = mapped_column(Float, default=1.0)
     army_value_built: Mapped[int] = mapped_column(Integer, default=0)
+    stats_cutoff_second: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    stats_cutoff_reason: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     army_value_killed: Mapped[int] = mapped_column(Integer, default=0)
     army_value_lost: Mapped[int] = mapped_column(Integer, default=0)
 

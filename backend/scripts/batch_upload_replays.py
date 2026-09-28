@@ -79,7 +79,6 @@ def upload_replays(
             result = orchestrator.orchestrate_match(
                 file_path=replay_path,
                 filename=filename,
-                use_advanced_parser=True,
             )
             session.commit()
             if result.created:

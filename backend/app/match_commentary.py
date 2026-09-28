@@ -177,8 +177,8 @@ class MatchCommentaryGenerator:
 
         if top_economy and top_economy[0][1] > 50000:
             moments.append(
-                f"{top_economy[0][0]} amassed {top_economy[0][1]:,} resources, "
-                f"establishing economic dominance."
+                f"{top_economy[0][0]} ended with {top_economy[0][1]:,} resources banked or invested, "
+                f"the strongest economy on the field."
             )
 
         # Combat excellence
@@ -194,8 +194,8 @@ class MatchCommentaryGenerator:
 
         if top_damage and top_damage[0][1] > 10000:
             moments.append(
-                f"{top_damage[0][0]} dealt {top_damage[0][1]:,} damage with a {top_damage[0][2]:.2f}:1 damage ratio, "
-                f"showcasing superior combat micro."
+                f"{top_damage[0][0]} destroyed {top_damage[0][1]:,} resources' worth of enemy army, "
+                f"trading {top_damage[0][2]:.2f}:1 against their own losses."
             )
 
         return moments if moments else ["No significant moments detected."]
@@ -244,7 +244,7 @@ class MatchCommentaryGenerator:
 
             if metrics.damage_ratio > 2.0:
                 highlights.append(
-                    f"exceptional {metrics.damage_ratio:.1f}:1 damage efficiency"
+                    f"an exceptional {metrics.damage_ratio:.1f}:1 army trade"
                 )
 
             if metrics.spending_efficiency > 0.9:
@@ -305,7 +305,7 @@ class MatchCommentaryGenerator:
 
                 if mvp_metrics.damage_ratio > 2.5:
                     reasons.append(
-                        f"outstanding {mvp_metrics.damage_ratio:.1f}:1 damage efficiency"
+                        f"an outstanding {mvp_metrics.damage_ratio:.1f}:1 army trade"
                     )
 
                 if mvp_metrics.units_killed > 50:
@@ -356,7 +356,8 @@ class MatchCommentaryGenerator:
                 f"Team {team_num} {'won' if won else 'lost'} with an average impact of {avg_impact:.1f}/100. "
                 f"The team showed {'strong' if avg_econ > 60 else 'moderate'} economic play ({avg_econ:.1f}) "
                 f"and {'aggressive' if avg_combat > 60 else 'defensive'} combat ({avg_combat:.1f}). "
-                f"Combined, they dealt {total_damage:,} damage and collected {total_resources:,} resources. "
+                f"Combined, they destroyed {total_damage:,} resources' worth of enemy army and ended with "
+                f"{total_resources:,} resources banked or invested. "
             )
 
             # Identify team strengths

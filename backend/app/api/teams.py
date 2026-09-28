@@ -370,7 +370,7 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
     try:
         # Generate team suggestions
         suggestions = TeamBalancer.balance_teams(
-            db, request.player_ids, top_n=request.top_n, map_name=request.map_name
+            db, request.player_ids, top_n=request.top_n
         )
 
         # Capture predictions for calibration tracking (resolved on upload)
@@ -476,120 +476,6 @@ def quick_balance(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
         )
 
     return suggestions[0]
-
-
-# =============================================================================
-# Composite-Objective Balancing (win-prob + quality + spread + components)
-# =============================================================================
-
-
-class CompositeTeamSuggestionResponse(TeamSuggestionResponse):
-    """Team suggestion ranked by the composite objective, with breakdown."""
-
-    composite_score: float
-    skill_spread_diff: float
-    component_imbalance: float
-
-
-class BalanceCompositeRequest(BaseModel):
-    """Request for composite-objective balancing."""
-
-    player_ids: List[int]
-    top_n: int = 10
-    map_name: Optional[str] = None
-
-
-@router.post(
-    "/balance-composite", response_model=List[CompositeTeamSuggestionResponse]
-)
-def balance_teams_composite(
-    request: BalanceCompositeRequest, db: Session = Depends(get_db)
-):
-    """
-    Generate balanced teams using the composite objective.
-
-    Unlike /teams/balance (pure MMR-sum difference), this ranks splits by:
-    - predicted win probability closest to 50% (TrueSkill)
-    - TrueSkill match quality (uncertainty-aware)
-    - penalties for within-team skill-spread mismatch and team-profile
-      (combat/economic/efficiency/impact/aggression) imbalance
-
-    Every suggestion is logged for calibration tracking and resolved
-    against the actual outcome when the replay is uploaded.
-    """
-    num_players = len(request.player_ids)
-    if num_players < 2:
-        raise HTTPException(
-            status_code=400, detail=f"Need at least 2 players, got {num_players}"
-        )
-    if num_players > 20:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many players: {num_players}. Maximum is 20 players (10v10)",
-        )
-
-    try:
-        suggestions = TeamBalancer.balance_teams_composite(
-            db,
-            request.player_ids,
-            top_n=request.top_n,
-            map_name=request.map_name,
-        )
-
-        BalancePredictionService.record_suggestions(
-            db, "composite_v2", suggestions, max_rank=len(suggestions), map_name=request.map_name
-        )
-
-        responses = []
-        for suggestion in suggestions:
-            analysis = BalancerStats.analyze_suggestion(suggestion)
-
-            def to_team_info(team, key):
-                return TeamInfo(
-                    players=[
-                        PlayerInfo(
-                            id=p.id,
-                            name=p.name,
-                            mmr=p.mmr,
-                            mu=p.mu,
-                            sigma=p.sigma,
-                        )
-                        for p in team
-                    ],
-                    total_mmr=analysis[key]["total_mmr"],
-                    avg_mmr=analysis[key]["avg_mmr"],
-                )
-
-            responses.append(
-                CompositeTeamSuggestionResponse(
-                    balance_prediction_id=suggestion.balance_prediction_id,
-                    map_name=request.map_name,
-                    team_1=to_team_info(suggestion.team_1, "team_1"),
-                    team_2=to_team_info(suggestion.team_2, "team_2"),
-                    mmr_difference=analysis["balance"]["mmr_difference"],
-                    match_quality=analysis["balance"]["match_quality"],
-                    win_probability_team_1=analysis["balance"][
-                        "win_probability_team_1"
-                    ],
-                    win_probability_team_2=analysis["balance"][
-                        "win_probability_team_2"
-                    ],
-                    fairness_rating=analysis["balance"]["fairness_rating"],
-                    team_1_avg_impact=analysis["balance"]["team_1_avg_impact"],
-                    team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
-                    impact_balance_score=analysis["balance"]["impact_balance_score"],
-                    impact_difference=analysis["balance"]["impact_difference"],
-                    composite_score=round(suggestion.composite_score, 4),
-                    skill_spread_diff=round(suggestion.skill_spread_diff, 1),
-                    component_imbalance=round(suggestion.component_imbalance, 4),
-                )
-            )
-        return responses
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 @router.get("/balance-calibration")

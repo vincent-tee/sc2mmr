@@ -42,8 +42,7 @@ def ingest_folders(folders: list[str]):
                 result = orchestrator.orchestrate_match(
                     file_path=str(file_path),
                     filename=filename,
-                    use_advanced_parser=True,
-                )
+                    )
 
                 if result.created:
                     total_ingested += 1

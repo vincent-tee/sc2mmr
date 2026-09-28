@@ -74,3 +74,14 @@ def test_removing_a_copy_removes_its_participants_and_metrics(db_session, replay
     assert [m.id for m in db_session.query(Match)] == [original.id]
     assert db_session.query(MatchPlayer).count() == 4
     assert db_session.query(PlayerMatchMetrics).count() == 0
+
+
+def test_plan_flags_games_with_no_players(db_session, replay):
+    ingest_match(db_session, replay, require_experience=False)
+    empty = Match(played_at=datetime(2026, 8, 2), game_mode=GameMode.TWO_V_TWO,
+                  map_name="Other map", duration_seconds=600, replay_hash="no-players")
+    db_session.add(empty)
+    db_session.commit()
+    plan = plan_cleanup(db_session)
+    assert plan.empty_match_ids == [empty.id]
+    assert plan.match_ids_to_remove == [empty.id]

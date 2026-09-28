@@ -18,10 +18,11 @@ class DuplicateCopy:
 class CleanupPlan:
     aborted_match_ids: list[int] = field(default_factory=list)
     duplicate_copies: list[DuplicateCopy] = field(default_factory=list)
+    empty_match_ids: list[int] = field(default_factory=list)
 
     @property
     def match_ids_to_remove(self) -> list[int]:
-        return self.aborted_match_ids + [c.removed_match_id for c in self.duplicate_copies]
+        return self.aborted_match_ids + [c.removed_match_id for c in self.duplicate_copies] + self.empty_match_ids
 
 
 def winning_player_ids(match: Match) -> set[int]:
@@ -37,6 +38,8 @@ def plan_cleanup(db: Session) -> CleanupPlan:
     played = db.query(Match).filter(Match.played_at.isnot(None)).all()
     plan.aborted_match_ids = sorted(m.id for m in played if (m.duration_seconds or 0) < MIN_GAME_SECONDS)
     aborted = set(plan.aborted_match_ids)
+    plan.empty_match_ids = sorted(m.id for m in played if m.id not in aborted and not m.participants)
+    aborted |= set(plan.empty_match_ids)
     games = sorted((m for m in played if m.id not in aborted),
                    key=lambda m: (game_started_at(m.played_at, m.duration_seconds), m.id))
     rosters = {m.id: {mp.player_id for mp in m.participants} for m in games}

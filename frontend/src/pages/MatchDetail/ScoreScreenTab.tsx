@@ -19,6 +19,7 @@ import {
   Icon,
   Button,
   ButtonGroup,
+  Text,
 } from '@chakra-ui/react';
 import { FiAward } from 'react-icons/fi';
 import { useState } from 'react';
@@ -44,6 +45,9 @@ const fmtNum = (v: number | null | undefined): string =>
 
 const fmtPct = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
+
+const fmtArmyUnits = (units: number | null | undefined, workers: number | null | undefined): string =>
+  units == null || workers == null ? '—' : fmtNum(units - workers);
 
 const fmtSeconds = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : formatDuration(v);
@@ -77,36 +81,34 @@ interface ColumnDef {
 
 const COLUMNS: Record<Section, ColumnDef[]> = {
   summary: [
-    { label: 'APM', render: (p) => fmtNum(p.apm) },
-    { label: 'Resources Collected', render: (p) => fmtNum(p.total_resources_collected) },
+    { label: 'Value Held', render: (p) => fmtNum(p.total_resources_collected) },
     { label: 'Workers Made', render: (p) => fmtNum(p.workers_created) },
     { label: 'Supply Blocked', render: (p) => fmtSeconds(p.supply_block_seconds) },
     { label: 'K/D', render: fmtKD },
   ],
   economy: [
-    { label: 'Minerals', render: (p) => fmtNum(p.minerals_collected) },
-    { label: 'Vespene', render: (p) => fmtNum(p.vespene_collected) },
-    { label: 'Total Collected', render: (p) => fmtNum(p.total_resources_collected) },
-    { label: 'Spent', render: (p) => fmtNum(p.resources_spent) },
+    { label: 'Minerals Held', render: (p) => fmtNum(p.minerals_collected) },
+    { label: 'Vespene Held', render: (p) => fmtNum(p.vespene_collected) },
+    { label: 'Total Held', render: (p) => fmtNum(p.total_resources_collected) },
+    { label: 'In Use', render: (p) => fmtNum(p.resources_spent) },
     {
-      label: 'Unspent',
+      label: 'Bank',
       render: (p) =>
         p.total_resources_collected != null && p.resources_spent != null
           ? fmtNum(p.total_resources_collected - p.resources_spent)
           : '—',
     },
-    { label: 'Efficiency', render: (p) => fmtPct(p.spending_efficiency) },
+    { label: 'Invested Share', render: (p) => fmtPct(p.spending_efficiency) },
     { label: 'Workers Made', render: (p) => fmtNum(p.workers_created) },
   ],
   military: [
-    { label: 'Army Built', render: (p) => fmtNum(p.army_value_built) },
     { label: 'Army Killed', render: (p) => fmtNum(p.army_value_killed) },
     { label: 'Army Lost', render: (p) => fmtNum(p.army_value_lost) },
-    { label: 'Units Killed', render: (p) => fmtNum(p.units_killed) },
-    { label: 'Units Lost', render: (p) => fmtNum(p.units_lost) },
+    { label: 'Army Units Killed', render: (p) => fmtArmyUnits(p.units_killed, p.workers_killed) },
+    { label: 'Workers Killed', render: (p) => fmtNum(p.workers_killed) },
+    { label: 'Army Units Lost', render: (p) => fmtArmyUnits(p.units_lost, p.workers_lost) },
+    { label: 'Workers Lost', render: (p) => fmtNum(p.workers_lost) },
     { label: 'K/D', render: fmtKD },
-    { label: 'Damage Dealt', render: (p) => fmtNum(p.damage_dealt) },
-    { label: 'Damage Taken', render: (p) => fmtNum(p.damage_taken) },
   ],
 };
 
@@ -173,6 +175,11 @@ const TeamTable: React.FC<{
                   <Tr key={player.player_id}>
                     <Td fontWeight="bold" fontFamily="heading" color="gray.100">
                       {player.player_name}
+                      {player.stats_cutoff_reason === 'left' && player.stats_cutoff_second != null && (
+                        <Text as="span" ml={2} fontSize="xs" fontWeight="normal" color="gray.500" fontFamily="body">
+                          left {formatDuration(player.stats_cutoff_second)}
+                        </Text>
+                      )}
                     </Td>
                     <Td>
                       <Badge size="sm" variant={`race-${player.race.toLowerCase()}`} fontFamily="heading">
@@ -242,6 +249,13 @@ const ScoreScreenTab: React.FC<ScoreScreenTabProps> = ({ matchData, team1Won }) 
         players={team2Players}
         columns={columns}
       />
+      {section !== 'summary' || anyMetrics ? (
+        <Text fontSize="xs" color="gray.500" maxW="70ch">
+          Resources are a snapshot when each player left or the recording ended: held = bank plus what is tied up in
+          units and buildings. Replays don&apos;t record lifetime collected or spent totals, and army values are
+          resource cost, not damage.
+        </Text>
+      ) : null}
     </VStack>
   );
 };

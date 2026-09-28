@@ -155,9 +155,10 @@ const TeamRoster: React.FC<{
   label: string;
   players: MatchPlayerSummary[];
   isWinner: boolean;
+  resultSuggested: boolean;
   accent: string;
   align: 'start' | 'end';
-}> = ({ label, players, isWinner, accent, align }) => (
+}> = ({ label, players, isWinner, resultSuggested, accent, align }) => (
   <VStack align={align} spacing={2} flex={1} minW={0}>
     <HStack spacing={2}>
       {isWinner && <Icon as={LuCrown} color={accent} boxSize="14px" />}
@@ -172,9 +173,15 @@ const TeamRoster: React.FC<{
         {label}
       </Text>
       {isWinner && (
-        <Badge bg={`${accent === 'shield.400' ? 'shield' : 'accent'}.400`} color="space.900" fontSize="9px" px={1.5} fontFamily="heading">
-          WIN
-        </Badge>
+        <Tooltip
+          label="Suggested result: the replay didn't record who won, so this was inferred from team stats"
+          isDisabled={!resultSuggested}
+          hasArrow
+        >
+          <Badge bg={`${accent === 'shield.400' ? 'shield' : 'accent'}.400`} color="space.900" fontSize="9px" px={1.5} fontFamily="heading">
+            {resultSuggested ? 'WIN?' : 'WIN'}
+          </Badge>
+        </Tooltip>
       )}
     </HStack>
     <AvatarGroup size="sm" max={5} flexDirection={align === 'end' ? 'row-reverse' : 'row'}>
@@ -318,6 +325,7 @@ const MatchCard: React.FC<{
               label="Team 1"
               players={team1Players}
               isWinner={match.winner_team === 1}
+              resultSuggested={match.result_source === 'suggested'}
               accent="shield.400"
               align="start"
             />
@@ -334,6 +342,7 @@ const MatchCard: React.FC<{
               label="Team 2"
               players={team2Players}
               isWinner={match.winner_team === 2}
+              resultSuggested={match.result_source === 'suggested'}
               accent="accent.400"
               align="end"
             />

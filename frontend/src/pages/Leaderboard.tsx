@@ -304,7 +304,7 @@ const RankCell: React.FC<{ rank: number }> = React.memo(({ rank }) => (
     fontWeight="800"
     fontSize="xl"
     color={rank <= 3 ? 'brand.400' : 'whiteAlpha.400'}
-    w="40px"
+    w={{ base: '28px', md: '40px' }}
   >
     {rank}
   </Text>
@@ -333,10 +333,10 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(
     const showRecordCols = category === 'mmr' || category === 'winrate';
 
     return (
-      <Table variant="simple" size="md">
+      <Table variant="simple" size="md" sx={{ 'th, td': { px: [2, null, 6] } }}>
         <Thead>
           <Tr>
-            <Th color="gray.500" width="70px" borderColor="whiteAlpha.100">Rank</Th>
+            <Th color="gray.500" width={{ base: '36px', md: '70px' }} borderColor="whiteAlpha.100">Rank</Th>
             <Th color="gray.500" borderColor="whiteAlpha.100">Player</Th>
             <Th color="gray.500" isNumeric borderColor="whiteAlpha.100">{categoryInfo?.unit || 'Value'}</Th>
             {isRecentForm ? (
@@ -376,10 +376,10 @@ const StandardTable: React.FC<StandardTableProps> = React.memo(
               <Td borderColor="whiteAlpha.100">
                 <RankCell rank={entry.rank} />
               </Td>
-              <Td borderColor="whiteAlpha.100">
-                <HStack spacing={3}>
-                  <Avatar size="xs" src={getPlayerAvatarUrl(entry.name, raceById.get(entry.player_id))} name={entry.name} />
-                  <Text fontWeight="700" color="gray.100" fontFamily="heading">
+              <Td borderColor="whiteAlpha.100" maxW={{ base: '190px', md: 'none' }}>
+                <HStack spacing={{ base: 2, md: 3 }} minW={0}>
+                  <Avatar size="xs" src={getPlayerAvatarUrl(entry.name, raceById.get(entry.player_id))} name={entry.name} flexShrink={0} />
+                  <Text fontWeight="700" color="gray.100" fontFamily="heading" noOfLines={1} minW={0}>
                     {entry.name}
                   </Text>
                   {category === 'mmr' && (

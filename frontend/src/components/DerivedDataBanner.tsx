@@ -3,6 +3,7 @@ import { Alert, AlertDescription, AlertIcon, Button, Flex, Spinner, Text } from 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { maintenanceApi, type DerivedDataStatus } from '../api/maintenance';
 import { useAuth } from './AuthGate';
+import { hasAdminToken } from '../utils/adminToken';
 
 const STATUS_QUERY_KEY = ['derived-data-status'];
 const POLL_WHILE_STALE_MS = 15_000;
@@ -11,14 +12,6 @@ const CLOCK_TICK_MS = 5_000;
 
 const parseServerTime = (value: string | null): number | null =>
   value ? Date.parse(value.endsWith('Z') ? value : `${value}Z`) : null;
-
-const hasAdminToken = (): boolean => {
-  try {
-    return Boolean(localStorage.getItem('sc2mmr_admin_token'));
-  } catch {
-    return false;
-  }
-};
 
 const secondsUntil = (timestamp: number, now: number): number =>
   Math.max(0, Math.ceil((timestamp - now) / 1000));

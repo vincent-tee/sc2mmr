@@ -1,5 +1,5 @@
 """
-Tests for the composite balance objective and balance prediction capture.
+Tests for balancer win probability and balance prediction capture.
 """
 from datetime import datetime, timedelta
 
@@ -7,7 +7,6 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.balancer import (
-    DEFAULT_COMPOSITE_WEIGHTS,
     PlayerInfo,
     TeamBalancer,
 )
@@ -31,76 +30,6 @@ def make_player(pid: int, mmr: float = 2000.0, mu: float = 25.0, sigma: float = 
     )
 
 
-class TestCompositeScore:
-    def test_even_match_beats_lopsided(self):
-        even = TeamBalancer.compute_composite_score(
-            win_probability=0.5,
-            match_quality=0.8,
-            skill_spread_diff=0.0,
-            component_imbalance=0.0,
-        )
-        lopsided = TeamBalancer.compute_composite_score(
-            win_probability=0.85,
-            match_quality=0.8,
-            skill_spread_diff=0.0,
-            component_imbalance=0.0,
-        )
-        assert even > lopsided
-
-    def test_spread_penalty_reduces_score(self):
-        flat = TeamBalancer.compute_composite_score(
-            win_probability=0.5,
-            match_quality=0.8,
-            skill_spread_diff=0.0,
-            component_imbalance=0.0,
-        )
-        spread = TeamBalancer.compute_composite_score(
-            win_probability=0.5,
-            match_quality=0.8,
-            skill_spread_diff=300.0,
-            component_imbalance=0.0,
-        )
-        assert spread < flat
-
-    def test_perfect_matchup_scores_the_full_positive_weight(self):
-        perfect = TeamBalancer.compute_composite_score(
-            win_probability=0.5,
-            match_quality=1.0,
-            skill_spread_diff=0.0,
-            component_imbalance=0.0,
-        )
-        assert perfect == pytest.approx(
-            DEFAULT_COMPOSITE_WEIGHTS["closeness"] + DEFAULT_COMPOSITE_WEIGHTS["quality"]
-        )
-
-    def test_score_clamped_to_unit_interval(self):
-        score = TeamBalancer.compute_composite_score(
-            win_probability=0.99,
-            match_quality=0.0,
-            skill_spread_diff=1000.0,
-            component_imbalance=1.0,
-        )
-        assert 0.0 <= score <= 1.0
-
-
-class TestSpreadAndComponents:
-    def test_skill_spread_detects_smurf_beginner_stack(self):
-        # Equal sums: (2600 + 1400) vs (2000 + 2000)
-        team_a = [make_player(1, 2600), make_player(2, 1400)]
-        team_b = [make_player(3, 2000), make_player(4, 2000)]
-        assert TeamBalancer.calculate_skill_spread_diff(team_a, team_b) == 600.0
-
-    def test_component_imbalance_zero_for_identical_profiles(self):
-        t1 = [make_player(1), make_player(2)]
-        t2 = [make_player(3), make_player(4)]
-        assert TeamBalancer.calculate_component_imbalance(t1, t2) == 0.0
-
-    def test_component_imbalance_detects_profile_split(self):
-        t1 = [make_player(1, avg_combat_score=45.0), make_player(2, avg_combat_score=45.0)]
-        t2 = [make_player(3, avg_combat_score=15.0), make_player(4, avg_combat_score=15.0)]
-        assert TeamBalancer.calculate_component_imbalance(t1, t2) > 0.0
-
-
 class TestWinProbability:
     def test_includes_beta_softening(self):
         # A modest mu gap with tiny sigma should NOT produce a near-certain
@@ -116,40 +45,6 @@ class TestWinProbability:
         p12 = TeamBalancer.calculate_win_probability(t1, t2)
         p21 = TeamBalancer.calculate_win_probability(t2, t1)
         assert p12 + p21 == pytest.approx(1.0)
-
-
-class TestCompositeObjectiveRanking:
-    def test_composite_sort_and_fields_populated(self):
-        players = [
-            make_player(1, 2600, mu=33.0),
-            make_player(2, 1400, mu=21.0),
-            make_player(3, 2100, mu=28.0),
-            make_player(4, 1900, mu=26.0),
-        ]
-        suggestions = TeamBalancer.generate_team_suggestions(
-            players, top_n=3, objective="composite"
-        )
-        assert len(suggestions) == 3
-        scores = [s.composite_score for s in suggestions]
-        assert scores == sorted(scores, reverse=True)
-        assert all(0.0 <= s.composite_score <= 1.0 for s in suggestions)
-
-    def test_composite_prefers_low_spread_among_equal_sums(self):
-        # Both possible even splits have identical MMR sums, but one split
-        # stacks smurf+beginner vs mid+mid. Composite should prefer the
-        # split where spreads match.
-        players = [
-            make_player(1, 2600, mu=33.0),
-            make_player(2, 1400, mu=21.0),
-            make_player(3, 2000, mu=27.0),
-            make_player(4, 2000, mu=27.0),
-        ]
-        suggestions = TeamBalancer.generate_team_suggestions(
-            players, top_n=10, objective="composite"
-        )
-        best = suggestions[0]
-        best_split = {frozenset(p.id for p in best.team_1), frozenset(p.id for p in best.team_2)}
-        assert best_split == {frozenset({1, 2}), frozenset({3, 4})}
 
 
 class TestBalancePredictionCapture:

@@ -50,6 +50,7 @@ const RatingSystem = lazy(() => import('./pages/RatingSystem'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Achievements = lazy(() => import('./pages/Achievements'));
 const HeadToHead = lazy(() => import('./pages/HeadToHead'));
+const ResultsReview = lazy(() => import('./pages/ResultsReview'));
 
 /**
  * Loading fallback component for Suspense boundaries
@@ -106,6 +107,14 @@ function App(): React.ReactElement {
                 element={
                   <ErrorBoundary>
                     <UploadReplays />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/results-review"
+                element={
+                  <ErrorBoundary>
+                    <ResultsReview />
                   </ErrorBoundary>
                 }
               />

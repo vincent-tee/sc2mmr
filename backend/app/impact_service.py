@@ -108,6 +108,8 @@ class ImpactService:
         match_metrics.early_workers_lost = metrics.early_workers_lost
         match_metrics.kill_death_ratio = metrics.kill_death_ratio
         match_metrics.supply_block_seconds = metrics.supply_block_seconds
+        match_metrics.stats_cutoff_second = getattr(metrics, "stats_cutoff_second", None)
+        match_metrics.stats_cutoff_reason = getattr(metrics, "stats_cutoff_reason", None)
         match_metrics.lethality_score = metrics.lethality_score
 
         match_metrics.economic_score = metrics.economic_score

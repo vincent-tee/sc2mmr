@@ -9,13 +9,12 @@ import sc2reader  # type: ignore
 from dataclasses import dataclass
 import logging
 
+from .match_result import ResultSource, StatsSnapshot, supply_at_common_frame, supply_favourite
 from .models import GameMode, Race
 
 logger = logging.getLogger(__name__)
 
-# Constants for winner determination thresholds
-SUPPLY_ADVANTAGE_THRESHOLD = 1.5  # Supply advantage to determine winner
-RESOURCES_ADVANTAGE_THRESHOLD = 1.3  # Resource advantage to determine winner
+SUGGESTION_MIN_SUPPLY_RATIO = 1.25
 EARLY_QUIT_THRESHOLD_MINUTES = 10  # Minutes to consider an early quit
 CRASH_THRESHOLD_MINUTES = 3  # Minutes to consider a crash or test game
 
@@ -43,6 +42,8 @@ class ReplayData:
     players: List[PlayerData]
     replay_hash: str
     game_fingerprint: str  # Identifies same game from different observers
+    result_source: str = ResultSource.REPLAY
+    result_evidence: Optional[dict] = None
 
 
 class ReplayParseError(Exception):
@@ -152,6 +153,34 @@ def determine_game_mode(players: List[Any]) -> GameMode:
         return GameMode.TWO_V_TWO
 
 
+def bank_and_supply_totals(snapshots_by_player: Dict[int, dict], players) -> Dict[int, Dict[str, float]]:
+    """Each team's supply and unspent resources at its players' last stats snapshots."""
+    totals: Dict[int, Dict[str, float]] = {}
+    for p in players:
+        team = totals.setdefault(int(getattr(p, "team_id", 0)), {"supply": 0.0, "bank": 0.0})
+        last = snapshots_by_player.get(p.pid)
+        if last:
+            team["supply"] += last["supply"]
+            team["bank"] += last["bank"]
+    return totals
+
+
+def bank_and_supply_winner(totals: Dict[int, Dict[str, float]]) -> Optional[int]:
+    """The original guess: a clear lead in supply or unspent resources, else more resources."""
+    if len(totals) != 2:
+        return None
+    (t1, a), (t2, b) = totals.items()
+    if a["supply"] > b["supply"] * 1.5 or a["bank"] > b["bank"] * 1.3:
+        return t1
+    if b["supply"] > a["supply"] * 1.5 or b["bank"] > a["bank"] * 1.3:
+        return t2
+    if a["bank"] != b["bank"]:
+        return t1 if a["bank"] > b["bank"] else t2
+    if a["supply"] == b["supply"] == 0:
+        return None
+    return t1 if a["supply"] >= b["supply"] else t2
+
+
 def parse_replay(
     file_path: str, manual_winner_team: Optional[int] = None
 ) -> ReplayData:
@@ -207,139 +236,53 @@ def parse_replay(
         all_players = getattr(replay, "players", [])
 
         # Manually extract stats from events if sc2reader didn't populate p.stats
-        event_stats = {}
+        stats_snapshots = []
+        last_snapshot: Dict[int, dict] = {}
         from sc2reader.events import PlayerStatsEvent
 
         for event in getattr(replay, "events", []):
             if isinstance(event, PlayerStatsEvent):
                 p_attr = getattr(event, "player", None)
                 if p_attr:
-                    event_stats[p_attr.pid] = {
+                    last_snapshot[p_attr.pid] = {
                         "supply": float(event.food_used),
-                        "minerals_collected": float(event.minerals_current),
-                        "vespene_collected": float(event.vespene_current),
+                        "bank": float(event.minerals_current) + float(event.vespene_current),
                     }
+                    stats_snapshots.append(StatsSnapshot(
+                        player_id=p_attr.pid,
+                        team=int(getattr(p_attr, "team_id", 0)),
+                        frame=int(event.frame),
+                        supply_used=float(event.food_used),
+                    ))
 
         players_data = []
-        team_stats: Dict[int, Dict[str, float]] = {}
+        evidence = supply_at_common_frame(stats_snapshots)
 
-        for p in all_players:
-            team_id = int(getattr(p, "team_id", 0))
-            if team_id not in team_stats:
-                team_stats[team_id] = {
-                    "supply": 0.0,
-                    "resources_collected": 0.0,
-                    "resources_current": 0.0,  # Resources at end of game (for quit detection)
-                }
+        winner_team = manual_winner_team
+        result_source = ResultSource.CONFIRMED if manual_winner_team is not None else ResultSource.REPLAY
+        winners_determined = manual_winner_team is not None or any(
+            (getattr(p, "result", "") or "").lower() == "win" for p in all_players
+        )
 
-            # Gather stats for winner determination fallback
-            if hasattr(p, "stats") and p.stats:
-                stats = p.stats
-                team_stats[team_id]["supply"] += float(
-                    getattr(stats, "supply_produced", 0) or 0
+        if not winners_determined:
+            teams = {int(getattr(p, "team_id", 0)) for p in all_players}
+            favourite, ratio = supply_favourite(evidence)
+            second_opinion = bank_and_supply_winner(bank_and_supply_totals(last_snapshot, all_players))
+            clear = favourite is not None and ratio is not None and ratio > SUGGESTION_MIN_SUPPLY_RATIO
+            if len(teams) != 2 or not clear or second_opinion != favourite:
+                raise WinnerDeterminationError(
+                    "The replay has no recorded result and the stats don't clearly show a winner"
+                    if len(teams) == 2 else f"The replay has no recorded result and {len(teams)} teams",
+                    team_stats=evidence or {},
                 )
-                team_stats[team_id]["resources_collected"] += float(
-                    getattr(stats, "minerals_collected", 0) or 0
-                ) + float(getattr(stats, "vespene_collected", 0) or 0)
-                # Current resources at time of game end (for quit scenarios)
-                team_stats[team_id]["resources_current"] += float(
-                    getattr(stats, "minerals_current", 0) or 0
-                ) + float(getattr(stats, "vespene_current", 0) or 0)
-            elif p.pid in event_stats:
-                # Fallback to manual event stats
-                stats = event_stats[p.pid]
-                team_stats[team_id]["supply"] += stats["supply"]
-                team_stats[team_id]["resources_collected"] += (
-                    stats["minerals_collected"] + stats["vespene_collected"]
-                )
-                team_stats[team_id]["resources_current"] += (
-                    stats["minerals_collected"] + stats["vespene_collected"]
-                )
-
-        # Determine winners
-        winners_determined = False
-        if manual_winner_team is not None:
-            winners_determined = True
-        else:
-            # Check if sc2reader already found a winner
-            for p in all_players:
-                result = getattr(p, "result", "") or ""
-                if result.lower() == "win":
-                    winners_determined = True
-                    break
-
-        if not winners_determined and len(team_stats) != 2:
-            # Can't apply the 2-team resource/supply heuristic below, and
-            # sc2reader itself found no winner. Surface for manual review
-            # instead of leaving every player defaulted to a loss (which the
-            # rating system would then silently read as "team 2 wins").
-            raise WinnerDeterminationError(
-                f"sc2reader found no result and the replay has "
-                f"{len(team_stats)} teams (expected 2)",
-                team_stats=team_stats,
-            )
-
-        if not winners_determined and len(team_stats) == 2:
-            # Try our heuristic - use combined resources as fallback
-            t1, t2 = list(team_stats.keys())
-            s1, s2 = team_stats[t1]["supply"], team_stats[t2]["supply"]
-            r1, r2 = (
-                team_stats[t1]["resources_collected"],
-                team_stats[t2]["resources_collected"],
-            )
-
-            # First try: significant advantage in supply or resources collected
-            if (
-                s1 > s2 * SUPPLY_ADVANTAGE_THRESHOLD
-                or r1 > r2 * RESOURCES_ADVANTAGE_THRESHOLD
-            ):
-                manual_winner_team = t1
-            elif (
-                s2 > s1 * SUPPLY_ADVANTAGE_THRESHOLD
-                or r2 > r1 * RESOURCES_ADVANTAGE_THRESHOLD
-            ):
-                manual_winner_team = t2
-            else:
-                # Fallback: Use total resources (collected) - whoever has more wins
-                # This handles quit scenarios where one team just has more stuff
-                total_r1 = team_stats[t1]["resources_collected"]
-                total_r2 = team_stats[t2]["resources_collected"]
-
-                if total_r1 > total_r2:
-                    manual_winner_team = t1
-                    logger.info(
-                        f"Winner determined by total resources: Team {t1} ({total_r1:.0f}) > Team {t2} ({total_r2:.0f})"
-                    )
-                elif total_r2 > total_r1:
-                    manual_winner_team = t2
-                    logger.info(
-                        f"Winner determined by total resources: Team {t2} ({total_r2:.0f}) > Team {t1} ({total_r1:.0f})"
-                    )
-                elif s1 == 0 and s2 == 0 and r1 == 0 and r2 == 0:
-                    # Tied at zero on both axes usually means no stats were
-                    # ever extracted for this replay (not a genuinely close
-                    # game) - there is nothing to guess a winner from.
-                    raise WinnerDeterminationError(
-                        "No player stats were available to determine a "
-                        "winner (replay may lack stats events)",
-                        team_stats=team_stats,
-                    )
-                else:
-                    # Truly tied with real (non-zero) stats - extremely
-                    # rare, use supply as final tiebreaker
-                    if s1 >= s2:
-                        manual_winner_team = t1
-                    else:
-                        manual_winner_team = t2
-                    logger.info(
-                        f"Winner determined by supply tiebreaker: Team {manual_winner_team}"
-                    )
+            result_source = ResultSource.SUGGESTED
+            winner_team = favourite
 
         for p in all_players:
             team_id = int(getattr(p, "team_id", 0))
             won = False
-            if manual_winner_team is not None:
-                won = team_id == manual_winner_team
+            if winner_team is not None:
+                won = team_id == winner_team
             else:
                 result = getattr(p, "result", "") or ""
                 won = result.lower() == "win"
@@ -375,6 +318,8 @@ def parse_replay(
             players=players_data,
             replay_hash=calculate_replay_hash(file_path),
             game_fingerprint=game_fp,
+            result_source=result_source,
+            result_evidence=evidence,
         )
     except Exception as e:
         if isinstance(e, WinnerDeterminationError):

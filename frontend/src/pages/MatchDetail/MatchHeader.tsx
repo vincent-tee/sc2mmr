@@ -13,8 +13,10 @@ import {
   StatNumber,
   Icon,
   Flex,
+  Link,
 } from '@chakra-ui/react';
-import { FiAlertTriangle } from 'react-icons/fi';
+import { FiAlertTriangle, FiHelpCircle } from 'react-icons/fi';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   formatDuration,
   formatDateTime,
@@ -27,6 +29,32 @@ interface MatchHeaderProps {
   matchData: MatchDetailType;
   team1Won: boolean;
 }
+
+const SuggestedResultNotice: React.FC<{
+  winningTeam: number;
+  durationSeconds: number;
+  teamSupply?: Record<string, number>;
+  otherRecordings: { winner_team: number }[];
+}> = ({ winningTeam, durationSeconds, teamSupply, otherRecordings }) => {
+  const disagreement = otherRecordings.find((r) => r.winner_team !== winningTeam);
+  return (
+    <HStack mt={4} spacing={3} align="start" p={3} borderRadius="lg" bg="whiteAlpha.50" borderLeft="3px solid" borderLeftColor="yellow.400">
+      <Icon as={FiHelpCircle} color="yellow.300" mt={0.5} />
+      <Text fontSize="sm" color="gray.300">
+        <Text as="span" fontWeight="bold" color="yellow.200">
+          Recorded through {formatDuration(durationSeconds)} — result unconfirmed.
+        </Text>{' '}
+        The replay didn&apos;t record who won, so Team {winningTeam} was given the win from team stats.
+        {teamSupply && teamSupply['1'] !== undefined && teamSupply['2'] !== undefined && (
+          <> At the last moment everyone was still recorded, Team 1 had <b>{Math.round(teamSupply['1'])}</b> supply
+            and Team 2 had <b>{Math.round(teamSupply['2'])}</b>.</>
+        )}
+        {disagreement && <> Another recording of this game says Team {disagreement.winner_team} won.</>}{' '}
+        <Link as={RouterLink} to="/results-review" color="accent.400">Review results</Link>
+      </Text>
+    </HStack>
+  );
+};
 
 const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
   const cardBg = 'space.800';
@@ -99,6 +127,15 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
             </StatNumber>
           </Stat>
         </Flex>
+
+        {match.result_source === 'suggested' && (
+          <SuggestedResultNotice
+            winningTeam={winningTeam}
+            durationSeconds={match.duration_seconds}
+            teamSupply={match.result_evidence?.team_supply}
+            otherRecordings={match.result_evidence?.other_recordings ?? []}
+          />
+        )}
 
         {upsetIndicator && (
           <HStack mt={4} spacing={3} p={3} borderRadius="lg" bg="rgba(255, 179, 0, 0.08)" borderLeft="3px solid" borderLeftColor="accent.500">

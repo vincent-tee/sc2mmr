@@ -1,4 +1,5 @@
 from dataclasses import replace
+from types import SimpleNamespace
 from io import BytesIO
 from threading import Event
 from concurrent.futures import ThreadPoolExecutor
@@ -14,7 +15,6 @@ from app.main import app
 from app.models import Match, MatchPlayer, Player, PlayerMatchMetrics, FailedUpload, UploadErrorType
 from app.rating_system import RatingSystem
 from app.services.match_orchestrator import MatchOrchestrator
-from app.types.results import ProcessedMatchResult, PlayerMatchResult
 from .test_ingestion import replay, player_state
 
 
@@ -147,17 +147,11 @@ def test_health_remains_responsive_during_parsing(client, monkeypatch, replay):
 
 
 def test_batch_then_http_upload_does_not_rate_twice(client, db_engine, replay, monkeypatch):
-    parsed = ProcessedMatchResult(
-        played_at=replay.played_at, game_mode=replay.game_mode, map_name=replay.map_name,
-        duration_seconds=replay.duration_seconds, replay_hash=replay.replay_hash,
-        game_fingerprint=replay.game_fingerprint,
-        players=[PlayerMatchResult(name=p.name, race=p.race, team=p.team, won=p.won)
-                 for p in replay.players],
-    )
+    parsed = SimpleNamespace(basic_data=replay, player_metrics=[], kill_events=[])
     monkeypatch.setattr(MatchOrchestrator, "_trigger_post_processing", lambda *args: None)
+    monkeypatch.setattr(MatchOrchestrator, "parse", lambda *args, **kwargs: parsed)
     with Session(db_engine) as db:
         orchestrator = MatchOrchestrator(db)
-        monkeypatch.setattr(orchestrator.parser, "parse", lambda *args, **kwargs: parsed)
         result = orchestrator.orchestrate_match("/batch/replay", "batch.SC2Replay")
         assert result.created
         before = player_state(db)

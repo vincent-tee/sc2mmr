@@ -11,7 +11,7 @@ from ..services.derived_data import (
     ABANDONED_REBUILD_AFTER, derived_data_state, rebuild_derived_data, rebuild_if_due,
 )
 from ..services.game_cleanup import plan_cleanup, remove_matches
-from ..services.metrics_backfill import apply_metrics_rows
+from ..services.metrics_reparse import apply_reparsed_rows
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
 
@@ -81,6 +81,7 @@ class GameCleanupResponse(BaseModel):
     applied: bool
     aborted_match_ids: List[int]
     duplicate_copies: List[DuplicateCopyResponse]
+    empty_match_ids: List[int]
     removed_match_ids: List[int]
 
 
@@ -100,22 +101,27 @@ def clean_up_duplicate_and_aborted_games(request: GameCleanupRequest, db: Sessio
         applied=request.apply,
         aborted_match_ids=plan.aborted_match_ids,
         duplicate_copies=[DuplicateCopyResponse(**vars(copy)) for copy in plan.duplicate_copies],
+        empty_match_ids=plan.empty_match_ids,
         removed_match_ids=to_remove,
     )
 
 
-class MetricsBackfillRequest(BaseModel):
+class MetricsReparseRequest(BaseModel):
     rows: List[dict]
 
 
-class MetricsBackfillResponse(BaseModel):
-    updated: int
-    created: int
-    unmatched: int
-    players_reaveraged: int
+class MetricsReparseResponse(BaseModel):
+    dry_run: bool
+    matches: int
+    unmatched_replays: int
+    players_updated: int
+    players_unmatched: int
+    fields: dict
 
 
-@router.post("/metrics-backfill", response_model=MetricsBackfillResponse,
+@router.post("/metrics-reparse", response_model=MetricsReparseResponse,
              dependencies=[Depends(require_admin)])
-def apply_metrics_backfill(request: MetricsBackfillRequest, db: Session = Depends(get_db)):
-    return MetricsBackfillResponse(**vars(apply_metrics_rows(db, request.rows)))
+def apply_metrics_reparse(request: MetricsReparseRequest, dry_run: bool = True, db: Session = Depends(get_db)):
+    """Save re-parsed per-match stats (rows from scripts/reparse_metrics.py) the way an upload would."""
+    report = apply_reparsed_rows(db, request.rows, dry_run=dry_run)
+    return MetricsReparseResponse(dry_run=dry_run, **report.summary())

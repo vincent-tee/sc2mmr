@@ -8,6 +8,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from ..exceptions import ValidationError
+from ..match_result import ResultSource
 from ..models import FailedUpload, Match, MatchPlayer, Player, Race
 from ..replay_parser import ReplayData
 from ..rating_system import RatingSystem
@@ -82,6 +83,8 @@ def upsert_match(db: Session, replay_data: ReplayData, replay_file_path=None) ->
         game_fingerprint=getattr(replay_data, "game_fingerprint", None) or None,
         predicted_team1_win_prob=getattr(replay_data, "predicted_team1_win_prob", None),
         predicted_team2_win_prob=getattr(replay_data, "predicted_team2_win_prob", None),
+        result_source=replay_data.result_source,
+        result_evidence=replay_data.result_evidence,
     )
     db.add(match)
     db.flush()
@@ -142,11 +145,35 @@ def create_participants(db: Session, match: Match, replay_data: ReplayData, name
     db.flush()
 
 
-def validate_existing_result(match: Match, replay_data: ReplayData, names: list[str]) -> None:
+def winning_team(replay_data: ReplayData) -> int:
+    return next(p.team for p in replay_data.players if p.won)
+
+
+def reconcile_existing_result(match: Match, replay_data: ReplayData, names: list[str]) -> bool:
+    """Check another recording of a stored game; returns whether it agrees on the winner.
+
+    A recording that states the result settles a suggested one when they agree.
+    When they disagree the stored result is kept but the disagreement is
+    recorded so the review queue puts that game first.
+    """
     existing = {mp.player.name: bool(mp.won) for mp in match.participants}
     incoming = {name: bool(p.won) for name, p in zip(names, replay_data.players)}
-    if existing != incoming:
-        raise ValidationError("Replay conflicts with the recorded participants or winner")
+    if set(existing) != set(incoming):
+        raise ValidationError("Replay conflicts with the recorded participants")
+    agrees = existing == incoming
+    stored_is_suggested = match.result_source in (None, ResultSource.SUGGESTED)
+    if not agrees and not (stored_is_suggested and replay_data.result_source == ResultSource.REPLAY):
+        raise ValidationError("Replay conflicts with the recorded winner")
+    if replay_data.result_source == ResultSource.REPLAY and stored_is_suggested:
+        if agrees:
+            match.result_source = ResultSource.REPLAY
+        else:
+            evidence = dict(match.result_evidence or {})
+            evidence["other_recordings"] = [*evidence.get("other_recordings", []), {
+                "replay_hash": replay_data.replay_hash, "winner_team": winning_team(replay_data),
+            }]
+            match.result_evidence = evidence
+    return agrees
 
 
 def ingest_match(
@@ -166,12 +193,13 @@ def ingest_match(
             if require_experience:
                 validate_team_experience(work, replay_data, names)
             create_participants(work, match, replay_data, names)
+            agrees = True
         else:
-            validate_existing_result(match, replay_data, names)
+            agrees = reconcile_existing_result(match, replay_data, names)
 
-        refresh = created or match.replay_hash == replay_data.replay_hash or (
+        refresh = agrees and (created or match.replay_hash == replay_data.replay_hash or (
             replay_data.duration_seconds > match.duration_seconds
-        )
+        ))
         if refresh:
             if replay_file_path:
                 match.replay_file_path = replay_file_path
