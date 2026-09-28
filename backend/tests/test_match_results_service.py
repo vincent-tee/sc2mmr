@@ -9,7 +9,7 @@ from app.replay_parser import PlayerData, ReplayData
 from app.services import match_results
 from app.services.ingestion import ingest_match
 from app.services.match_results import (
-    ResultChangeError, backfill_result_sources, confirm_result, review_queue,
+    ResultChangeError, backfill_result_sources, confirm_result, review_queue, settle_unrecorded_results,
 )
 
 
@@ -76,32 +76,57 @@ def unchecked(db, data, path):
     return match
 
 
-def test_backfill_labels_without_changing_winners(db_session, monkeypatch, tmp_path):
+def test_backfill_applies_the_winner_rule(db_session, monkeypatch):
+    from app.replay_parser import WinnerDeterminationError
     monkeypatch.setattr(match_results.replay_storage, "materialize_match_replay",
                         lambda stored, _hash: stored if stored and "missing" not in stored else None)
     parses = {
         "has-result": replay("has-result", source=ResultSource.REPLAY),
-        "no-result": replay("no-result"),
-        "disagrees": replace(replay("disagrees", source=ResultSource.REPLAY), players=[
+        "supply-lead": replay("supply-lead"),
+        "recorded-other-way": replace(replay("recorded-other-way", source=ResultSource.REPLAY), players=[
             PlayerData(name="Ann", race=Race.TERRAN, team=1, won=False),
             PlayerData(name="Bob", race=Race.ZERG, team=2, won=True)]),
     }
-    matches = {name: unchecked(db_session, replay(name, when=i + 1), name) for i, name in enumerate(parses)}
+
+    def parse(path):
+        if path == "too-close":
+            raise WinnerDeterminationError("no clear winner", team_stats={"frame": 9, "team_supply": {"1": 100, "2": 110}})
+        return parses[path]
+
+    matches = {name: unchecked(db_session, replay(name, when=i + 1), name)
+               for i, name in enumerate([*parses, "too-close"])}
     missing = unchecked(db_session, replay("gone", when=9), "missing-file")
 
-    dry = backfill_result_sources(db_session, limit=10, dry_run=True, parse=lambda path: parses[path])
-    assert (dry.replay, dry.suggested, dry.disagreeing_replay, dry.missing_file) == (1, 1, 1, 1)
-    assert dry.remaining == 4
-
-    report = backfill_result_sources(db_session, limit=10, dry_run=False, parse=lambda path: parses[path])
-    assert report.remaining == 0
-    assert matches["has-result"].result_source == ResultSource.REPLAY
-    assert matches["no-result"].result_source == ResultSource.SUGGESTED
-    assert matches["disagrees"].result_source == ResultSource.SUGGESTED
-    assert matches["disagrees"].result_evidence["other_recordings"] == [{"replay_hash": "disagrees", "winner_team": 2}]
-    assert missing.result_source == ResultSource.UNKNOWN
+    dry = backfill_result_sources(db_session, limit=10, dry_run=True, parse=parse)
+    assert (dry.replay, dry.suggested, dry.unknown, dry.winner_changes, dry.missing_file) == (2, 1, 1, 2, 1)
     assert all(winners(db_session, m) == {1} for m in matches.values())
-    assert review_queue(db_session)[0].match.id == matches["disagrees"].id
+
+    backfill_result_sources(db_session, limit=10, dry_run=False, parse=parse)
+    assert matches["has-result"].result_source == ResultSource.REPLAY
+    assert matches["supply-lead"].result_source == ResultSource.SUGGESTED
+    assert (matches["recorded-other-way"].result_source, winners(db_session, matches["recorded-other-way"])) == (
+        ResultSource.REPLAY, {2})
+    assert (matches["too-close"].result_source, winners(db_session, matches["too-close"])) == (
+        ResultSource.UNKNOWN, set())
+    assert (missing.result_source, winners(db_session, missing)) == (None, {1})
+    assert review_queue(db_session)[0].match.id == matches["too-close"].id
+    assert db_session.get(DerivedDataState, 1).stale_since is not None
+
+
+def test_settle_follows_supply_and_leaves_unclear_games_unknown(db_session):
+    against_supply = ingest(db_session, replay("against", supply=(135.0, 578.0), when=1))
+    too_close = ingest(db_session, replay("close", supply=(100.0, 110.0), when=2))
+    clear = ingest(db_session, replay("clear", supply=(150.0, 40.0), when=3))
+
+    dry = settle_unrecorded_results(db_session, dry_run=True)
+    assert [c["match_id"] for c in dry.changed] == [against_supply.id, too_close.id]
+    assert winners(db_session, against_supply) == {1}
+
+    settle_unrecorded_results(db_session, dry_run=False)
+    assert (against_supply.result_source, winners(db_session, against_supply)) == (ResultSource.SUGGESTED, {2})
+    assert (too_close.result_source, winners(db_session, too_close)) == (ResultSource.UNKNOWN, set())
+    assert winners(db_session, clear) == {1}
+    assert settle_unrecorded_results(db_session, dry_run=True).changed == []
 
 
 @pytest.fixture
@@ -148,7 +173,7 @@ def test_replay_falls_back_to_its_hash_when_the_stored_path_is_elsewhere(monkeyp
     assert replay_storage.materialize_match_replay("/nowhere/x.SC2Replay", "unknown") is None
 
 
-def test_backfill_labels_games_without_a_clear_winner_as_suggested_and_rechecks_unknown(db_session, monkeypatch):
+def test_backfill_rechecks_unknown_and_unrates_games_without_a_clear_winner(db_session, monkeypatch):
     from app.replay_parser import WinnerDeterminationError
     monkeypatch.setattr(match_results.replay_storage, "materialize_match_replay", lambda stored, _hash: stored)
     disputed = unchecked(db_session, replay("disputed"), "disputed")
@@ -160,7 +185,7 @@ def test_backfill_labels_games_without_a_clear_winner_as_suggested_and_rechecks_
 
     assert backfill_result_sources(db_session, limit=10, dry_run=False, parse=parse).checked == 0
     report = backfill_result_sources(db_session, limit=10, dry_run=False, parse=parse, recheck_unknown=True)
-    assert (report.suggested, report.remaining) == (1, 0)
-    assert disputed.result_source == ResultSource.SUGGESTED
+    assert (report.checked, report.unknown) == (1, 1)
+    assert disputed.result_source == ResultSource.UNKNOWN
     assert disputed.result_evidence == {"frame": 9, "team_supply": {"1": 50.0, "2": 60.0}}
-    assert winners(db_session, disputed) == {1}
+    assert winners(db_session, disputed) == set()

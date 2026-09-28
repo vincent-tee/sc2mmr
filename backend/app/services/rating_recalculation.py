@@ -25,6 +25,12 @@ from ..rating_system import RatingSystem
 from ..rating_policy import decayed_sigma, typical_session_gap, rate_teams
 
 
+def record_unrated(mp: MatchPlayer, rating: trueskill.Rating) -> None:
+    mp.mu_before = mp.mu_after = rating.mu
+    mp.sigma_before = mp.sigma_after = rating.sigma
+    mp.mmr_before = mp.mmr_after = RatingSystem.calculate_display_mmr(rating.mu, rating.sigma)
+
+
 def recalculate_ratings_in_place(db: Session) -> dict:
     """Recompute mu/sigma/display-MMR for every player and match_player row,
     processing matches chronologically. Returns a small stats dict."""
@@ -56,6 +62,8 @@ def recalculate_ratings_in_place(db: Session) -> dict:
         team2 = [mp for mp in mps if mp.team_number == 2]
         winners = {mp.team_number for mp in mps if mp.won}
         if not team1 or not team2 or len(winners) != 1:
+            for mp in mps:
+                record_unrated(mp, state.get(mp.player_id) or trueskill.Rating(mu=25.0, sigma=8.333))
             matches_skipped += 1
             continue
 

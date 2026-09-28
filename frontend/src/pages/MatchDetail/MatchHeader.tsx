@@ -28,7 +28,7 @@ import type { MatchDetail as MatchDetailType } from '@/types/api';
 
 interface MatchHeaderProps {
   matchData: MatchDetailType;
-  team1Won: boolean;
+  winningTeam: number | null;
 }
 
 const SuggestedResultNotice: React.FC<{
@@ -45,7 +45,7 @@ const SuggestedResultNotice: React.FC<{
         <Text as="span" fontWeight="bold" color="yellow.200">
           Recorded through {formatDuration(durationSeconds)} — result unconfirmed.
         </Text>{' '}
-        The replay didn&apos;t record who won, so Team {winningTeam} was given the win from team stats.
+        The replay didn&apos;t record who won, so Team {winningTeam} was given the win for its clear supply lead.
         {teamSupply && teamSupply['1'] !== undefined && teamSupply['2'] !== undefined && (
           <> At the last moment everyone was still recorded, Team 1 had <b>{Math.round(teamSupply['1'])}</b> supply
             and Team 2 had <b>{Math.round(teamSupply['2'])}</b>.</>
@@ -57,7 +57,22 @@ const SuggestedResultNotice: React.FC<{
   );
 };
 
-const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
+const UnknownResultNotice: React.FC<{ teamSupply?: Record<string, number> }> = ({ teamSupply }) => (
+  <HStack mt={4} spacing={3} align="start" p={3} borderRadius="lg" bg="whiteAlpha.50" borderLeft="3px solid" borderLeftColor="yellow.400">
+    <Icon as={FiHelpCircle} color="yellow.300" mt={0.5} />
+    <Text fontSize="sm" color="gray.300">
+      <Text as="span" fontWeight="bold" color="yellow.200">No result — not rated.</Text>{' '}
+      The replay didn&apos;t record who won and neither team had a clear supply lead
+      {teamSupply && teamSupply['1'] !== undefined && teamSupply['2'] !== undefined && (
+        <> (Team 1 <b>{Math.round(teamSupply['1'])}</b>, Team 2 <b>{Math.round(teamSupply['2'])}</b>)</>
+      )}
+      . It counts once someone says who won.{' '}
+      <Link as={RouterLink} to="/results-review" color="accent.400">Review results</Link>
+    </Text>
+  </HStack>
+);
+
+const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, winningTeam }) => {
   const cardBg = 'space.800';
 
   const { match, players } = matchData;
@@ -68,8 +83,7 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
     match.predicted_team2_win_prob !== null;
   const team1Prob = match.predicted_team1_win_prob || 0.5;
   const team2Prob = match.predicted_team2_win_prob || 0.5;
-  const winningTeam = team1Won ? 1 : 2;
-  const upsetIndicator = hasWinProb
+  const upsetIndicator = hasWinProb && winningTeam !== null
     ? getUpsetIndicator(winningTeam, team1Prob, team2Prob)
     : null;
 
@@ -101,7 +115,12 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
               </Badge>
             </Flex>
             <Text color="gray.400" fontSize="sm">
-              {formatDateTime(match.played_at)} · <Text as="span" color={team1Won ? 'brand.400' : 'accent.400'} fontWeight="bold">Team {winningTeam} won</Text>
+              {formatDateTime(match.played_at)} ·{' '}
+              {winningTeam === null ? (
+                <Text as="span" color="gray.400" fontWeight="bold">No result</Text>
+              ) : (
+                <Text as="span" color={winningTeam === 1 ? 'brand.400' : 'accent.400'} fontWeight="bold">Team {winningTeam} won</Text>
+              )}
             </Text>
           </VStack>
 
@@ -115,7 +134,9 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
           </Stat>
         </Flex>
 
-        {match.result_source === 'suggested' && (
+        {match.result_source === 'unknown' && <UnknownResultNotice teamSupply={match.result_evidence?.team_supply} />}
+
+        {match.result_source === 'suggested' && winningTeam !== null && (
           <SuggestedResultNotice
             winningTeam={winningTeam}
             durationSeconds={match.duration_seconds}
@@ -137,7 +158,7 @@ const MatchHeader: React.FC<MatchHeaderProps> = ({ matchData, team1Won }) => {
       <VSScreen
         team1={toPanel(1, team1Prob)}
         team2={toPanel(2, team2Prob)}
-        winner={winningTeam}
+        winner={winningTeam === 1 || winningTeam === 2 ? winningTeam : null}
         probabilityLabel="Pre-match odds"
         totalLabel="Pre-match MMR"
         compact

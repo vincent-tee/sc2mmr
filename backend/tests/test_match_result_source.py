@@ -93,17 +93,18 @@ def require(path):
 
 
 @pytest.mark.local_data
-def test_replay_without_a_result_is_suggested_when_both_rules_agree():
+def test_replay_without_a_result_goes_to_the_clear_supply_leader():
     parsed = parse_replay(require(NO_RESULT_REPLAY))
     assert parsed.result_source == ResultSource.SUGGESTED
     assert {p.team for p in parsed.players if p.won} == {2}
 
 
 @pytest.mark.local_data
-def test_replay_without_a_result_goes_to_review_when_the_rules_disagree():
-    from app.replay_parser import WinnerDeterminationError
-    with pytest.raises(WinnerDeterminationError, match="clearly show a winner"):
-        parse_replay(require(DISPUTED_NO_RESULT_REPLAY))
+def test_match_1168_goes_to_team_2_on_supply():
+    parsed = parse_replay(require(DISPUTED_NO_RESULT_REPLAY))
+    assert parsed.result_source == ResultSource.SUGGESTED
+    assert parsed.result_evidence["team_supply"] == {"1": 153.5, "2": 286.5}
+    assert {p.team for p in parsed.players if p.won} == {2}
 
 
 @pytest.mark.local_data
@@ -121,8 +122,8 @@ def test_a_persons_choice_is_labelled_confirmed():
 
 
 def test_too_close_to_call_goes_to_manual_review(monkeypatch):
-    import app.replay_parser as replay_parser
+    import app.match_result as match_result
     from app.replay_parser import WinnerDeterminationError
-    monkeypatch.setattr(replay_parser, "SUGGESTION_MIN_SUPPLY_RATIO", 5.0)
+    monkeypatch.setattr(match_result, "CLEAR_SUPPLY_LEAD", 5.0)
     with pytest.raises(WinnerDeterminationError, match="clearly show a winner"):
         parse_replay(require(NO_RESULT_REPLAY))

@@ -174,7 +174,7 @@ const TeamRoster: React.FC<{
       </Text>
       {isWinner && (
         <Tooltip
-          label="Suggested result: the replay didn't record who won, so this was inferred from team stats"
+          label="Suggested result: the replay didn't record who won, so this team was given the win for its clear supply lead"
           isDisabled={!resultSuggested}
           hasArrow
         >

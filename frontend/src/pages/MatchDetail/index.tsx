@@ -128,9 +128,7 @@ const MatchDetail: React.FC = () => {
 
   const { players } = matchData;
 
-  // Group players by team
-  const team1Players = players.filter((p) => p.team_number === 1);
-  const team1Won = team1Players.length > 0 && team1Players[0].won;
+  const winningTeam = players.find((p) => p.won)?.team_number ?? null;
 
   return (
     <Box position="relative">
@@ -179,7 +177,7 @@ const MatchDetail: React.FC = () => {
           </HStack>
 
           {/* Match Header */}
-          <MatchHeader matchData={matchData} team1Won={team1Won} />
+          <MatchHeader matchData={matchData} winningTeam={winningTeam} />
 
           {/* Tabs for different views */}
           <Tabs
@@ -219,7 +217,7 @@ const MatchDetail: React.FC = () => {
             <TabPanels>
               {/* Score Screen Tab */}
               <TabPanel px={0}>
-                <ScoreScreenTab matchData={matchData} team1Won={team1Won} />
+                <ScoreScreenTab matchData={matchData} winningTeam={winningTeam} />
               </TabPanel>
 
               {/* Commentary Tab */}

@@ -22,7 +22,7 @@ import PageHeader from '../components/PageHeader';
 import LoadingState from '../components/LoadingState';
 import EmptyState from '../components/EmptyState';
 import { matchResultsApi, type ResultReviewItem } from '../api/matchResults';
-import { hasAdminToken } from '../utils/adminToken';
+import { hasAdminToken, saveAdminToken } from '../utils/adminToken';
 import { formatDateTime, formatDuration } from '../utils/formatting';
 import { useToast } from '../hooks/useToast';
 
@@ -39,6 +39,7 @@ const readStoredName = (): string => {
 };
 
 const whyInQueue = (item: ResultReviewItem): string | null => {
+  if (item.result_source === 'unknown') return 'No clear winner — not rated';
   const disagreeing = item.other_recordings.find((r) => r.winner_team !== item.winner_team);
   if (disagreeing) return `Another recording says Team ${disagreeing.winner_team} won`;
   if (item.conflicts && item.supply_favourite_team) {
@@ -118,7 +119,9 @@ const ReviewCard: React.FC<{
               colorScheme={item.winner_team === team ? 'brand' : 'gray'}
               onClick={() => onConfirm(team)}
             >
-              {item.winner_team === team ? `Confirm Team ${team} won` : `Team ${team} won instead`}
+              {item.winner_team === null
+                ? `Team ${team} won`
+                : item.winner_team === team ? `Confirm Team ${team} won` : `Team ${team} won instead`}
             </Button>
           ))}
         </HStack>
@@ -132,7 +135,8 @@ const ResultsReview: React.FC = () => {
   const queryClient = useQueryClient();
   const [name, setName] = useState(readStoredName);
   const [shown, setShown] = useState(PAGE_SIZE);
-  const canConfirm = hasAdminToken();
+  const [canConfirm, setCanConfirm] = useState(hasAdminToken);
+  const [tokenDraft, setTokenDraft] = useState('');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['result-review'],
@@ -191,7 +195,15 @@ const ResultsReview: React.FC = () => {
                 onChange={(e) => updateName(e.target.value)} />
             </HStack>
           ) : (
-            <Text fontSize="sm" color="gray.500">Confirming results needs the admin token in this browser.</Text>
+            <HStack spacing={3} flexWrap="wrap">
+              <Text fontSize="sm" color="gray.400" as="label" htmlFor="admin-token">Admin token</Text>
+              <Input id="admin-token" type="password" size="sm" maxW="260px" value={tokenDraft}
+                placeholder="Paste to confirm results" onChange={(e) => setTokenDraft(e.target.value)} />
+              <Button size="sm" isDisabled={!tokenDraft.trim()}
+                onClick={() => setCanConfirm(saveAdminToken(tokenDraft))}>
+                Save
+              </Button>
+            </HStack>
           )}
 
           {isLoading && <LoadingState message="Loading results to review..." />}

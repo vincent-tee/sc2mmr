@@ -36,7 +36,7 @@ src/pages/MatchDetail/
 - Displays upset indicators for unexpected results
 - Visual probability comparison bars
 
-**Props:** `matchData`, `team1Won`
+**Props:** `matchData`, `winningTeam`
 
 ### OperativesTab.tsx
 - Renders two team tables with player information
@@ -44,7 +44,7 @@ src/pages/MatchDetail/
 - Displays MMR change with color coding (up/down indicators)
 - Victory badges for winning team
 
-**Props:** `matchData`, `team1Won`
+**Props:** `matchData`, `winningTeam`
 
 ### CommentaryTab.tsx
 - Displays AI-generated match analysis

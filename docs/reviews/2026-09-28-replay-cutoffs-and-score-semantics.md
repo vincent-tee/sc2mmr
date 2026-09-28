@@ -305,3 +305,17 @@ nullable); 23 prod matches with no participants. The map bonus (+100/−50 MMR b
   now uses the upload parser, winner rule and save path; the unified parser is retired.
 - **Cleanup.** The duplicate-games cleanup now also removes matches with no players
   (23 on prod, nothing else in the prod plan).
+
+### Winner rule revised — 2026-09-28 (owner decision)
+
+The owner overrode the both-rules-agree rule after seeing match 1028 labelled a Team 1 win at 135 vs 578
+supply. The rule is now: recorded result, else the clear supply leader (>1.25× at the last common frame,
+99.5% on games with a known result), else **unknown** — unrated (every participant `won=0`, MMR before =
+after) and first in the review queue until a person confirms. Stored results are settled with the same
+rule (`POST /match-results/settle`, and `backfill?recheck_unknown=true` for the 377 prod games whose
+replays were previously unreadable), then ratings are rebuilt. The earlier re-rating test (66.4% → 64.0%,
+p=0.18, not significant) was accepted as the cost of correct history. On prod: 11 of 100 suggested
+results flip (incl. 1028); of the 377 rechecked, 252 have a recorded result, 115 a clear supply lead, and 10
+stay unknown (414, 452, 595, 738, 740, 801, 822, 867, 882, 903). Match 1168 goes to Team 2 (286.5 vs 153.5).
+Known gap: form, head-to-head, rivalry, race win-rate and achievement code still read `won=0` as a loss, so
+an unknown game counts as a loss there until it is confirmed.

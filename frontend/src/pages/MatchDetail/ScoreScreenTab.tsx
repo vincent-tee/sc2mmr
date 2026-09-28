@@ -28,7 +28,7 @@ import type { MatchDetail as MatchDetailType, MatchPlayer } from '@/types/api';
 
 interface ScoreScreenTabProps {
   matchData: MatchDetailType;
-  team1Won: boolean;
+  winningTeam: number | null;
 }
 
 type Section = 'summary' | 'economy' | 'military';
@@ -202,7 +202,7 @@ const TeamTable: React.FC<{
   );
 };
 
-const ScoreScreenTab: React.FC<ScoreScreenTabProps> = ({ matchData, team1Won }) => {
+const ScoreScreenTab: React.FC<ScoreScreenTabProps> = ({ matchData, winningTeam }) => {
   const [section, setSection] = useState<Section>('summary');
   const { players } = matchData;
 
@@ -238,14 +238,14 @@ const ScoreScreenTab: React.FC<ScoreScreenTabProps> = ({ matchData, team1Won }) 
       <TeamTable
         title="Team 1"
         accentColor="brand.400"
-        won={team1Won}
+        won={winningTeam === 1}
         players={team1Players}
         columns={columns}
       />
       <TeamTable
         title="Team 2"
         accentColor="accent.400"
-        won={!team1Won}
+        won={winningTeam === 2}
         players={team2Players}
         columns={columns}
       />

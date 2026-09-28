@@ -9,12 +9,11 @@ import sc2reader  # type: ignore
 from dataclasses import dataclass
 import logging
 
-from .match_result import ResultSource, StatsSnapshot, supply_at_common_frame, supply_favourite
+from .match_result import ResultSource, StatsSnapshot, supply_at_common_frame, supply_winner
 from .models import GameMode, Race
 
 logger = logging.getLogger(__name__)
 
-SUGGESTION_MIN_SUPPLY_RATIO = 1.25
 EARLY_QUIT_THRESHOLD_MINUTES = 10  # Minutes to consider an early quit
 CRASH_THRESHOLD_MINUTES = 3  # Minutes to consider a crash or test game
 
@@ -153,34 +152,6 @@ def determine_game_mode(players: List[Any]) -> GameMode:
         return GameMode.TWO_V_TWO
 
 
-def bank_and_supply_totals(snapshots_by_player: Dict[int, dict], players) -> Dict[int, Dict[str, float]]:
-    """Each team's supply and unspent resources at its players' last stats snapshots."""
-    totals: Dict[int, Dict[str, float]] = {}
-    for p in players:
-        team = totals.setdefault(int(getattr(p, "team_id", 0)), {"supply": 0.0, "bank": 0.0})
-        last = snapshots_by_player.get(p.pid)
-        if last:
-            team["supply"] += last["supply"]
-            team["bank"] += last["bank"]
-    return totals
-
-
-def bank_and_supply_winner(totals: Dict[int, Dict[str, float]]) -> Optional[int]:
-    """The original guess: a clear lead in supply or unspent resources, else more resources."""
-    if len(totals) != 2:
-        return None
-    (t1, a), (t2, b) = totals.items()
-    if a["supply"] > b["supply"] * 1.5 or a["bank"] > b["bank"] * 1.3:
-        return t1
-    if b["supply"] > a["supply"] * 1.5 or b["bank"] > a["bank"] * 1.3:
-        return t2
-    if a["bank"] != b["bank"]:
-        return t1 if a["bank"] > b["bank"] else t2
-    if a["supply"] == b["supply"] == 0:
-        return None
-    return t1 if a["supply"] >= b["supply"] else t2
-
-
 def parse_replay(
     file_path: str, manual_winner_team: Optional[int] = None
 ) -> ReplayData:
@@ -237,17 +208,12 @@ def parse_replay(
 
         # Manually extract stats from events if sc2reader didn't populate p.stats
         stats_snapshots = []
-        last_snapshot: Dict[int, dict] = {}
         from sc2reader.events import PlayerStatsEvent
 
         for event in getattr(replay, "events", []):
             if isinstance(event, PlayerStatsEvent):
                 p_attr = getattr(event, "player", None)
                 if p_attr:
-                    last_snapshot[p_attr.pid] = {
-                        "supply": float(event.food_used),
-                        "bank": float(event.minerals_current) + float(event.vespene_current),
-                    }
                     stats_snapshots.append(StatsSnapshot(
                         player_id=p_attr.pid,
                         team=int(getattr(p_attr, "team_id", 0)),
@@ -266,10 +232,8 @@ def parse_replay(
 
         if not winners_determined:
             teams = {int(getattr(p, "team_id", 0)) for p in all_players}
-            favourite, ratio = supply_favourite(evidence)
-            second_opinion = bank_and_supply_winner(bank_and_supply_totals(last_snapshot, all_players))
-            clear = favourite is not None and ratio is not None and ratio > SUGGESTION_MIN_SUPPLY_RATIO
-            if len(teams) != 2 or not clear or second_opinion != favourite:
+            favourite = supply_winner(evidence)
+            if len(teams) != 2 or favourite is None:
                 raise WinnerDeterminationError(
                     "The replay has no recorded result and the stats don't clearly show a winner"
                     if len(teams) == 2 else f"The replay has no recorded result and {len(teams)} teams",

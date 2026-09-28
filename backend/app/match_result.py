@@ -1,8 +1,9 @@
 """Where a match's winner came from, and the evidence behind a suggested winner.
 
-A replay only sometimes records who won. When it doesn't, the parser suggests a
-winner from team stats; that suggestion is rated like any other result but is
-labelled so people can confirm or correct it.
+A replay only sometimes records who won. When it doesn't, the team with a clear
+supply lead at the last moment everyone was recorded is given the win; that is
+rated like any other result but labelled. Without a clear lead the result is
+unknown: the game is not rated until a person says who won.
 """
 
 from dataclasses import dataclass
@@ -11,9 +12,12 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 class ResultSource:
     REPLAY = "replay"  # the replay file itself records the result
-    SUGGESTED = "suggested"  # inferred from team stats because the replay has no result
+    SUGGESTED = "suggested"  # a clear supply lead, because the replay has no result
     CONFIRMED = "confirmed"  # chosen or confirmed by a person
-    UNKNOWN = "unknown"  # the stored replay could not be re-read to check
+    UNKNOWN = "unknown"  # no recorded result and no clear supply lead: unrated
+
+
+CLEAR_SUPPLY_LEAD = 1.25
 
 
 @dataclass(frozen=True)
@@ -59,3 +63,9 @@ def supply_favourite(evidence: Optional[dict]) -> Tuple[Optional[int], Optional[
     if supply_a == supply_b:
         return None, 1.0
     return team_a, (supply_a / supply_b if supply_b > 0 else float("inf"))
+
+
+def supply_winner(evidence: Optional[dict]) -> Optional[int]:
+    """The team with a clear supply lead at the common frame, if either has one."""
+    favourite, ratio = supply_favourite(evidence)
+    return favourite if ratio is not None and ratio > CLEAR_SUPPLY_LEAD else None

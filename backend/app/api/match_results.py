@@ -10,6 +10,7 @@ from ..database import get_db
 from ..models import Match
 from ..services.match_results import (
     ResultChangeError, ReviewItem, backfill_result_sources, confirm_result, review_item, review_queue,
+    settle_unrecorded_results,
 )
 
 router = APIRouter(prefix="/match-results", tags=["match results"])
@@ -100,7 +101,8 @@ class BackfillResponse(BaseModel):
     checked: int
     replay: int
     suggested: int
-    disagreeing_replay: int
+    unknown: int
+    winner_changes: int
     missing_file: int
     unreadable: int
     remaining: int
@@ -115,3 +117,15 @@ def backfill(limit: int = Query(25, ge=1, le=200), dry_run: bool = True, after_i
                                      recheck_unknown=recheck_unknown)
     return BackfillResponse(dry_run=dry_run, **report.__dict__)
 
+
+
+class SettleResponse(BaseModel):
+    dry_run: bool
+    checked: int
+    changed: List[dict]
+
+
+@router.post("/settle", response_model=SettleResponse, dependencies=[Depends(require_admin)])
+def settle(dry_run: bool = True, db: Session = Depends(get_db)):
+    report = settle_unrecorded_results(db, dry_run=dry_run)
+    return SettleResponse(dry_run=dry_run, checked=report.checked, changed=report.changed)

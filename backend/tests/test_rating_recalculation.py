@@ -125,3 +125,23 @@ def test_recalculation_formula_consistency(db_session, player_factory):
         player = db_session.query(Player).filter(Player.id == p.id).first()
         expected_mmr = RatingSystem.calculate_display_mmr(player.mu, player.sigma)
         assert abs(player.mmr - expected_mmr) < 1e-6
+
+
+def test_game_without_a_winner_is_unrated_and_shows_no_change(db_session, player_factory):
+    from datetime import datetime, timedelta
+    p1, p2 = player_factory(name="U1"), player_factory(name="U2")
+    day0 = datetime.utcnow()
+    _make_match(db_session, [(p1, 1, True), (p2, 2, False)], day0)
+    _, unknown = _make_match(db_session, [(p1, 1, False), (p2, 2, False)], day0 + timedelta(days=1))
+    for mp in unknown:
+        mp.mmr_before, mp.mmr_after = 1000.0, 1300.0
+    db_session.commit()
+
+    stats = recalculate_ratings_in_place(db_session)
+
+    assert (stats["matches_processed"], stats["matches_skipped"]) == (1, 1)
+    for mp in unknown:
+        player = db_session.get(Player, mp.player_id)
+        assert mp.mmr_before == mp.mmr_after == player.mmr
+        assert (mp.mu_before, mp.mu_after) == (player.mu, player.mu)
+        assert player.total_games == 1

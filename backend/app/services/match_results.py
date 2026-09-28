@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from ..match_result import ResultSource, supply_favourite
+from ..match_result import ResultSource, supply_favourite, supply_winner
 from ..models import Match, MatchPlayer
 from ..replay_parser import ReplayData, WinnerDeterminationError, parse_replay
 from . import replay_storage
@@ -47,17 +47,20 @@ def review_item(match: Match) -> ReviewItem:
 
 
 def review_queue(db: Session) -> list[ReviewItem]:
-    """Suggested results, most doubtful first.
+    """Unknown and suggested results, most doubtful first.
 
-    Another recording disagreeing comes first, then games where the team with
-    more supply at the common frame was not the one awarded the win (largest
-    supply gap first), then the rest from closest to clearest.
+    Unknown results come first because those games are unrated until someone
+    says who won, then disagreements, then suggested results from closest to
+    clearest.
     """
-    items = [review_item(m) for m in db.query(Match).filter(Match.result_source == ResultSource.SUGGESTED)]
+    reviewable = Match.result_source.in_([ResultSource.UNKNOWN, ResultSource.SUGGESTED])
+    items = [review_item(m) for m in db.query(Match).filter(reviewable)]
 
     def order(item: ReviewItem):
         ratio = item.supply_ratio or 1.0
-        return (not item.other_recordings_disagree, not item.conflicts, -ratio if item.conflicts else ratio)
+        unknown = item.match.result_source == ResultSource.UNKNOWN
+        return (not unknown, not item.other_recordings_disagree, not item.conflicts,
+                -ratio if item.conflicts else ratio)
 
     return sorted(items, key=order)
 
@@ -78,11 +81,8 @@ def confirm_result(db: Session, match: Match, winner_team: int, confirmed_by: st
         raise ResultChangeError("Winner must be team 1 or team 2")
     if not confirmed_by.strip():
         raise ResultChangeError("Say who is confirming the result")
-    changed = stored_winner_team(match) != winner_team
-    if changed:
-        for mp in db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id):
-            mp.won = int(mp.team_number == winner_team)
-        mark_stale(db, f"Match {match.id} result changed to team {winner_team} by {confirmed_by.strip()}")
+    changed = set_winner(db, match, winner_team,
+                         f"Match {match.id} result changed to team {winner_team} by {confirmed_by.strip()}")
     match.result_source = ResultSource.CONFIRMED
     match.result_confirmed_by = confirmed_by.strip()
     match.result_confirmed_at = now or datetime.utcnow()
@@ -90,12 +90,68 @@ def confirm_result(db: Session, match: Match, winner_team: int, confirmed_by: st
     return changed
 
 
+def set_winner(db: Session, match: Match, winner_team: Optional[int], reason: str) -> bool:
+    """Rewrite the participants' results; returns whether they changed.
+
+    No winner marks every participant as not having won, which leaves the game
+    unrated. A change schedules the rating rebuild.
+    """
+    if stored_winner_team(match) == winner_team:
+        return False
+    for mp in db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id):
+        mp.won = int(winner_team is not None and mp.team_number == winner_team)
+    mark_stale(db, reason)
+    return True
+
+
+def settled_result(evidence: Optional[dict]) -> tuple[str, Optional[int]]:
+    """Result source and winner for a game whose replay records no result.
+
+    Another recording that states the result settles it; otherwise a clear
+    supply lead does; otherwise nobody knows.
+    """
+    recorded = {r.get("winner_team") for r in (evidence or {}).get("other_recordings", [])}
+    if len(recorded) == 1 and None not in recorded:
+        return ResultSource.REPLAY, recorded.pop()
+    winner = supply_winner(evidence)
+    return (ResultSource.SUGGESTED, winner) if winner is not None else (ResultSource.UNKNOWN, None)
+
+
+@dataclass
+class SettleReport:
+    checked: int = 0
+    changed: list[dict] = field(default_factory=list)
+
+
+def settle_unrecorded_results(db: Session, dry_run: bool) -> SettleReport:
+    """Apply the winner rule to every stored game whose replay records no result."""
+    report = SettleReport()
+    reviewable = Match.result_source.in_([ResultSource.UNKNOWN, ResultSource.SUGGESTED])
+    for match in db.query(Match).filter(reviewable).order_by(Match.id):
+        report.checked += 1
+        source, winner = settled_result(match.result_evidence)
+        before = (match.result_source, stored_winner_team(match))
+        if before == (source, winner):
+            continue
+        report.changed.append({"match_id": match.id, "from": {"source": before[0], "winner_team": before[1]},
+                               "to": {"source": source, "winner_team": winner}})
+        if not dry_run:
+            set_winner(db, match, winner, f"Match {match.id} result settled by the winner rule")
+            match.result_source = source
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+    return report
+
+
 @dataclass
 class BackfillReport:
     checked: int = 0
     replay: int = 0
     suggested: int = 0
-    disagreeing_replay: int = 0
+    unknown: int = 0
+    winner_changes: int = 0
     missing_file: int = 0
     unreadable: int = 0
     remaining: int = 0
@@ -103,21 +159,9 @@ class BackfillReport:
     samples: list[dict] = field(default_factory=list)
 
 
-def classify_from_replay(match: Match, parsed: ReplayData) -> tuple[str, Optional[dict]]:
-    """Decide a stored match's result source from a fresh parse of its replay.
-
-    The stored winner is never changed here. When the replay states a result
-    that differs from the stored one, the match is left suggested with that
-    recording noted, so a person decides.
-    """
-    evidence = dict(parsed.result_evidence or {})
-    if parsed.result_source != ResultSource.REPLAY:
-        return ResultSource.SUGGESTED, evidence or None
-    replay_winner = next(p.team for p in parsed.players if p.won)
-    if replay_winner == stored_winner_team(match):
-        return ResultSource.REPLAY, evidence or None
-    evidence["other_recordings"] = [{"replay_hash": parsed.replay_hash, "winner_team": replay_winner}]
-    return ResultSource.SUGGESTED, evidence
+def result_from_replay(parsed: ReplayData) -> tuple[str, Optional[int]]:
+    """Result source and winner from a fresh parse of a stored game's replay."""
+    return parsed.result_source, next(p.team for p in parsed.players if p.won)
 
 
 def backfill_result_sources(db: Session, limit: int, dry_run: bool, after_id: int = 0,
@@ -139,36 +183,34 @@ def backfill_result_sources(db: Session, limit: int, dry_run: bool, after_id: in
         local = replay_storage.materialize_match_replay(stored, match.replay_hash)
         if not local:
             report.missing_file += 1
-            if not dry_run:
-                match.result_source = ResultSource.UNKNOWN
             continue
         try:
             parsed = parse(local)
+            evidence = parsed.result_evidence
+            source, winner = result_from_replay(parsed)
         except WinnerDeterminationError as no_clear_winner:
-            report.suggested += 1
-            if not dry_run:
-                match.result_source = ResultSource.SUGGESTED
-                match.result_evidence = no_clear_winner.team_stats or None
-            continue
+            evidence = no_clear_winner.team_stats or None
+            source, winner = ResultSource.UNKNOWN, None
         except Exception as error:
             logger.warning("Could not re-read replay for match %s: %s", match.id, error)
             report.unreadable += 1
-            if not dry_run:
-                match.result_source = ResultSource.UNKNOWN
             continue
         finally:
             if local != stored:
                 os.unlink(local)
-        source, evidence = classify_from_replay(match, parsed)
         if source == ResultSource.REPLAY:
             report.replay += 1
-        elif evidence and evidence.get("other_recordings"):
-            report.disagreeing_replay += 1
-        else:
+        elif source == ResultSource.SUGGESTED:
             report.suggested += 1
-        if len(report.samples) < 20 and source == ResultSource.SUGGESTED:
-            report.samples.append({"match_id": match.id, "evidence": evidence})
+        else:
+            report.unknown += 1
+        changes_winner = winner != stored_winner_team(match)
+        report.winner_changes += changes_winner
+        if len(report.samples) < 20 and (changes_winner or source == ResultSource.UNKNOWN):
+            report.samples.append({"match_id": match.id, "source": source, "winner_team": winner,
+                                   "stored_winner_team": stored_winner_team(match), "evidence": evidence})
         if not dry_run:
+            set_winner(db, match, winner, f"Match {match.id} result re-read from its replay")
             match.result_source, match.result_evidence = source, evidence
     if not dry_run:
         db.commit()
