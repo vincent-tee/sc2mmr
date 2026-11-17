@@ -35,19 +35,6 @@ def load_ai_mmr_values() -> dict:
     
     return DEFAULT_AI_MMR_VALUES.copy()
 
-def get_ai_mmr(difficulty: str) -> float:
-    """
-    Get the MMR value for a given AI difficulty.
-    
-    Args:
-        difficulty: One of "very_easy", "easy", "medium", "hard", "very_hard", "elite"
-        
-    Returns:
-        MMR value for the AI difficulty
-    """
-    values = load_ai_mmr_values()
-    return values.get(difficulty.lower(), values.get("medium", 1900))
-
 def get_all_ai_difficulties() -> dict:
     """Get all available AI difficulties and their MMR values."""
     return load_ai_mmr_values()

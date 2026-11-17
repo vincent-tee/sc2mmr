@@ -311,12 +311,6 @@ class TeamBalancer:
         player_infos = TeamBalancer._load_player_infos(db, player_ids)
         return TeamBalancer.generate_team_suggestions(player_infos, top_n)
 
-    @staticmethod
-    def quick_balance(db: Session, player_ids: List[int]) -> Optional[TeamSuggestion]:
-        suggestions = TeamBalancer.balance_teams(db, player_ids, top_n=1)
-        return suggestions[0] if suggestions else None
-
-
 class BalancerStats:
     @staticmethod
     def analyze_suggestion(suggestion: TeamSuggestion) -> Dict[str, Any]:
