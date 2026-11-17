@@ -9,7 +9,9 @@ This module uses sc2reader to extract deep statistics:
 - Player impact metrics
 """
 
-from typing import Dict, List, Optional
+import json
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import timedelta
 import sc2reader  # type: ignore
@@ -257,6 +259,24 @@ def compute_kill_death_ratio(units_killed: int, units_lost: int) -> float:
     return 1.0
 
 
+ABILITIES_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "abilities_config.json"
+
+
+def load_micro_abilities() -> Tuple[List[str], List[str]]:
+    """Ability names that count as high and medium micro for the lethality score.
+
+    Read from backend/config/abilities_config.json wherever the process was
+    started from; the short built-in lists are only a fallback for a missing
+    or unreadable file.
+    """
+    try:
+        with open(ABILITIES_CONFIG_PATH, "r") as f:
+            categories = json.load(f).get("ability_categories", {})
+        return categories.get("high_micro", []), categories.get("medium_micro", [])
+    except Exception:
+        return ["Storm", "Stim", "Blink", "EMP"], ["GuardianShield", "ForceField"]
+
+
 def parse_replay_advanced(
     file_path: str, manual_winner_team: Optional[int] = None
 ) -> AdvancedReplayData:
@@ -425,20 +445,7 @@ def parse_replay_advanced(
                 metrics.aggression_score = min(100, early_damage_ratio * 200)
 
         # Process all events for Lethality (Abilities)
-        try:
-            import json
-
-            with open("config/abilities_config.json", "r") as f:
-                ability_config = json.load(f)
-            high_micro = ability_config.get("ability_categories", {}).get(
-                "high_micro", []
-            )
-            medium_micro = ability_config.get("ability_categories", {}).get(
-                "medium_micro", []
-            )
-        except:
-            high_micro = ["Storm", "Stim", "Blink", "EMP"]
-            medium_micro = ["GuardianShield", "ForceField"]
+        high_micro, medium_micro = load_micro_abilities()
 
         for event in getattr(replay, "events", []):
             if (

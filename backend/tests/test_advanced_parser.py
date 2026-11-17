@@ -363,3 +363,25 @@ class TestSupplyBlockUsesRealIntervalsOnce:
         ]
         _process_tracker_events(events, metrics, game_duration=600, total_frames=13440)
         assert metrics[1].supply_block_seconds == 7
+
+
+def test_micro_ability_lists_come_from_the_config_file_from_any_working_directory(tmp_path, monkeypatch):
+    import json
+    from app.advanced_parser import ABILITIES_CONFIG_PATH, load_micro_abilities
+
+    expected = json.loads(ABILITIES_CONFIG_PATH.read_text())["ability_categories"]
+    monkeypatch.chdir(tmp_path)
+    high, medium = load_micro_abilities()
+    assert (high, medium) == (expected["high_micro"], expected["medium_micro"])
+    assert len(high) > 4  # the config file's list, not the four-name built-in fallback
+
+
+def test_ai_difficulties_are_read_from_the_backend_config_directory():
+    import json
+    from app.services.ai_mmr_service import get_all_ai_difficulties, get_config_path
+
+    from app.advanced_parser import ABILITIES_CONFIG_PATH
+
+    assert get_config_path() == ABILITIES_CONFIG_PATH.with_name("ai_mmr.json")
+    assert get_config_path().exists()
+    assert get_all_ai_difficulties() == json.loads(get_config_path().read_text())

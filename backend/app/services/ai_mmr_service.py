@@ -20,7 +20,7 @@ DEFAULT_AI_MMR_VALUES = {
 
 def get_config_path() -> Path:
     """Get path to AI MMR config file."""
-    return Path(__file__).parent.parent / "config" / "ai_mmr.json"
+    return Path(__file__).resolve().parents[2] / "config" / "ai_mmr.json"
 
 def load_ai_mmr_values() -> dict:
     """Load AI MMR values from config file, falling back to defaults."""
