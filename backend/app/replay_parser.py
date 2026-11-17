@@ -17,7 +17,9 @@ from .models import GameMode, Race
 
 logger = logging.getLogger(__name__)
 
-EARLY_QUIT_THRESHOLD_MINUTES = 10  # Minutes to consider an early quit
+# Uploads through the API reject games shorter than this (validate_replay_data).
+# Script ingestion (services/match_orchestrator.py) does not apply it; the only
+# floor every path shares is ingestion.MIN_GAME_SECONDS.
 CRASH_THRESHOLD_MINUTES = 3  # Minutes to consider a crash or test game
 
 

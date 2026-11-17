@@ -15,6 +15,9 @@ from ..rating_system import RatingSystem
 from .derived_data import mark_stale, rebuild_if_due
 from .player_service import PlayerService
 
+# Shorter than this is an aborted game: never recorded by any path, and removed
+# by the duplicate/aborted-game cleanup. API uploads additionally apply the
+# stricter replay_parser.validate_replay_data (3 minutes, 4+ players).
 MIN_GAME_SECONDS = 60
 LONGEST_GAME = timedelta(hours=2)
 

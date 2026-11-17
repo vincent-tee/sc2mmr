@@ -1,6 +1,10 @@
 """
 Ingest a replay file from a script (batch upload, external folders, ghost-match
 restore) through the same parser, winner rule and save path as a web upload.
+
+Unlike a web upload it does not apply validate_replay_data (3-minute minimum,
+4+ players) or the team-experience requirement, so it can record games the
+upload page would turn away.
 """
 
 from dataclasses import dataclass
