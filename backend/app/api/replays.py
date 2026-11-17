@@ -39,6 +39,7 @@ from ..services import replay_storage
 from ..services.ingestion import find_existing_match, ingest_match, save_advanced_metrics, post_process_match
 from ..exceptions import ValidationError
 from ..match_commentary import MatchCommentaryGenerator
+from dataclasses import dataclass
 from pydantic import BaseModel
 import traceback
 
@@ -286,6 +287,265 @@ class MatchDetailResponse(BaseModel):
         from_attributes = True
 
 
+@dataclass
+class _Upload:
+    """One uploaded file on its way in; replay_data is set once it has been parsed."""
+
+    filename: str
+    content: bytes
+    replay_data: Optional[Any] = None
+
+
+def _read_upload(file: UploadFile) -> _Upload:
+    fn: str = str(file.filename) if file.filename else "unknown.SC2Replay"
+    if not fn.endswith(".SC2Replay"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only .SC2Replay files are accepted.",
+        )
+    content = file.file.read(settings.max_replay_size_mb * 1024 * 1024 + 1)
+    _reject_oversized_upload(content)
+    return _Upload(filename=fn, content=content)
+
+
+def _validate_or_reject(replay_data) -> None:
+    is_valid, error_msg = validate_replay_data(replay_data)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"Validation failed: {error_msg}")
+
+
+def _store_unless_duplicate(db: Session, upload: _Upload) -> Optional[str]:
+    """Save the replay file, unless the same game is already recorded from a
+    different uploader's file (same game, different replay_hash) and this
+    copy is not the longer one - then the stored match is simply reused."""
+    replay_data = upload.replay_data
+    duplicate = find_existing_match(db, replay_data)
+    if (duplicate is None or duplicate.replay_hash == replay_data.replay_hash
+            or replay_data.duration_seconds > duplicate.duration_seconds):
+        return _save_replay_file(upload.content, upload.filename, replay_data.replay_hash)
+    return None
+
+
+def _ingest_parsed(
+    db: Session, replay_data, stored_path, post_process_path, advanced_data=None, **ingest_options
+):
+    """Record a parsed replay as a match (with its metrics when the advanced
+    parser ran) and run the follow-up processing. Shared by every upload route."""
+    if advanced_data is not None:
+        ingest_options["save_metrics"] = (
+            lambda work, recorded: save_advanced_metrics(work, recorded, advanced_data)
+        )
+    match, created = ingest_match(db, replay_data, stored_path, **ingest_options)
+    post_process_match(db, int(match.id), created, post_process_path)
+    return match, created
+
+
+def _upload_response(
+    match, replay_data, created: bool, message: str, total_time_ms: float,
+    timings: Optional[dict] = None,
+) -> ReplayUploadResponse:
+    timings = timings or {}
+    return ReplayUploadResponse(
+        match_id=int(match.id),
+        map_name=str(match.map_name),
+        game_mode=str(match.game_mode.value),
+        played_at=match.played_at,
+        duration_seconds=int(match.duration_seconds),
+        num_players=len(replay_data.players),
+        created=created,
+        message=message,
+        processing_stats=ProcessingStats(
+            parse_time_ms=round(timings.get("parse", 0.0), 2),
+            validation_time_ms=round(timings.get("validate", 0.0), 2),
+            duplicate_check_time_ms=0.0,
+            rating_update_time_ms=round(timings.get("rating_update", 0.0), 2),
+            total_time_ms=round(total_time_ms, 2),
+        ),
+    )
+
+
+def _log_upload_failure(
+    db: Session, upload: _Upload, error_type: UploadErrorType, message: str
+) -> None:
+    """Record a failed upload, with the replay's details when it got as far as being parsed."""
+    data = upload.replay_data
+    _log_failed_upload(
+        db=db,
+        filename=upload.filename,
+        file_size=len(upload.content),
+        error_type=error_type,
+        error_message=message,
+        error_detail=traceback.format_exc(),
+        replay_hash=data.replay_hash if data else None,
+        map_name=str(data.map_name) if data else None,
+        game_mode=str(data.game_mode.value) if data else None,
+        duration_seconds=int(data.duration_seconds) if data else None,
+        num_players=len(data.players) if data else None,
+    )
+
+
+def _log_winner_needed(db: Session, upload: _Upload, tmp_file_path: str, error: Exception) -> None:
+    """Keep a replay whose winner could not be worked out, so a person can pick one later."""
+    import sc2reader  # type: ignore
+
+    replay_hash = None
+    m_name = None
+    g_mode = None
+    dur = None
+    n_p = None
+
+    try:
+        replay = sc2reader.load_replay(tmp_file_path, load_level=2)  # type: ignore
+        from ..replay_parser import calculate_replay_hash, determine_game_mode
+
+        replay_hash = calculate_replay_hash(tmp_file_path)
+        m_name = str(getattr(replay, "map_name", ""))
+        dur = int(getattr(getattr(replay, "game_length", None), "seconds", 0))
+        n_p = len(
+            [
+                p
+                for p in getattr(replay, "players", [])
+                if getattr(p, "is_human", False)
+            ]
+        )
+        g_mode_enum = determine_game_mode(n_p)
+        g_mode = g_mode_enum.value if g_mode_enum else None
+    except Exception:
+        pass
+
+    saved_path = None
+    if replay_hash:
+        saved_path = _save_failed_replay_file(upload.content, upload.filename, replay_hash)
+
+    _log_failed_upload(
+        db=db,
+        filename=upload.filename,
+        file_size=len(upload.content),
+        error_type=UploadErrorType.WINNER_DETERMINATION,
+        error_message=str(error),
+        error_detail=traceback.format_exc(),
+        replay_hash=replay_hash,
+        map_name=m_name,
+        game_mode=g_mode,
+        duration_seconds=dur,
+        num_players=n_p,
+        replay_file_path=saved_path,
+    )
+
+
+def _handle_upload(
+    file: UploadFile, db: Session, *, advanced: bool,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> ReplayUploadResponse:
+    """Parse, validate, store, record and post-process one uploaded replay.
+
+    `advanced` also extracts and saves per-player metrics. The two upload
+    routes share everything else; where they still differ it is marked below.
+    """
+    upload = _read_upload(file)
+    fn = upload.filename
+    logger.info(f"Starting replay upload: filename='{fn}' advanced={advanced}")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".SC2Replay") as tmp_file:
+        tmp_file.write(upload.content)
+        tmp_file_path = tmp_file.name
+
+    def internal_error(error: Exception) -> HTTPException:
+        logger.error(f"Upload of {fn} failed unexpectedly: {error}", exc_info=True)
+        _log_upload_failure(db, upload, UploadErrorType.OTHER, str(error))
+        return HTTPException(status_code=500, detail=f"Internal error: {str(error)}")
+
+    try:
+        start_time = time.time()
+        timings: dict = {}
+
+        step_start = time.time()
+        advanced_data = None
+        if advanced:
+            advanced_data = parse_replay_advanced(tmp_file_path)
+            upload.replay_data = advanced_data.basic_data
+        else:
+            upload.replay_data = parse_replay(tmp_file_path)
+        replay_data = upload.replay_data
+        timings["parse"] = (time.time() - step_start) * 1000
+
+        step_start = time.time()
+        _validate_or_reject(replay_data)
+        timings["validate"] = (time.time() - step_start) * 1000
+
+        replay_file_path = _store_unless_duplicate(db, upload)
+
+        step_start = time.time()
+        match, created = _ingest_parsed(
+            db, replay_data, replay_file_path, replay_file_path, advanced_data
+        )
+        timings["rating_update"] = (time.time() - step_start) * 1000
+
+        # Engine-derived stats are only added for the basic route, which has
+        # no metrics of its own.
+        if not advanced and settings.upload_cc_enrichment_enabled and background_tasks is not None:
+            from ..services.cc_enrichment import enrich_match_with_cc_metrics_background
+
+            # Runs after this response is sent, in its own DB session - a
+            # slow or hung SC2 engine must never add latency to the upload.
+            background_tasks.add_task(
+                enrich_match_with_cc_metrics_background, int(match.id)
+            )
+
+        total_time_ms = (time.time() - start_time) * 1000
+        logger.info(
+            f"Upload of {fn} complete in {total_time_ms:.0f}ms | "
+            + ", ".join(f"{k}={v:.0f}ms" for k, v in timings.items())
+        )
+        processed = (
+            "Replay processed successfully with advanced metrics"
+            if advanced else "Replay processed successfully"
+        )
+        return _upload_response(
+            match, replay_data, created,
+            processed if created
+            else f"Already on the ladder - existing Match #{match.id} was refreshed",
+            total_time_ms,
+            timings if advanced else None,
+        )
+
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    except WinnerDeterminationError as e:
+        # Route difference: only the basic route keeps the replay for a
+        # person to pick the winner; the advanced route reports it as an
+        # unexpected error.
+        if advanced:
+            raise internal_error(e)
+        _log_winner_needed(db, upload, tmp_file_path, e)
+        raise HTTPException(
+            status_code=400, detail=f"Winner determination failed: {str(e)}"
+        )
+
+    except ReplayParseError as e:
+        _log_upload_failure(db, upload, UploadErrorType.PARSE_ERROR, str(e))
+        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
+
+    except HTTPException as http_ex:
+        # Route difference: only the basic route records rejected replays
+        # (too short, too few players, ...) in the failed-uploads list.
+        if not advanced and http_ex.status_code != 409:
+            msg = str(http_ex.detail)
+            error_type = UploadErrorType.VALIDATION_ERROR
+            if "Invalid game mode" in msg:
+                error_type = UploadErrorType.UNSUPPORTED_MODE
+            _log_upload_failure(db, upload, error_type, msg)
+        raise
+
+    except Exception as e:
+        raise internal_error(e)
+
+    finally:
+        if os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
+
+
 @router.post("/upload", response_model=ReplayUploadResponse)
 def upload_replay(
     background_tasks: BackgroundTasks,
@@ -295,185 +555,17 @@ def upload_replay(
     """
     Upload and process a SC2 replay file.
     """
-    fn: str = str(file.filename) if file.filename else "unknown.SC2Replay"
-    logger.info(f"Starting replay upload: filename='{fn}'")
+    return _handle_upload(file, db, advanced=False, background_tasks=background_tasks)
 
-    if not fn.endswith(".SC2Replay"):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file type. Only .SC2Replay files are accepted.",
-        )
 
-    content = file.file.read(settings.max_replay_size_mb * 1024 * 1024 + 1)
-    _reject_oversized_upload(content)
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".SC2Replay") as tmp_file:
-        tmp_file.write(content)
-        tmp_file_path = tmp_file.name
-
-    replay_data = None
-    try:
-        start_time = time.time()
-        replay_data = parse_replay(tmp_file_path)
-
-        is_valid, error_msg = validate_replay_data(replay_data)
-        if not is_valid:
-            raise HTTPException(
-                status_code=400, detail=f"Validation failed: {error_msg}"
-            )
-
-        # If this is the same game already recorded under a different
-        # uploader's file (same game_fingerprint, different replay_hash),
-        # don't save a second copy of the replay on disk - just reuse the
-        # match that's already there.
-        duplicate = find_existing_match(db, replay_data)
-        replay_file_path = None
-        if (duplicate is None or duplicate.replay_hash == replay_data.replay_hash
-                or replay_data.duration_seconds > duplicate.duration_seconds):
-            replay_file_path = _save_replay_file(content, fn, replay_data.replay_hash)
-
-        match, created = ingest_match(db, replay_data, replay_file_path)
-
-        post_process_match(db, int(match.id), created, replay_file_path)
-
-        if settings.upload_cc_enrichment_enabled:
-            from ..services.cc_enrichment import enrich_match_with_cc_metrics_background
-
-            # Runs after this response is sent, in its own DB session — a
-            # slow or hung SC2 engine must never add latency to the upload.
-            background_tasks.add_task(
-                enrich_match_with_cc_metrics_background, int(match.id)
-            )
-
-        total_time_ms = (time.time() - start_time) * 1000
-
-        return ReplayUploadResponse(
-            match_id=int(match.id),
-            map_name=str(match.map_name),
-            game_mode=str(match.game_mode.value),
-            played_at=match.played_at,
-            duration_seconds=int(match.duration_seconds),
-            num_players=len(replay_data.players),
-            created=created,
-            message=(
-                "Replay processed successfully"
-                if created
-                else f"Already on the ladder - existing Match #{match.id} was refreshed"
-            ),
-            processing_stats=ProcessingStats(
-                parse_time_ms=0.0,
-                validation_time_ms=0.0,
-                duplicate_check_time_ms=0.0,
-                rating_update_time_ms=0.0,
-                total_time_ms=round(total_time_ms, 2),
-            ),
-        )
-
-    except ValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    except WinnerDeterminationError as e:
-        import sc2reader  # type: ignore
-
-        replay_hash = None
-        m_name = None
-        g_mode = None
-        dur = None
-        n_p = None
-
-        try:
-            replay = sc2reader.load_replay(tmp_file_path, load_level=2)  # type: ignore
-            from ..replay_parser import calculate_replay_hash, determine_game_mode
-
-            replay_hash = calculate_replay_hash(tmp_file_path)
-            m_name = str(getattr(replay, "map_name", ""))
-            dur = int(getattr(getattr(replay, "game_length", None), "seconds", 0))
-            n_p = len(
-                [
-                    p
-                    for p in getattr(replay, "players", [])
-                    if getattr(p, "is_human", False)
-                ]
-            )
-            g_mode_enum = determine_game_mode(n_p)
-            g_mode = g_mode_enum.value if g_mode_enum else None
-        except Exception:
-            pass
-
-        saved_path = None
-        if replay_hash:
-            saved_path = _save_failed_replay_file(content, fn, replay_hash)
-
-        _log_failed_upload(
-            db=db,
-            filename=fn,
-            file_size=len(content),
-            error_type=UploadErrorType.WINNER_DETERMINATION,
-            error_message=str(e),
-            error_detail=traceback.format_exc(),
-            replay_hash=replay_hash,
-            map_name=m_name,
-            game_mode=g_mode,
-            duration_seconds=dur,
-            num_players=n_p,
-            replay_file_path=saved_path,
-        )
-        raise HTTPException(
-            status_code=400, detail=f"Winner determination failed: {str(e)}"
-        )
-
-    except ReplayParseError as e:
-        _log_failed_upload(
-            db=db,
-            filename=fn,
-            file_size=len(content),
-            error_type=UploadErrorType.PARSE_ERROR,
-            error_message=str(e),
-            error_detail=traceback.format_exc(),
-        )
-        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
-    except HTTPException as http_ex:
-        if http_ex.status_code != 409:
-            msg = str(http_ex.detail)
-            if "Unable to determine" not in msg:
-                error_type = UploadErrorType.VALIDATION_ERROR
-                if "Invalid game mode" in msg:
-                    error_type = UploadErrorType.UNSUPPORTED_MODE
-
-                _log_failed_upload(
-                    db=db,
-                    filename=fn,
-                    file_size=len(content),
-                    error_type=error_type,
-                    error_message=msg,
-                    error_detail=traceback.format_exc(),
-                    replay_hash=replay_data.replay_hash if replay_data else None,
-                    map_name=str(replay_data.map_name) if replay_data else None,
-                    game_mode=str(replay_data.game_mode.value) if replay_data else None,
-                    duration_seconds=int(replay_data.duration_seconds)
-                    if replay_data
-                    else None,
-                    num_players=len(replay_data.players) if replay_data else None,
-                )
-        raise
-    except Exception as e:
-        _log_failed_upload(
-            db=db,
-            filename=fn,
-            file_size=len(content),
-            error_type=UploadErrorType.OTHER,
-            error_message=str(e),
-            error_detail=traceback.format_exc(),
-            replay_hash=replay_data.replay_hash if replay_data else None,
-            map_name=str(replay_data.map_name) if replay_data else None,
-            game_mode=str(replay_data.game_mode.value) if replay_data else None,
-            duration_seconds=int(replay_data.duration_seconds) if replay_data else None,
-            num_players=len(replay_data.players) if replay_data else None,
-        )
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-    finally:
-        if os.path.exists(tmp_file_path):
-            os.remove(tmp_file_path)
+@router.post("/upload-advanced", response_model=ReplayUploadResponse)
+def upload_replay_advanced(
+    file: UploadFile = File(...), db: Session = Depends(get_db)
+):
+    """
+    Upload and process a SC2 replay file with advanced metrics.
+    """
+    return _handle_upload(file, db, advanced=True)
 
 
 @router.get("/matches", response_model=MatchListResponse)
@@ -938,16 +1030,14 @@ def retry_failed_upload(upload_id: int, db: Session = Depends(get_db)):
         )
 
     try:
-        match, created = ingest_match(
-            db, replay_data, failed_upload.replay_file_path,
+        match, created = _ingest_parsed(
+            db, replay_data, failed_upload.replay_file_path, file_path,
             failed_upload_id=upload_id,
         )
     except ValidationError as exc:
         return RetryFailedUploadResponse(
             upload_id=upload_id, status="still_failing", detail=str(exc)
         )
-
-    post_process_match(db, int(match.id), created, file_path)
 
     logger.info(f"Recovered failed upload {upload_id} as match {match.id}")
     return RetryFailedUploadResponse(
@@ -1128,37 +1218,17 @@ def set_manual_winner(
         )
         replay_data = advanced_data.basic_data
 
-        # Validate replay data
-        is_valid, error_msg = validate_replay_data(replay_data)
-        if not is_valid:
-            raise HTTPException(
-                status_code=400, detail=f"Validation failed: {error_msg}"
-            )
+        _validate_or_reject(replay_data)
 
-        match, created = ingest_match(
-            db, replay_data, failed_upload.replay_file_path,
-            save_metrics=lambda work, recorded: save_advanced_metrics(work, recorded, advanced_data),
-            require_experience=False, failed_upload_id=upload_id,
+        match, created = _ingest_parsed(
+            db, replay_data, failed_upload.replay_file_path, local_replay_path,
+            advanced_data, require_experience=False, failed_upload_id=upload_id,
         )
 
-        post_process_match(db, int(match.id), created, local_replay_path)
-
-        return ReplayUploadResponse(
-            match_id=int(match.id),
-            map_name=str(match.map_name),
-            game_mode=str(match.game_mode.value),
-            played_at=match.played_at,
-            duration_seconds=int(match.duration_seconds),
-            num_players=len(replay_data.players),
-            created=created,
-            message="Replay processed successfully with manual winner determination",
-            processing_stats=ProcessingStats(
-                parse_time_ms=0,
-                validation_time_ms=0,
-                duplicate_check_time_ms=0,
-                rating_update_time_ms=0,
-                total_time_ms=round((time.time() - start_time) * 1000, 2),
-            ),
+        return _upload_response(
+            match, replay_data, created,
+            "Replay processed successfully with manual winner determination",
+            (time.time() - start_time) * 1000,
         )
 
     except ValidationError as exc:
@@ -1173,154 +1243,3 @@ def set_manual_winner(
         raise HTTPException(
             status_code=500, detail=f"Failed to reprocess replay: {str(e)}"
         )
-
-
-@router.post("/upload-advanced", response_model=ReplayUploadResponse)
-def upload_replay_advanced(
-    file: UploadFile = File(...), db: Session = Depends(get_db)
-):
-    """
-    Upload and process a SC2 replay file with advanced metrics.
-    """
-    fn: str = str(file.filename) if file.filename else "unknown.SC2Replay"
-    logger.info(f"[UPLOAD-ADV] Starting upload: {fn}")
-
-    if not fn.endswith(".SC2Replay"):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file type. Only .SC2Replay files are accepted.",
-        )
-
-    content = file.file.read(settings.max_replay_size_mb * 1024 * 1024 + 1)
-    _reject_oversized_upload(content)
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".SC2Replay") as tmp_file:
-        tmp_file.write(content)
-        tmp_file_path = tmp_file.name
-        logger.info(f"[UPLOAD-ADV] {fn}: File saved to temp ({len(content)} bytes)")
-
-    replay_data = None
-    try:
-        start_time = time.time()
-        step_times: dict = {}
-
-        # Parse with advanced metrics
-        step_start = time.time()
-        advanced_data = parse_replay_advanced(tmp_file_path)
-        replay_data = advanced_data.basic_data
-        step_times["parse"] = (time.time() - step_start) * 1000
-        logger.info(f"[UPLOAD-ADV] {fn}: Parse complete ({step_times['parse']:.0f}ms)")
-
-        # Validate
-        step_start = time.time()
-        is_valid, error_msg = validate_replay_data(replay_data)
-        step_times["validate"] = (time.time() - step_start) * 1000
-        logger.info(f"[UPLOAD-ADV] {fn}: Validation complete ({step_times['validate']:.0f}ms)")
-        if not is_valid:
-            # Check for winner determination failure to log it specifically
-            if error_msg and "Unable to determine" in error_msg:
-                saved_path = _save_failed_replay_file(
-                    content, fn, replay_data.replay_hash
-                )
-                _log_failed_upload(
-                    db=db,
-                    filename=fn,
-                    file_size=len(content),
-                    error_type=UploadErrorType.WINNER_DETERMINATION,
-                    error_message=error_msg,
-                    error_detail=traceback.format_exc(),
-                    replay_hash=replay_data.replay_hash,
-                    map_name=str(replay_data.map_name),
-                    game_mode=str(replay_data.game_mode.value),
-                    duration_seconds=int(replay_data.duration_seconds),
-                    num_players=len(replay_data.players),
-                    replay_file_path=saved_path,
-                )
-            raise HTTPException(
-                status_code=400, detail=f"Validation failed: {error_msg}"
-            )
-
-        # Same game already recorded under a different uploader's file?
-        # Don't save a second copy of the replay on disk.
-        step_start = time.time()
-        duplicate = find_existing_match(db, replay_data)
-        replay_file_path = None
-        if (duplicate is None or duplicate.replay_hash == replay_data.replay_hash
-                or replay_data.duration_seconds > duplicate.duration_seconds):
-            replay_file_path = _save_replay_file(content, fn, replay_data.replay_hash)
-        step_times["save_file"] = (time.time() - step_start) * 1000
-        logger.info(f"[UPLOAD-ADV] {fn}: File saved ({step_times['save_file']:.0f}ms)")
-
-        step_start = time.time()
-        match, created = ingest_match(
-            db, replay_data, replay_file_path,
-            save_metrics=lambda work, recorded: save_advanced_metrics(work, recorded, advanced_data),
-        )
-        step_times["rating_update"] = (time.time() - step_start) * 1000
-
-        post_process_match(db, int(match.id), created, replay_file_path)
-
-        total_time_ms = (time.time() - start_time) * 1000
-
-        # Log summary with all step timings
-        timing_summary = ", ".join([f"{k}={v:.0f}ms" for k, v in step_times.items()])
-        logger.info(f"[UPLOAD-ADV] {fn}: COMPLETE in {total_time_ms:.0f}ms | {timing_summary}")
-
-        return ReplayUploadResponse(
-            match_id=int(match.id),
-            map_name=str(match.map_name),
-            game_mode=str(match.game_mode.value),
-            played_at=match.played_at,
-            duration_seconds=int(match.duration_seconds),
-            num_players=len(replay_data.players),
-            created=created,
-            message=(
-                "Replay processed successfully with advanced metrics"
-                if created
-                else f"Already on the ladder - existing Match #{match.id} was refreshed"
-            ),
-            processing_stats=ProcessingStats(
-                parse_time_ms=round(step_times.get("parse", 0), 2),
-                validation_time_ms=round(step_times.get("validate", 0), 2),
-                duplicate_check_time_ms=round(step_times.get("upsert", 0), 2),
-                rating_update_time_ms=round(step_times.get("rating_update", 0), 2),
-                total_time_ms=round(total_time_ms, 2),
-            ),
-        )
-
-    except ValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    except ReplayParseError as e:
-        logger.error(f"[UPLOAD-ADV] {fn}: PARSE ERROR - {str(e)}")
-        _log_failed_upload(
-            db=db,
-            filename=fn,
-            file_size=len(content),
-            error_type=UploadErrorType.PARSE_ERROR,
-            error_message=str(e),
-            error_detail=traceback.format_exc(),
-        )
-        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
-    except HTTPException as http_ex:
-        logger.warning(f"[UPLOAD-ADV] {fn}: HTTP EXCEPTION - {http_ex.detail}")
-        raise
-    except Exception as e:
-        logger.error(f"[UPLOAD-ADV] {fn}: UNEXPECTED ERROR - {str(e)}", exc_info=True)
-        _log_failed_upload(
-            db=db,
-            filename=fn,
-            file_size=len(content),
-            error_type=UploadErrorType.OTHER,
-            error_message=str(e),
-            error_detail=traceback.format_exc(),
-            replay_hash=replay_data.replay_hash if replay_data else None,
-            map_name=str(replay_data.map_name) if replay_data else None,
-            game_mode=str(replay_data.game_mode.value) if replay_data else None,
-            duration_seconds=int(replay_data.duration_seconds) if replay_data else None,
-            num_players=len(replay_data.players) if replay_data else None,
-        )
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-    finally:
-        if os.path.exists(tmp_file_path):
-            os.remove(tmp_file_path)
