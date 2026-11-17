@@ -43,7 +43,6 @@ class Player(Base):
     Hybrid MMR System:
     - mmr: Display MMR based on TrueSkill (1000 + 100*mu - 200*sigma)
     - hybrid_mmr: Performance-adjusted MMR that accounts for in-game metrics
-    - avg_pim: Average Performance Impact Modifier across all games
     """
 
     __tablename__ = "players"
@@ -63,9 +62,6 @@ class Player(Base):
     hybrid_mmr: Mapped[Optional[float]] = mapped_column(
         Float, default=2000.0, nullable=True
     )  # Defaults to starting display MMR
-    avg_pim: Mapped[Optional[float]] = mapped_column(
-        Float, default=0.0, nullable=True
-    )  # Average Performance Impact Modifier
 
     # Statistics
     total_games: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -101,7 +97,6 @@ class Player(Base):
     avg_combat_score: Mapped[float] = mapped_column(Float, default=0.0)
     avg_efficiency_score: Mapped[float] = mapped_column(Float, default=0.0)
     avg_overall_impact: Mapped[float] = mapped_column(Float, default=0.0)
-    avg_harassment_score: Mapped[float] = mapped_column(Float, default=0.0)  # NEW
 
     # Timing profile (averaged across all games)
     avg_first_damage_timing: Mapped[Optional[int]] = mapped_column(
@@ -111,21 +106,6 @@ class Player(Base):
         String, nullable=True
     )  # Most common archetype
     avg_aggression_score: Mapped[float] = mapped_column(Float, default=50.0)
-
-    # Recency-weighted impact scores (60-day half-life decay)
-    # These weight recent performance more heavily than older games
-    recency_weighted_combat: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    recency_weighted_economic: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    recency_weighted_efficiency: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    recency_weighted_overall_impact: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
 
     # Relationships
     match_participations: Mapped[List["MatchPlayer"]] = relationship(
@@ -143,19 +123,8 @@ class Player(Base):
     # Calculated as: 1000 + 100*mu - 200*sigma
     mmr: Mapped[float] = mapped_column(Float, default=1833.0, nullable=False)
 
-    # Handicap-Corrected MMR (intermediate calculation)
-    # Accounts for balancing bias where top players are put on weaker teams
-    # Formula: mmr + (outperformance * 3000)
-    # Where outperformance = actual_win_rate - expected_win_rate_given_handicap
-    handicap_corrected_mmr: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    avg_team_handicap: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    outperformance_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-
-    # Unified MMR (THE primary rating - SPEC-UNIFIED-MMR)
-    # Formula: handicap_corrected_mmr + (20 * avg_combat_score)
-    # Combines TrueSkill + handicap correction + combat contribution
+    # Retired rating, no longer computed (see rating-consolidation-log.md);
+    # the column still holds historical values.
     unified_mmr: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     @property
@@ -896,22 +865,6 @@ class PlayerRivalry(Base):
     )
 
 
-class FeatureSuggestion(Base):
-    """
-    Suggested new features for the ML model.
-    """
-
-    __tablename__ = "feature_suggestions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    feature_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    description: Mapped[str] = mapped_column(String(500), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), default="pending"
-    )  # pending, reviewed, implemented
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
 class PlayerAlias(Base):
     """
     Canonical name mapping for players with multiple accounts/barcodes.
@@ -938,21 +891,6 @@ class PlayerAlias(Base):
     target_player: Mapped["Player"] = relationship("Player", backref="aliases")
 
 
-class MetaFeedback(Base):
-    """
-    User feedback or "squad theories" about match dynamics.
-    """
-
-    __tablename__ = "meta_feedback"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    theory: Mapped[str] = mapped_column(String(500), nullable=False)
-    is_active: Mapped[bool] = mapped_column(
-        Integer, default=1
-    )  # 1 for active, 0 for inactive
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
 class GroupSynergy(Base):
     """
     Cache duo/trio synergy scores for ML balancing.
@@ -971,24 +909,6 @@ class GroupSynergy(Base):
     matches_won: Mapped[int] = mapped_column(Integer, default=0)
     win_rate: Mapped[float] = mapped_column(Float, default=0.0)
     synergy_score: Mapped[float] = mapped_column(Float, default=0.0)
-    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class ComponentAccuracy(Base):
-    """
-    Track prediction accuracy by component across all history.
-
-    Uses Exponential Moving Average (EMA) to weight recent predictions
-    more heavily while still considering historical performance.
-    """
-
-    __tablename__ = "component_accuracy"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    component_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    predictions_correct: Mapped[int] = mapped_column(Integer, default=0)
-    predictions_total: Mapped[int] = mapped_column(Integer, default=0)
-    accuracy: Mapped[float] = mapped_column(Float, default=0.5)
     last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -1050,22 +970,6 @@ class BalancePrediction(Base):
     team1_won: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     brier_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-
-class LiveMatchFeed(Base):
-    """
-    Feed for live match detection events.
-    Enables '10/10' Strategic Forecast feature.
-    """
-
-    __tablename__ = "live_match_feed"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    match_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    map_name: Mapped[str] = mapped_column(String, nullable=False)
-    forecast_json: Mapped[dict] = mapped_column(JSON, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Integer, default=1)
 
 
 class HumanEstimate(str, enum.Enum):
