@@ -244,19 +244,15 @@ def run_optional_processing(db: Session, name: str, action: Callable) -> None:
         logging.getLogger(__name__).exception("%s failed", name)
 
 
-def post_process_match(db: Session, match_id: int, created: bool, replay_path=None) -> None:
+def post_process_match(db: Session, match_id: int, created: bool) -> None:
     from .achievement_service import AchievementService
     from .balance_capture import BalancePredictionService
-    from .ml_features_service import MLFeaturesService
     from .rivalry_service import RivalryService
 
     def award_achievements(work):
         for mp in work.query(MatchPlayer).filter(MatchPlayer.match_id == match_id):
             AchievementService.check_and_award_all(work, mp.player_id, match_id)
 
-    if replay_path:
-        run_optional_processing(db, "ML feature extraction", lambda work:
-                                MLFeaturesService.extract_and_save_ml_features(work, replay_path, match_id))
     run_optional_processing(db, "Balance prediction resolution", lambda work:
                             BalancePredictionService.resolve_for_match(work, work.get(Match, match_id)))
     if created:

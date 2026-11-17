@@ -48,11 +48,11 @@ class MatchOrchestrator:
             require_experience=False,
         )
         if created:
-            self._trigger_post_processing(match, file_path)
+            self._trigger_post_processing(match)
         return MatchOrchestrationResult(
             match=match, num_players=len(replay_data.players),
             message=f"Match {match.id} from {filename} ingested", created=created,
         )
 
-    def _trigger_post_processing(self, match: Match, replay_path: str) -> None:
-        post_process_match(self.db, int(match.id), True, replay_path)
+    def _trigger_post_processing(self, match: Match) -> None:
+        post_process_match(self.db, int(match.id), True)

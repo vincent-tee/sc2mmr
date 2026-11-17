@@ -257,7 +257,7 @@ class MetaReportResponse(BaseModel):
 
 @router.get("/meta-report", response_model=MetaReportResponse)
 async def get_squad_meta_report(db: Session = Depends(get_db)):
-    from ..models import MatchPlayer, PerformanceFeatures, Race
+    from ..models import MatchPlayer, Race
 
     wr_map = {}
     for r in [Race.TERRAN, Race.PROTOSS, Race.ZERG]:
@@ -270,25 +270,8 @@ async def get_squad_meta_report(db: Session = Depends(get_db)):
         )
         if count and count > 0:
             wr_map[r.value] = round(float(wr or 0) * 100, 1)
-    archs = (
-        db.query(
-            PerformanceFeatures.detected_build_type,
-            func.avg(MatchPlayer.won).label("wr"),
-            func.count(MatchPlayer.id).label("c"),
-        )
-        .join(MatchPlayer)
-        .join(Match, MatchPlayer.match_id == Match.id)
-        .filter(PerformanceFeatures.detected_build_type.isnot(None), Match.is_rated)
-        .group_by(PerformanceFeatures.detected_build_type)
-        .having(func.count(MatchPlayer.id) >= 10)
-        .order_by(desc("wr"))
-        .all()
-    )
     return MetaReportResponse(
         squad_win_rate_by_race=wr_map,
         top_compositions=[],
-        most_effective_archetypes=[
-            {"type": a[0], "win_rate": round(float(a[1] or 0) * 100, 1), "games": a[2]}
-            for a in archs
-        ],
+        most_effective_archetypes=[],
     )

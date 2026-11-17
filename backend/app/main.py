@@ -15,7 +15,6 @@ from .api import (
     players,
     teams,
     impact,
-    adaptive,
     achievements,
     leaderboard,
     headtohead,
@@ -79,7 +78,6 @@ app.include_router(replays.router)
 app.include_router(players.router)
 app.include_router(teams.router)
 app.include_router(impact.router)
-app.include_router(adaptive.router)
 app.include_router(achievements.router)
 app.include_router(leaderboard.router)
 app.include_router(headtohead.router)

@@ -23,7 +23,6 @@ from ..models import (
     Player,
     FailedUpload,
     UploadErrorType,
-    PerformanceFeatures,
     PlayerMatchMetrics,
     GameMode,
 )
@@ -326,9 +325,7 @@ def _store_unless_duplicate(db: Session, upload: _Upload) -> Optional[str]:
     return None
 
 
-def _ingest_parsed(
-    db: Session, replay_data, stored_path, post_process_path, advanced_data=None, **ingest_options
-):
+def _ingest_parsed(db: Session, replay_data, stored_path, advanced_data=None, **ingest_options):
     """Record a parsed replay as a match (with its metrics when the advanced
     parser ran) and run the follow-up processing. Shared by every upload route."""
     if advanced_data is not None:
@@ -336,7 +333,7 @@ def _ingest_parsed(
             lambda work, recorded: save_advanced_metrics(work, recorded, advanced_data)
         )
     match, created = ingest_match(db, replay_data, stored_path, **ingest_options)
-    post_process_match(db, int(match.id), created, post_process_path)
+    post_process_match(db, int(match.id), created)
     return match, created
 
 
@@ -470,9 +467,7 @@ def _handle_upload(
         replay_file_path = _store_unless_duplicate(db, upload)
 
         step_start = time.time()
-        match, created = _ingest_parsed(
-            db, replay_data, replay_file_path, replay_file_path, advanced_data
-        )
+        match, created = _ingest_parsed(db, replay_data, replay_file_path, advanced_data)
         timings["rating_update"] = (time.time() - step_start) * 1000
 
         # Engine-derived stats are only added for the basic route, which has
@@ -866,110 +861,6 @@ def _save_replay_file(content: bytes, filename: str, replay_hash: str) -> Option
     return replay_storage.save_replay(content, replay_hash)
 
 
-class BulkReprocessRequest(BaseModel):
-    """Request for bulk reprocessing."""
-
-    match_ids: Optional[List[int]] = None  # If None, process all
-    force: bool = False  # If True, reprocess even if features exist
-
-
-class BulkReprocessResponse(BaseModel):
-    """Response for bulk reprocessing."""
-
-    total: int
-    processed: int
-    skipped: int
-    failed: int
-    errors: List[dict]
-
-
-@router.post("/bulk-reprocess", response_model=BulkReprocessResponse)
-def bulk_reprocess_replays(
-    request: BulkReprocessRequest, db: Session = Depends(get_db)
-):
-    """
-    Bulk re-process existing matches to extract ML features.
-    """
-    from ..services.ml_features_service import MLFeaturesService
-
-    # Get matches to process
-    query = db.query(Match)
-
-    if request.match_ids:
-        query = query.filter(Match.id.in_(request.match_ids))
-
-    matches = query.all()
-
-    total = len(matches)
-    processed = 0
-    skipped = 0
-    failed = 0
-    errors = []
-
-    for m in matches:
-        match: Any = m
-        try:
-            # Check if replay file exists (downloads a temp copy in GCS mode)
-            local_path = replay_storage.materialize_local_copy(
-                str(match.replay_file_path or "")
-            )
-            if not local_path:
-                skipped += 1
-                errors.append({"match_id": match.id, "error": "Replay file not found"})
-                continue
-
-            # Check if features already exist (unless force=True)
-            if not request.force:
-                # Check if any player has features
-                match_players = (
-                    db.query(MatchPlayer).filter(MatchPlayer.match_id == match.id).all()
-                )
-
-                has_features = False
-                for mp in match_players:
-                    existing = (
-                        db.query(PerformanceFeatures)
-                        .filter(PerformanceFeatures.match_player_id == mp.id)
-                        .first()
-                    )
-                    if existing is not None:
-                        has_features = True
-                        break
-
-                if has_features:
-                    skipped += 1
-                    continue
-
-            # Extract and save ML features
-            results = MLFeaturesService.extract_and_save_ml_features(
-                db, local_path, int(match.id)
-            )
-
-            if any(results.values()):
-                processed += 1
-            else:
-                failed += 1
-                errors.append(
-                    {
-                        "match_id": match.id,
-                        "error": "Feature extraction returned no results",
-                    }
-                )
-
-        except Exception as e:
-            failed += 1
-            errors.append({"match_id": match.id, "error": str(e)})
-            logger.error(f"Failed to reprocess match {match.id}: {e}")
-
-    return BulkReprocessResponse(
-        total=total,
-        processed=processed,
-        skipped=skipped,
-        failed=failed,
-        errors=errors[:50],  # Limit error list
-    )
-
-
 class RetryFailedUploadResponse(BaseModel):
     """Response for a failed-upload retry attempt."""
 
@@ -1021,8 +912,7 @@ def retry_failed_upload(upload_id: int, db: Session = Depends(get_db)):
 
     try:
         match, created = _ingest_parsed(
-            db, replay_data, failed_upload.replay_file_path, file_path,
-            failed_upload_id=upload_id,
+            db, replay_data, failed_upload.replay_file_path, failed_upload_id=upload_id,
         )
     except ValidationError as exc:
         return RetryFailedUploadResponse(
@@ -1211,8 +1101,8 @@ def set_manual_winner(
         _validate_or_reject(replay_data)
 
         match, created = _ingest_parsed(
-            db, replay_data, failed_upload.replay_file_path, local_replay_path,
-            advanced_data, require_experience=False, failed_upload_id=upload_id,
+            db, replay_data, failed_upload.replay_file_path, advanced_data,
+            require_experience=False, failed_upload_id=upload_id,
         )
 
         return _upload_response(
