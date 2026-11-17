@@ -68,6 +68,38 @@ class TeamSuggestionResponse(BaseModel):
     impact_difference: float = 0.0
 
 
+def _suggestion_response(suggestion, map_name: Optional[str] = None) -> TeamSuggestionResponse:
+    """Turn a balancer suggestion into the API response."""
+    analysis = BalancerStats.analyze_suggestion(suggestion)
+    balance = analysis["balance"]
+
+    def team_info(players, team_key: str) -> TeamInfo:
+        return TeamInfo(
+            players=[
+                PlayerInfo(id=p.id, name=p.name, mmr=p.mmr, mu=p.mu, sigma=p.sigma)
+                for p in players
+            ],
+            total_mmr=analysis[team_key]["total_mmr"],
+            avg_mmr=analysis[team_key]["avg_mmr"],
+        )
+
+    return TeamSuggestionResponse(
+        balance_prediction_id=suggestion.balance_prediction_id,
+        map_name=map_name,
+        team_1=team_info(suggestion.team_1, "team_1"),
+        team_2=team_info(suggestion.team_2, "team_2"),
+        mmr_difference=balance["mmr_difference"],
+        match_quality=balance["match_quality"],
+        win_probability_team_1=balance["win_probability_team_1"],
+        win_probability_team_2=balance["win_probability_team_2"],
+        fairness_rating=balance["fairness_rating"],
+        team_1_avg_impact=balance["team_1_avg_impact"],
+        team_2_avg_impact=balance["team_2_avg_impact"],
+        impact_balance_score=balance["impact_balance_score"],
+        impact_difference=balance["impact_difference"],
+    )
+
+
 class CustomPlayerInfo(BaseModel):
     """Information for a custom (non-DB) player."""
 
@@ -121,45 +153,7 @@ def balance_with_custom_players(
 
     suggestions = TeamBalancer.generate_team_suggestions(player_infos, top_n=request.top_n)
 
-    # Convert to response format
-    responses = []
-    for suggestion in suggestions:
-        analysis = BalancerStats.analyze_suggestion(suggestion)
-
-        def to_player_info(p: BalancerPlayerInfo) -> PlayerInfo:
-            return PlayerInfo(
-                id=p.id,
-                name=p.name,
-                mmr=p.mmr,
-                mu=p.mu,
-                sigma=p.sigma,
-            )
-
-        responses.append(
-            TeamSuggestionResponse(
-                team_1=TeamInfo(
-                    players=[to_player_info(p) for p in suggestion.team_1],
-                    total_mmr=analysis["team_1"]["total_mmr"],
-                    avg_mmr=analysis["team_1"]["avg_mmr"],
-                ),
-                team_2=TeamInfo(
-                    players=[to_player_info(p) for p in suggestion.team_2],
-                    total_mmr=analysis["team_2"]["total_mmr"],
-                    avg_mmr=analysis["team_2"]["avg_mmr"],
-                ),
-                mmr_difference=analysis["balance"]["mmr_difference"],
-                match_quality=analysis["balance"]["match_quality"],
-                win_probability_team_1=analysis["balance"]["win_probability_team_1"],
-                win_probability_team_2=analysis["balance"]["win_probability_team_2"],
-                fairness_rating=analysis["balance"]["fairness_rating"],
-                team_1_avg_impact=analysis["balance"]["team_1_avg_impact"],
-                team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
-                impact_balance_score=analysis["balance"]["impact_balance_score"],
-                impact_difference=analysis["balance"]["impact_difference"],
-            )
-        )
-
-    return responses
+    return [_suggestion_response(suggestion) for suggestion in suggestions]
 
 
 class DraftPickResponse(BaseModel):
@@ -378,72 +372,7 @@ def balance_teams(request: BalanceTeamsRequest, db: Session = Depends(get_db)):
             db, "mmr_v2", suggestions, max_rank=len(suggestions), map_name=request.map_name
         )
 
-        # Convert to response format
-        responses = []
-        for suggestion in suggestions:
-            # Get detailed analysis
-            analysis = BalancerStats.analyze_suggestion(suggestion)
-
-            # Build team 1 info
-            team_1_players = [
-                PlayerInfo(
-                    id=player.id,
-                    name=player.name,
-                    mmr=player.mmr,
-                    mu=player.mu,
-                    sigma=player.sigma,
-                )
-                for player in suggestion.team_1
-            ]
-
-            team_1_info = TeamInfo(
-                players=team_1_players,
-                total_mmr=analysis["team_1"]["total_mmr"],
-                avg_mmr=analysis["team_1"]["avg_mmr"],
-            )
-
-            # Build team 2 info
-            team_2_players = [
-                PlayerInfo(
-                    id=player.id,
-                    name=player.name,
-                    mmr=player.mmr,
-                    mu=player.mu,
-                    sigma=player.sigma,
-                )
-                for player in suggestion.team_2
-            ]
-
-            team_2_info = TeamInfo(
-                players=team_2_players,
-                total_mmr=analysis["team_2"]["total_mmr"],
-                avg_mmr=analysis["team_2"]["avg_mmr"],
-            )
-
-            # Create response
-            responses.append(
-                TeamSuggestionResponse(
-                    balance_prediction_id=suggestion.balance_prediction_id,
-                    map_name=request.map_name,
-                    team_1=team_1_info,
-                    team_2=team_2_info,
-                    mmr_difference=analysis["balance"]["mmr_difference"],
-                    match_quality=analysis["balance"]["match_quality"],
-                    win_probability_team_1=analysis["balance"][
-                        "win_probability_team_1"
-                    ],
-                    win_probability_team_2=analysis["balance"][
-                        "win_probability_team_2"
-                    ],
-                    fairness_rating=analysis["balance"]["fairness_rating"],
-                    team_1_avg_impact=analysis["balance"]["team_1_avg_impact"],
-                    team_2_avg_impact=analysis["balance"]["team_2_avg_impact"],
-                    impact_balance_score=analysis["balance"]["impact_balance_score"],
-                    impact_difference=analysis["balance"]["impact_difference"],
-                )
-            )
-
-        return responses
+        return [_suggestion_response(suggestion, request.map_name) for suggestion in suggestions]
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -134,37 +134,27 @@ class RatingSystem:
         team_1_players = [p for p in replay_data.players if p.team == 1]
         team_2_players = [p for p in replay_data.players if p.team == 2]
 
-        # Get or create Player objects
-        team_1_db = []
-        team_2_db = []
-
         # Get game mode and player count for alias resolution
         game_mode = match.game_mode
         num_players = len(replay_data.players)
 
-        for player_data in team_1_players:
-            # Resolve canonical name (handle aliases like barcodes)
-            resolved_name = PlayerService.resolve_canonical_name(
-                db, player_data.name, game_mode, num_players
-            )
-            player = db.query(Player).filter(Player.name == resolved_name).first()
-            if not player:
-                player = Player(name=resolved_name, is_ai=1 if player_data.is_ai else 0)
-                db.add(player)
-                db.flush()
-            team_1_db.append((player, player_data))
+        def get_or_create(team_players):
+            team_db = []
+            for player_data in team_players:
+                # Resolve canonical name (handle aliases like barcodes)
+                resolved_name = PlayerService.resolve_canonical_name(
+                    db, player_data.name, game_mode, num_players
+                )
+                player = db.query(Player).filter(Player.name == resolved_name).first()
+                if not player:
+                    player = Player(name=resolved_name, is_ai=1 if player_data.is_ai else 0)
+                    db.add(player)
+                    db.flush()
+                team_db.append((player, player_data))
+            return team_db
 
-        for player_data in team_2_players:
-            # Resolve canonical name (handle aliases like barcodes)
-            resolved_name = PlayerService.resolve_canonical_name(
-                db, player_data.name, game_mode, num_players
-            )
-            player = db.query(Player).filter(Player.name == resolved_name).first()
-            if not player:
-                player = Player(name=resolved_name, is_ai=1 if player_data.is_ai else 0)
-                db.add(player)
-                db.flush()
-            team_2_db.append((player, player_data))
+        team_1_db = get_or_create(team_1_players)
+        team_2_db = get_or_create(team_2_players)
 
         # Apply adaptive skill decay for inactive players
         # Uses per-player typical session gaps to avoid penalizing infrequent players
@@ -197,139 +187,66 @@ class RatingSystem:
         # Calculate new ratings
         from .rating_policy import rate_teams
 
-        new_ratings = rate_teams(team_1_ratings, team_2_ratings, team_1_won)
+        new_team_1_ratings, new_team_2_ratings = rate_teams(
+            team_1_ratings, team_2_ratings, team_1_won
+        )
 
-        new_team_1_ratings = new_ratings[0]
-        new_team_2_ratings = new_ratings[1]
+        # Update player ratings and statistics, one team after the other
+        for team_number, team_db, old_ratings, new_ratings in (
+            (1, team_1_db, team_1_ratings, new_team_1_ratings),
+            (2, team_2_db, team_2_ratings, new_team_2_ratings),
+        ):
+            for (player, player_data), old_rating, new_rating in zip(
+                team_db, old_ratings, new_ratings
+            ):
+                mmr_before = RatingSystem.calculate_display_mmr(old_rating.mu, old_rating.sigma)
+                mmr_after = RatingSystem.calculate_display_mmr(new_rating.mu, new_rating.sigma)
 
-        # Update player ratings and statistics
-        for i, (player, player_data) in enumerate(team_1_db):
-            old_rating = team_1_ratings[i]
-            new_rating = new_team_1_ratings[i]
-
-            # Upsert MatchPlayer record
-            match_player = (
-                db.query(MatchPlayer)
-                .filter(
-                    MatchPlayer.match_id == match.id, MatchPlayer.player_id == player.id
+                # Upsert MatchPlayer record
+                match_player = (
+                    db.query(MatchPlayer)
+                    .filter(
+                        MatchPlayer.match_id == match.id, MatchPlayer.player_id == player.id
+                    )
+                    .first()
                 )
-                .first()
-            )
-            if not match_player:
-                match_player = MatchPlayer(
-                    match_id=match.id,
-                    player_id=player.id,
-                    team_number=1,
-                    race=player_data.race,
-                    won=1 if player_data.won else 0,
-                    mu_before=old_rating.mu,
-                    sigma_before=old_rating.sigma,
-                    mu_after=new_rating.mu,
-                    sigma_after=new_rating.sigma,
-                    mmr_before=RatingSystem.calculate_display_mmr(
-                        old_rating.mu, old_rating.sigma
-                    ),
-                    mmr_after=RatingSystem.calculate_display_mmr(
-                        new_rating.mu, new_rating.sigma
-                    ),
-                )
-                db.add(match_player)
-            else:
+                is_new = match_player is None
+                if is_new:
+                    match_player = MatchPlayer(
+                        match_id=match.id,
+                        player_id=player.id,
+                        team_number=team_number,
+                        race=player_data.race,
+                        won=1 if player_data.won else 0,
+                    )
                 match_player.mu_before = old_rating.mu
                 match_player.sigma_before = old_rating.sigma
                 match_player.mu_after = new_rating.mu
                 match_player.sigma_after = new_rating.sigma
-                match_player.mmr_before = RatingSystem.calculate_display_mmr(
-                    old_rating.mu, old_rating.sigma
-                )
-                match_player.mmr_after = RatingSystem.calculate_display_mmr(
-                    new_rating.mu, new_rating.sigma
-                )
+                match_player.mmr_before = mmr_before
+                match_player.mmr_after = mmr_after
+                if is_new:
+                    db.add(match_player)
 
-            # Update player
-            player.mu = new_rating.mu
-            player.sigma = new_rating.sigma
-            player.mmr = RatingSystem.calculate_display_mmr(
-                new_rating.mu, new_rating.sigma
-            )
-            player.total_games += 1
-            if player_data.won:
-                player.wins += 1
-            else:
-                player.losses += 1
+                # Update player
+                player.mu = new_rating.mu
+                player.sigma = new_rating.sigma
+                player.mmr = mmr_after
+                player.total_games += 1
+                if player_data.won:
+                    player.wins += 1
+                else:
+                    player.losses += 1
 
-            # Update race statistics
-            race_attr = f"{player_data.race.value.lower()}_games"
-            setattr(player, race_attr, getattr(player, race_attr) + 1)
+                # Update race statistics
+                race_attr = f"{player_data.race.value.lower()}_games"
+                setattr(player, race_attr, getattr(player, race_attr) + 1)
 
-            # Advance-only: replays can be ingested out of chronological
-            # order (backfills, reprocessed failed uploads), so never let
-            # an older match's date push last_played backwards.
-            if not player.last_played or replay_data.played_at > player.last_played:
-                player.last_played = replay_data.played_at
-
-        for i, (player, player_data) in enumerate(team_2_db):
-            old_rating = team_2_ratings[i]
-            new_rating = new_team_2_ratings[i]
-
-            # Upsert MatchPlayer record
-            match_player = (
-                db.query(MatchPlayer)
-                .filter(
-                    MatchPlayer.match_id == match.id, MatchPlayer.player_id == player.id
-                )
-                .first()
-            )
-            if not match_player:
-                match_player = MatchPlayer(
-                    match_id=match.id,
-                    player_id=player.id,
-                    team_number=2,
-                    race=player_data.race,
-                    won=1 if player_data.won else 0,
-                    mu_before=old_rating.mu,
-                    sigma_before=old_rating.sigma,
-                    mu_after=new_rating.mu,
-                    sigma_after=new_rating.sigma,
-                    mmr_before=RatingSystem.calculate_display_mmr(
-                        old_rating.mu, old_rating.sigma
-                    ),
-                    mmr_after=RatingSystem.calculate_display_mmr(
-                        new_rating.mu, new_rating.sigma
-                    ),
-                )
-                db.add(match_player)
-            else:
-                match_player.mu_before = old_rating.mu
-                match_player.sigma_before = old_rating.sigma
-                match_player.mu_after = new_rating.mu
-                match_player.sigma_after = new_rating.sigma
-                match_player.mmr_before = RatingSystem.calculate_display_mmr(
-                    old_rating.mu, old_rating.sigma
-                )
-                match_player.mmr_after = RatingSystem.calculate_display_mmr(
-                    new_rating.mu, new_rating.sigma
-                )
-
-            # Update player
-            player.mu = new_rating.mu
-            player.sigma = new_rating.sigma
-            player.mmr = RatingSystem.calculate_display_mmr(
-                new_rating.mu, new_rating.sigma
-            )
-            player.total_games += 1
-            if player_data.won:
-                player.wins += 1
-            else:
-                player.losses += 1
-
-            # Update race statistics
-            race_attr = f"{player_data.race.value.lower()}_games"
-            setattr(player, race_attr, getattr(player, race_attr) + 1)
-
-            # Advance-only: see team_1 loop above for rationale.
-            if not player.last_played or replay_data.played_at > player.last_played:
-                player.last_played = replay_data.played_at
+                # Advance-only: replays can be ingested out of chronological
+                # order (backfills, reprocessed failed uploads), so never let
+                # an older match's date push last_played backwards.
+                if not player.last_played or replay_data.played_at > player.last_played:
+                    player.last_played = replay_data.played_at
 
         db.commit()
 

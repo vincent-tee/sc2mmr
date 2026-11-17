@@ -9,6 +9,9 @@ import sc2reader  # type: ignore
 from dataclasses import dataclass
 import logging
 
+# Defined in app.exceptions; imported here so `from app.replay_parser import
+# ReplayParseError` keeps working and names the same class.
+from .exceptions import ReplayParseError, WinnerDeterminationError
 from .match_result import ResultSource, StatsSnapshot, supply_at_common_frame, supply_winner
 from .models import GameMode, Race
 
@@ -43,20 +46,6 @@ class ReplayData:
     game_fingerprint: str  # Identifies same game from different observers
     result_source: str = ResultSource.REPLAY
     result_evidence: Optional[dict] = None
-
-
-class ReplayParseError(Exception):
-    """Custom exception for replay parsing errors."""
-
-    pass
-
-
-class WinnerDeterminationError(Exception):
-    """Custom exception for when winner cannot be determined automatically."""
-
-    def __init__(self, message: str, team_stats: Optional[Dict[str, Any]] = None):
-        super().__init__(message)
-        self.team_stats = team_stats or {}
 
 
 def calculate_replay_hash(file_path: str) -> str:

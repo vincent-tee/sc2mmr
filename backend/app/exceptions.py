@@ -14,7 +14,7 @@ Usage:
         raise HTTPException(status_code=400, detail=str(e))
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 
 class SC2MMRException(Exception):
@@ -58,9 +58,14 @@ class WinnerDeterminationError(SC2MMRException):
     - Match data is incomplete
     - All players appear to have left
     - Game ended in an unusual way
+
+    team_stats carries the supply evidence that was not clear enough to pick
+    a winner, so the caller can keep it for the review queue.
     """
 
-    pass
+    def __init__(self, message: str, team_stats: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.team_stats = team_stats or {}
 
 
 class ValidationError(SC2MMRException):

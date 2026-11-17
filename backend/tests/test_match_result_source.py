@@ -127,3 +127,21 @@ def test_too_close_to_call_goes_to_manual_review(monkeypatch):
     monkeypatch.setattr(match_result, "CLEAR_SUPPLY_LEAD", 5.0)
     with pytest.raises(WinnerDeterminationError, match="clearly show a winner"):
         parse_replay(require(NO_RESULT_REPLAY))
+
+
+def test_parser_errors_are_the_same_classes_wherever_they_are_imported_from():
+    """Scripts import these from app.exceptions; the parser raises them via app.replay_parser."""
+    from app import exceptions, replay_parser, advanced_parser
+    from app.api import replays
+
+    for name in ("ReplayParseError", "WinnerDeterminationError"):
+        assert getattr(replay_parser, name) is getattr(exceptions, name)
+        assert getattr(advanced_parser, name) is getattr(exceptions, name)
+        assert getattr(replays, name) is getattr(exceptions, name)
+
+    with pytest.raises(exceptions.WinnerDeterminationError) as caught:
+        raise replay_parser.WinnerDeterminationError("no clear winner", team_stats={"frame": 9})
+    assert str(caught.value) == "no clear winner"
+    assert caught.value.team_stats == {"frame": 9}
+    assert replay_parser.WinnerDeterminationError("no stats").team_stats == {}
+    assert str(replay_parser.ReplayParseError("bad file")) == "bad file"
