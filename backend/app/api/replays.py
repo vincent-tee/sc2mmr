@@ -401,15 +401,9 @@ def _log_winner_needed(db: Session, upload: _Upload, tmp_file_path: str, error: 
         replay_hash = calculate_replay_hash(tmp_file_path)
         m_name = str(getattr(replay, "map_name", ""))
         dur = int(getattr(getattr(replay, "game_length", None), "seconds", 0))
-        n_p = len(
-            [
-                p
-                for p in getattr(replay, "players", [])
-                if getattr(p, "is_human", False)
-            ]
-        )
-        g_mode_enum = determine_game_mode(n_p)
-        g_mode = g_mode_enum.value if g_mode_enum else None
+        players = getattr(replay, "players", [])
+        n_p = len([p for p in players if getattr(p, "is_human", False)])
+        g_mode = determine_game_mode(players).value
     except Exception:
         pass
 
@@ -440,7 +434,7 @@ def _handle_upload(
     """Parse, validate, store, record and post-process one uploaded replay.
 
     `advanced` also extracts and saves per-player metrics. The two upload
-    routes share everything else; where they still differ it is marked below.
+    routes share everything else; the one place they still differ is marked below.
     """
     upload = _read_upload(file)
     fn = upload.filename
@@ -513,11 +507,7 @@ def _handle_upload(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     except WinnerDeterminationError as e:
-        # Route difference: only the basic route keeps the replay for a
-        # person to pick the winner; the advanced route reports it as an
-        # unexpected error.
-        if advanced:
-            raise internal_error(e)
+        # Keep the replay so a person can pick the winner later.
         _log_winner_needed(db, upload, tmp_file_path, e)
         raise HTTPException(
             status_code=400, detail=f"Winner determination failed: {str(e)}"

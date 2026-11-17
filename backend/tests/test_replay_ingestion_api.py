@@ -160,3 +160,68 @@ def test_batch_then_http_upload_does_not_rate_twice(client, db_engine, replay, m
     assert response.json()["created"] is False
     with Session(db_engine) as db:
         assert player_state(db) == before
+
+
+@pytest.fixture
+def unreadable_result(monkeypatch):
+    """A replay with no recorded result and no clear supply lead."""
+    import sc2reader
+    from app.replay_parser import WinnerDeterminationError
+
+    def no_clear_winner(path, **kwargs):
+        if kwargs.get("manual_winner_team") is None:
+            raise WinnerDeterminationError("no clear winner", team_stats={"frame": 9})
+        return advanced_with_winner(kwargs["manual_winner_team"])
+
+    stored = {}
+    monkeypatch.setattr(replays, "parse_replay", no_clear_winner)
+    monkeypatch.setattr(replays, "parse_replay_advanced", no_clear_winner)
+    monkeypatch.setattr(sc2reader, "load_replay", lambda *args, **kwargs: SimpleNamespace(
+        map_name="Test map", game_length=SimpleNamespace(seconds=600),
+        players=[SimpleNamespace(is_human=True, team_id=1 if i < 2 else 2) for i in range(4)],
+    ))
+    monkeypatch.setattr(replays, "_save_failed_replay_file",
+                        lambda content, name, replay_hash: stored.setdefault("path", f"/failed/{replay_hash}.SC2Replay"))
+    monkeypatch.setattr(replays.replay_storage, "materialize_local_copy", lambda path: path or None)
+    return stored
+
+
+def advanced_with_winner(winner_team):
+    from app.models import GameMode, Race
+    from app.replay_parser import PlayerData, ReplayData
+    from datetime import datetime
+
+    return advanced(ReplayData(
+        played_at=datetime(2026, 8, 1), game_mode=GameMode.TWO_V_TWO, map_name="Test map",
+        duration_seconds=600, replay_hash="first-file", game_fingerprint="same-game",
+        result_source="confirmed",
+        players=[PlayerData(name=f"Player {i}", race=Race.TERRAN, team=1 if i < 2 else 2,
+                            won=(1 if i < 2 else 2) == winner_team) for i in range(4)],
+    ))
+
+
+@pytest.mark.parametrize("route", ["/replays/upload", "/replays/upload-advanced"])
+def test_replay_without_a_clear_winner_is_kept_for_a_person_to_decide(client, db_engine, unreadable_result, route):
+    """The Upload page posts to /upload-advanced; it must queue these the same way /upload does."""
+    response = upload(client, route)
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "Winner determination failed: no clear winner"
+    with Session(db_engine) as db:
+        failed = db.query(FailedUpload).one()
+        assert failed.error_type == UploadErrorType.WINNER_DETERMINATION
+        assert failed.replay_file_path == unreadable_result["path"]
+        assert (failed.map_name, failed.game_mode, failed.duration_seconds, failed.num_players) == (
+            "Test map", "2v2", 600, 4)
+        assert db.query(Match).count() == 0
+        upload_id = failed.id
+
+    listed = client.get("/replays/failed-uploads", params={"error_type": "winner_determination"}).json()
+    assert [item["id"] for item in listed] == [upload_id]
+
+    picked = client.post(f"/replays/failed-uploads/{upload_id}/set-winner", json={"winner_team": 2})
+    assert picked.status_code == 200, picked.text
+    with Session(db_engine) as db:
+        assert db.query(FailedUpload).count() == 0
+        match = db.query(Match).one()
+        assert match.result_source == "confirmed"
+        assert {mp.team_number for mp in match.participants if mp.won} == {2}
