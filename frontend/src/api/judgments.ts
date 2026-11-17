@@ -109,7 +109,6 @@ export interface FeedbackResponse {
 export interface JudgmentsApi {
   create: (request: CreateJudgmentRequest) => Promise<AxiosResponse<JudgmentResponse>>;
   list: (filters?: { matchId?: number; balancePredictionId?: number }) => Promise<AxiosResponse<JudgmentResponse[]>>;
-  getById: (judgmentId: number) => Promise<AxiosResponse<JudgmentResponse>>;
   update: (judgmentId: number, request: UpdateJudgmentRequest) => Promise<AxiosResponse<JudgmentResponse>>;
   lock: (judgmentId: number) => Promise<AxiosResponse<JudgmentResponse>>;
   createFeedback: (request: CreateFeedbackRequest) => Promise<AxiosResponse<FeedbackResponse>>;
@@ -128,10 +127,6 @@ export const judgmentsApi: JudgmentsApi = {
         balance_prediction_id: filters?.balancePredictionId,
       },
     });
-  },
-
-  getById: (judgmentId: number) => {
-    return apiClient.get<JudgmentResponse>(`/judgments/${judgmentId}`);
   },
 
   update: (judgmentId: number, request: UpdateJudgmentRequest) => {

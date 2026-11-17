@@ -8,15 +8,11 @@ import type {
   Player,
   PlayerDetail,
   PlayerHistoryResponse,
-  PlayerRanking,
   TeamSuggestion,
   MatchDetail,
-  MatchListResponse,
   MatchListWithPlayersResponse,
   ReplayUploadResponse,
-  PlayerImpact,
   MatchPlayerMetrics,
-  HealthCheckResponse,
   MatchPredictionResponse,
 } from '@/types/api';
 
@@ -26,28 +22,18 @@ import type {
 
 export interface PlayersApi {
   getAll: (coreOnly?: boolean) => Promise<AxiosResponse<Player[]>>;
-  getRankings: (minGames?: number, coreOnly?: boolean) => Promise<AxiosResponse<PlayerRanking[]>>;
   getById: (
     playerId: number,
     recentMatchesLimit?: number,
     recentMatchesOffset?: number
   ) => Promise<AxiosResponse<PlayerDetail>>;
   getHistory: (playerId: number, limit?: number) => Promise<AxiosResponse<PlayerHistoryResponse>>;
-  getCoaching: (playerId: number) => Promise<AxiosResponse<{ player_id: number; player_name: string; tips: string[] }>>;
-  create: (name: string, isCorePlayer?: boolean) => Promise<AxiosResponse<Player>>;
-  calibrate: (name: string, similarToPlayerId: number) => Promise<AxiosResponse<Player>>;
 }
 
 export const playersApi: PlayersApi = {
   getAll: (coreOnly = false) => {
     return apiClient.get<Player[]>('/players/', {
       params: { core_only: coreOnly }
-    });
-  },
-
-  getRankings: (minGames = 5, coreOnly = false) => {
-    return apiClient.get<PlayerRanking[]>('/players/rankings', {
-      params: { min_games: minGames, core_only: coreOnly }
     });
   },
 
@@ -65,24 +51,6 @@ export const playersApi: PlayersApi = {
       params: { limit }
     });
   },
-
-  getCoaching: (playerId: number) => {
-    return apiClient.get(`/players/${playerId}/coaching`);
-  },
-
-  create: (name: string, isCorePlayer = true) => {
-    return apiClient.post<Player>('/players/', {
-      name,
-      is_core_player: isCorePlayer
-    });
-  },
-
-  calibrate: (name: string, similarToPlayerId: number) => {
-    return apiClient.post<Player>('/players/calibrate', {
-      name,
-      similar_to_player_id: similarToPlayerId
-    });
-  }
 };
 
 // =============================================================================
@@ -91,7 +59,6 @@ export const playersApi: PlayersApi = {
 
 export interface TeamsApi {
   balance: (playerIds: number[], topN?: number) => Promise<AxiosResponse<TeamSuggestion[]>>;
-  quickBalance: (playerIds: number[]) => Promise<AxiosResponse<TeamSuggestion[]>>;
   getAIDifficulties: () => Promise<AxiosResponse<{ difficulties: Record<string, number>, config_path: string }>>;
   predict: (team1Ids: number[], team2Ids: number[]) => Promise<AxiosResponse<MatchPredictionResponse>>;
 }
@@ -102,14 +69,6 @@ export const teamsApi: TeamsApi = {
     return apiClient.post<TeamSuggestion[]>('/teams/balance', {
       player_ids: playerIds,
       top_n: topN,
-    });
-  },
-
-  // Quick balance (single best result)
-  quickBalance: (playerIds: number[]) => {
-    return apiClient.post<TeamSuggestion[]>('/teams/quick-balance', {
-      player_ids: playerIds,
-      top_n: 1
     });
   },
 
@@ -145,9 +104,7 @@ export interface FailedUpload {
 }
 
 export interface ReplaysApi {
-  upload: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => Promise<AxiosResponse<ReplayUploadResponse>>;
   uploadAdvanced: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => Promise<AxiosResponse<ReplayUploadResponse>>;
-  getMatches: (limit?: number, offset?: number) => Promise<AxiosResponse<MatchListResponse>>;
   getMatchesWithPlayers: (
     limit?: number,
     offset?: number,
@@ -165,19 +122,6 @@ export interface ReplaysApi {
 const UPLOAD_TIMEOUT = 120000;
 
 export const replaysApi: ReplaysApi = {
-  // Upload single replay
-  upload: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    return apiClient.post<ReplayUploadResponse>('/replays/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      timeout: UPLOAD_TIMEOUT,
-      onUploadProgress
-    });
-  },
 
   // Upload with advanced metrics
   uploadAdvanced: (file: File, onUploadProgress?: (event: AxiosProgressEvent) => void) => {
@@ -190,13 +134,6 @@ export const replaysApi: ReplaysApi = {
       },
       timeout: UPLOAD_TIMEOUT,
       onUploadProgress
-    });
-  },
-
-  // Get matches
-  getMatches: (limit = 50, offset = 0) => {
-    return apiClient.get<MatchListResponse>('/replays/matches', {
-      params: { limit, offset }
     });
   },
 
@@ -270,64 +207,14 @@ export interface LeaderboardEntry {
 }
 
 export interface ImpactApi {
-  getPlayersByImpact: (sortBy?: string, minGames?: number) => Promise<AxiosResponse<PlayerImpact[]>>;
   getPlayerMatchMetrics: (playerId: number, limit?: number) => Promise<AxiosResponse<MatchPlayerMetrics[]>>;
-  getMatchDamageTimeline: (playerId: number, matchId: number | string) => Promise<AxiosResponse<Record<string, number>>>;
-  getMatchCoordination: (matchId: number) => Promise<AxiosResponse<unknown>>;
-  getLeaderboard: (category: string, minGames?: number, limit?: number) => Promise<AxiosResponse<LeaderboardEntry[]>>;
-  getPlayerAttackPatterns: (playerId: number, limit?: number) => Promise<AxiosResponse<unknown>>;
 }
 
 export const impactApi: ImpactApi = {
-  // Get players by impact scores
-  getPlayersByImpact: (sortBy = 'overall', minGames = 5) => {
-    return apiClient.get<PlayerImpact[]>('/impact/players', {
-      params: { sort_by: sortBy, min_games: minGames }
-    });
-  },
-
   // Get detailed match metrics for a player
   getPlayerMatchMetrics: (playerId: number, limit = 20) => {
     return apiClient.get<MatchPlayerMetrics[]>(`/impact/players/${playerId}/matches`, {
       params: { limit }
     });
   },
-
-  // Get damage timeline for a specific match
-  getMatchDamageTimeline: (playerId: number, matchId: number | string) => {
-    return apiClient.get<Record<string, number>>(`/impact/players/${playerId}/matches/${matchId}/timeline`);
-  },
-
-  // Get team coordination analysis for a match
-  getMatchCoordination: (matchId: number) => {
-    return apiClient.get(`/impact/matches/${matchId}/coordination`);
-  },
-
-  // Get impact leaderboard
-  getLeaderboard: (category: string, minGames = 5, limit = 10) => {
-    return apiClient.get<LeaderboardEntry[]>(`/impact/leaderboard/${category}`, {
-      params: { min_games: minGames, limit }
-    });
-  },
-
-  // Get player attack patterns
-  getPlayerAttackPatterns: (playerId: number, limit = 20) => {
-    return apiClient.get(`/impact/players/${playerId}/attack-patterns`, {
-      params: { limit }
-    });
-  }
-};
-
-// =============================================================================
-// Health check
-// =============================================================================
-
-export interface HealthApi {
-  check: () => Promise<AxiosResponse<HealthCheckResponse>>;
-}
-
-export const healthApi: HealthApi = {
-  check: () => {
-    return apiClient.get<HealthCheckResponse>('/health');
-  }
 };

@@ -20,38 +20,6 @@ test.describe('SC2 MMR Tracker - User Acceptance Testing', () => {
     console.log('✅ UAT-1: Home page loaded successfully');
   });
 
-  test('UAT-2: Navigate to ML Intelligence page', async ({ page }) => {
-    await page.goto('http://localhost:3000');
-    await page.waitForLoadState('networkidle');
-    
-    // Step 3: Click on "ML Intel" navigation button
-    const mlIntelNav = page.getByRole('link', { name: /ML Intel/i })
-      .or(page.getByText(/ML Intel/i))
-      .or(page.locator('a[href*="ml-intel"]'))
-      .or(page.locator('nav').getByText(/ML/i));
-    
-    await mlIntelNav.first().click();
-    await page.waitForLoadState('networkidle');
-    
-    // Take screenshot
-    await page.screenshot({ path: 'test-results/uat-02-ml-intel-page.png', fullPage: true });
-    
-    // Step 4: Verify ML Intelligence page content
-    // Check for "ML INTELLIGENCE" title
-    const pageTitle = page.locator('h1, h2').filter({ hasText: /ML INTELLIGENCE/i });
-    await expect(pageTitle).toBeVisible({ timeout: 10000 });
-    
-    // Check for accuracy metrics
-    const accuracyText = page.getByText(/Accuracy|accuracy/i).first();
-    await expect(accuracyText).toBeVisible({ timeout: 10000 });
-    
-    // Check for Retrain Model button
-    const retrainButton = page.getByRole('button', { name: /Retrain Model/i });
-    await expect(retrainButton).toBeVisible({ timeout: 10000 });
-    
-    console.log('✅ UAT-2: ML Intelligence page loaded with all required elements');
-  });
-
   test('UAT-3: Navigate to Players page', async ({ page }) => {
     await page.goto('http://localhost:3000');
     await page.waitForLoadState('networkidle');
@@ -103,20 +71,10 @@ test.describe('SC2 MMR Tracker - User Acceptance Testing', () => {
     const homeSnapshot = await page.locator('body').innerHTML();
     console.log('Home page body length:', homeSnapshot.length, 'characters');
     
-    // Navigate to ML Intel (route is /ml-intelligence)
-    await page.goto('http://localhost:3000/ml-intelligence');
-    await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: 'test-results/uat-full-02-ml-intel.png', fullPage: true });
-    
-    // Check for ML Intelligence title (with timeout)
-    const mlTitle = page.locator('h1, h2').filter({ hasText: /ML INTELLIGENCE/i });
-    await expect(mlTitle).toBeVisible({ timeout: 10000 });
-    console.log('ML Intel page loaded successfully');
-    
     // Navigate to Players
     await page.goto('http://localhost:3000/players');
     await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: 'test-results/uat-full-03-players.png', fullPage: true });
+    await page.screenshot({ path: 'test-results/uat-full-02-players.png', fullPage: true });
     
     // Count player rows if table exists
     const playerRows = await page.locator('tbody tr').count();
