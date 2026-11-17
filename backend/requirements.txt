@@ -1,3 +1,7 @@
+# Runtime dependencies - everything the web app imports, and what the Docker
+# image installs. Tests need requirements-dev.txt; the analysis scripts in
+# scripts/ need requirements-research.txt.
+
 # FastAPI and server
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
@@ -17,23 +21,9 @@ mpyq>=0.2.5
 # Rating system
 trueskill==0.4.5
 
-# Machine Learning / Optimization
-numpy==1.24.3
-scipy==1.11.4
-scikit-learn>=1.3.0
-pandas>=2.0.0
-xgboost>=2.0.0
-shap>=0.43.0
-
-# Utilities
-python-dateutil==2.8.2
+# Settings
 pydantic==2.5.0
 pydantic-settings==2.1.0
-
-# Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-httpx==0.25.2
 
 # Replay storage on Cloud Run (lazy-imported; only used when REPLAY_GCS_BUCKET is set)
 google-cloud-storage==2.18.2
