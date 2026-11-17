@@ -3,8 +3,8 @@
 # SC2MMR Quick Start Script
 # This script starts both the backend and frontend services.
 
-# Set absolute base path
-BASE_DIR="/home/vtee/projects/sc2mmr"
+# The repository root: wherever this script lives
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_PORT=8000
 FRONTEND_PORT=5175
 

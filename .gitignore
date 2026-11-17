@@ -53,6 +53,7 @@ logs/
 
 # Testing
 .pytest_cache/
+test-results/
 .coverage
 htmlcov/
 
