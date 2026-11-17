@@ -7,13 +7,11 @@ TrueSkill is a Bayesian skill rating system that:
 - sigma: uncertainty (default 8.333, decreases with games played)
 - Handles team-based games naturally
 - Increases uncertainty over time without games (skill decay)
-- Recency weighting: Recent matches count more than older matches
 """
 
-from typing import List, Dict, Tuple, Optional
-from datetime import datetime, timedelta
+from typing import List, Tuple, Optional
+from datetime import datetime
 import trueskill
-import math
 from sqlalchemy.orm import Session
 
 from .models import Player, Match, MatchPlayer
@@ -33,36 +31,16 @@ trueskill.setup(
     draw_probability=settings.trueskill_draw_probability,
 )
 
-# Recency weighting configuration from settings
-RECENCY_HALF_LIFE_DAYS = settings.recency_half_life_days
-RECENCY_ENABLED = settings.recency_enabled
-
 
 class RatingSystem:
     """Manage rating persistence using the shared rating policy.
 
     Official display MMR is base + mu_multiplier * mu - 200 * sigma.
-    The separate legacy conservative helper uses the configured sigma multiplier.
     """
 
     # MMR Calculation Constants - from centralized settings
     MMR_BASE = settings.mmr_base
     MMR_MU_MULTIPLIER = settings.mmr_mu_multiplier
-    MMR_SIGMA_MULTIPLIER = settings.mmr_sigma_multiplier
-
-    @staticmethod
-    def create_rating(mu: float = 25.0, sigma: float = 8.333) -> trueskill.Rating:
-        """
-        Create a TrueSkill Rating object.
-
-        Args:
-            mu: Skill estimate
-            sigma: Uncertainty
-
-        Returns:
-            TrueSkill Rating object
-        """
-        return trueskill.Rating(mu=mu, sigma=sigma)
 
     @staticmethod
     def calculate_display_mmr(mu: float, sigma: float) -> float:
@@ -81,31 +59,6 @@ class RatingSystem:
             RatingSystem.MMR_BASE
             + (RatingSystem.MMR_MU_MULTIPLIER * mu)
             - (200.0 * sigma)
-        )
-
-    @staticmethod
-    def get_conservative_rating(mu: float, sigma: float) -> float:
-        """
-        Get conservative MMR rating for matchmaking and team balancing.
-
-        Formula: MMR = 1000 + 100*mu - 300*sigma
-
-        This formula INCLUDES sigma (uncertainty) because:
-        - Provides a "worst case" estimate for fair matchmaking
-        - New/uncertain players are rated more conservatively
-        - Helps create balanced teams by accounting for uncertainty
-
-        Args:
-            mu: Skill estimate
-            sigma: Uncertainty (higher = less certain about skill)
-
-        Returns:
-            Conservative MMR value
-        """
-        return (
-            RatingSystem.MMR_BASE
-            + (RatingSystem.MMR_MU_MULTIPLIER * mu)
-            - (RatingSystem.MMR_SIGMA_MULTIPLIER * sigma)
         )
 
     @staticmethod
@@ -155,98 +108,6 @@ class RatingSystem:
         if reference_date is not None:
             query = query.filter(Match.played_at <= reference_date)
         return typical_session_gap([row[0] for row in query.all()])
-
-    @staticmethod
-    def calculate_recency_weight(
-        days_ago: float, reference_date: Optional[datetime] = None
-    ) -> float:
-        """
-        Calculate exponential recency weight for a match.
-
-        Weight decays exponentially with half-life of RECENCY_HALF_LIFE_DAYS.
-        - Match today: weight = 1.0
-        - Match RECENCY_HALF_LIFE_DAYS ago: weight = 0.5
-        - Match 2*RECENCY_HALF_LIFE_DAYS ago: weight = 0.25
-
-        Args:
-            days_ago: Number of days since the match
-            reference_date: Reference date for calculating days_ago (defaults to now)
-
-        Returns:
-            Weight multiplier (0.0 to 1.0)
-        """
-        if not RECENCY_ENABLED:
-            return 1.0
-
-        if days_ago < 0:
-            days_ago = 0
-
-        # Exponential decay: weight = 0.5^(days_ago / half_life)
-        decay_factor = math.log(0.5) / RECENCY_HALF_LIFE_DAYS
-        weight = math.exp(decay_factor * days_ago)
-
-        return weight
-
-    @staticmethod
-    def update_recency_weighted_rating(
-        db: Session, player: Player, reference_date: Optional[datetime] = None
-    ) -> None:
-        """
-        Calculate and update a player's recency-weighted MMR.
-
-        This rating weighs recent matches more heavily than older matches,
-        providing a better estimate of current skill level.
-
-        Args:
-            db: Database session
-            player: Player to update
-            reference_date: Date to calculate recency from (defaults to now)
-        """
-        if reference_date is None:
-            reference_date = datetime.utcnow()
-
-        # Get all matches for this player, ordered by date
-        match_players = (
-            db.query(MatchPlayer)
-            .filter(MatchPlayer.player_id == player.id)
-            .join(Match)
-            .order_by(Match.played_at)
-            .all()
-        )
-
-        if not match_players:
-            # No matches, use standard MMR
-            player.recency_weighted_mmr = player.mmr
-            return
-
-        # Calculate weighted performance
-        total_weight = 0.0
-        weighted_mmr_sum = 0.0
-
-        for mp in match_players:
-            match = db.query(Match).filter(Match.id == mp.match_id).first()
-            if not match:
-                continue
-
-            # Calculate days ago
-            days_ago = (reference_date - match.played_at).total_seconds() / 86400
-
-            # Calculate weight
-            weight = RatingSystem.calculate_recency_weight(days_ago)
-
-            # Use post-match display MMR for this calculation
-            # Using display MMR (not conservative) for consistency with Player.mmr
-            match_mmr = RatingSystem.calculate_display_mmr(mp.mu_after, mp.sigma_after)
-
-            weighted_mmr_sum += match_mmr * weight
-            total_weight += weight
-
-        if total_weight > 0:
-            player.recency_weighted_mmr = weighted_mmr_sum / total_weight
-        else:
-            player.recency_weighted_mmr = player.mmr
-
-        db.commit()
 
     @staticmethod
     def update_ratings_from_match(
@@ -507,17 +368,3 @@ class RatingSystem:
         db.refresh(new_player)
 
         return new_player
-
-    @staticmethod
-    def get_player_ratings_dict(db: Session) -> Dict[int, Tuple[float, float]]:
-        """
-        Get all player ratings as a dictionary.
-
-        Args:
-            db: Database session
-
-        Returns:
-            Dict mapping player_id to (mu, sigma) tuple
-        """
-        players = db.query(Player).all()
-        return {player.id: (player.mu, player.sigma) for player in players}

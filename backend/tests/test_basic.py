@@ -102,51 +102,6 @@ class TestPlayerModel:
         assert player.favorite_race == "Unknown"
 
 
-class TestRatingSystem:
-    """Tests for the RatingSystem class."""
-
-    def test_trueskill_rating_creation(self):
-        """Test TrueSkill Rating object creation."""
-        rating = RatingSystem.create_rating(mu=25.0, sigma=8.333)
-
-        assert rating.mu == 25.0
-        assert rating.sigma == 8.333
-
-    def test_trueskill_rating_defaults(self):
-        """Test TrueSkill Rating with default values."""
-        rating = RatingSystem.create_rating()
-
-        assert rating.mu == 25.0
-        assert rating.sigma == 8.333
-
-    def test_conservative_rating(self):
-        """
-        Test conservative rating calculation for matchmaking.
-
-        Formula: MMR = MMR_BASE + MMR_MU_MULTIPLIER*mu - MMR_SIGMA_MULTIPLIER*sigma
-        This is the "conservative" estimate that penalizes uncertainty,
-        used for matchmaking balance (not display).
-        """
-        mmr = RatingSystem.get_conservative_rating(mu=25.0, sigma=8.333)
-
-        # Use constants for maintainability
-        expected = (RatingSystem.MMR_BASE +
-                   (RatingSystem.MMR_MU_MULTIPLIER * 25.0) -
-                   (RatingSystem.MMR_SIGMA_MULTIPLIER * 8.333))
-        assert abs(mmr - expected) < 0.01
-
-    def test_conservative_rating_experienced_player(self):
-        """Test conservative rating for experienced player with low sigma."""
-        # Experienced player: higher mu, lower sigma
-        mmr = RatingSystem.get_conservative_rating(mu=30.0, sigma=4.0)
-
-        # Use constants for maintainability
-        expected = (RatingSystem.MMR_BASE +
-                   (RatingSystem.MMR_MU_MULTIPLIER * 30.0) -
-                   (RatingSystem.MMR_SIGMA_MULTIPLIER * 4.0))
-        assert abs(mmr - expected) < 0.01
-
-
 # Backward compatibility: keep old test function names as aliases
 def test_player_creation(player_factory):
     """Alias for backward compatibility."""
@@ -166,16 +121,6 @@ def test_player_win_rate(player_factory):
 def test_favorite_race(player_factory):
     """Alias for backward compatibility."""
     TestPlayerModel().test_favorite_race(player_factory)
-
-
-def test_trueskill_rating_creation():
-    """Alias for backward compatibility."""
-    TestRatingSystem().test_trueskill_rating_creation()
-
-
-def test_conservative_rating():
-    """Alias for backward compatibility."""
-    TestRatingSystem().test_conservative_rating()
 
 
 if __name__ == "__main__":

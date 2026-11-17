@@ -13,7 +13,6 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import timedelta
 import sc2reader  # type: ignore
-from sc2reader.events import TrackerEvent  # type: ignore
 from sc2reader.engine.plugins import APMTracker  # type: ignore
 import logging
 
@@ -1027,70 +1026,3 @@ def _calculate_impact_scores(metrics: PlayerMetrics):
     )
     # Cap impact at 100
     metrics.overall_impact = min(100, metrics.overall_impact)
-
-
-def calculate_player_synergy(
-    player1_metrics: List[PlayerMetrics], player2_metrics: List[PlayerMetrics]
-) -> float:
-    """
-    Calculate synergy score between two players based on their performance together.
-
-    Synergy is measured by:
-    - Win rate when playing together
-    - Complementary roles (one economic, one combat)
-    - Consistent performance
-
-    Args:
-        player1_metrics: List of metrics for player 1 (games together)
-        player2_metrics: List of metrics for player 2 (games together)
-
-    Returns:
-        Synergy score (0-100)
-    """
-    if (
-        not player1_metrics
-        or not player2_metrics
-        or len(player1_metrics) != len(player2_metrics)
-    ):
-        return 50.0  # Neutral synergy
-
-    # Win rate together
-    wins = sum(1 for m in player1_metrics if m.won)
-    win_rate = wins / len(player1_metrics)
-    win_rate_score = win_rate * 100
-
-    # Role complementarity
-    # Check if players have different strengths (economic vs combat)
-    avg_econ_diff = abs(
-        sum(m.economic_score for m in player1_metrics) / len(player1_metrics)
-        - sum(m.economic_score for m in player2_metrics) / len(player2_metrics)
-    )
-    avg_combat_diff = abs(
-        sum(m.combat_score for m in player1_metrics) / len(player1_metrics)
-        - sum(m.combat_score for m in player2_metrics) / len(player2_metrics)
-    )
-
-    # Higher difference in roles = better synergy (specialization)
-    role_complementarity = (avg_econ_diff + avg_combat_diff) / 2
-    role_score = min(100, role_complementarity)
-
-    # Performance consistency
-    # Lower variance in combined impact = better synergy
-    combined_impacts = [
-        m1.overall_impact + m2.overall_impact
-        for m1, m2 in zip(player1_metrics, player2_metrics)
-    ]
-    avg_combined = sum(combined_impacts) / len(combined_impacts)
-    variance = sum((x - avg_combined) ** 2 for x in combined_impacts) / len(
-        combined_impacts
-    )
-    consistency_score = max(0, 100 - variance / 10)
-
-    # Overall synergy (weighted)
-    synergy = (
-        win_rate_score * 0.6  # Win rate is most important
-        + role_score * 0.2
-        + consistency_score * 0.2
-    )
-
-    return synergy

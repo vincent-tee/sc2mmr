@@ -18,17 +18,6 @@ from .replay_clock import event_real_second
 
 
 @dataclass
-class DamageEvent:
-    """Single damage event."""
-
-    second: int
-    damage: int
-    unit_killed: str
-    killer_player_id: int
-    victim_player_id: int
-
-
-@dataclass
 class TimingAttack:
     """Detected timing attack."""
 
@@ -98,10 +87,6 @@ class DamageTimeline:
     def to_json(self) -> str:
         """Convert timeline to JSON string."""
         return json.dumps(self.damage_events)
-
-    def get_damage_at(self, second: int) -> int:
-        """Get damage at specific second."""
-        return self.damage_events.get(second, 0)
 
     def get_window_damage(self, start: int, end: int) -> int:
         """Get total damage in time window [start, end)."""

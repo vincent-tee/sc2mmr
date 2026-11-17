@@ -87,34 +87,3 @@ class PlayerMatchResult:
     mid_game_damage: int = 0
     late_game_damage: int = 0
     aggression_score: float = 50.0
-
-
-@dataclass
-class ProcessedMatchResult:
-    """
-    Standardized container for a fully parsed match.
-    """
-
-    played_at: datetime
-    game_mode: GameMode
-    map_name: str
-    duration_seconds: int
-    replay_hash: str
-    players: List[PlayerMatchResult]
-    replay_file_path: Optional[str] = None
-    game_fingerprint: Optional[str] = None  # Identifies same game from different observers
-    kill_events: List[Dict[str, Any]] = field(default_factory=list)  # see docs/reviews/2026-09-16-parser-field-audit.md §3
-
-    @property
-    def winners(self) -> List[PlayerMatchResult]:
-        return [p for p in self.players if p.won]
-
-    @property
-    def losers(self) -> List[PlayerMatchResult]:
-        return [p for p in self.players if not p.won]
-
-    def get_player(self, name: str) -> Optional[PlayerMatchResult]:
-        for p in self.players:
-            if p.name == name:
-                return p
-        return None

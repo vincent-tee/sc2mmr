@@ -29,6 +29,10 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # Settings that were removed (hybrid MMR, PIM weights, online learning)
+        # may still be set in an existing .env; ignore them instead of
+        # refusing to start.
+        extra="ignore",
     )
 
     # ==========================================================================
@@ -68,7 +72,6 @@ class Settings(BaseSettings):
     mmr_mu_multiplier: int = (
         100  # Multiplier for mu (increased from 40 for dramatic changes)
     )
-    mmr_sigma_multiplier: int = 300  # Multiplier for sigma (scaled with mu multiplier)
 
     # ==========================================================================
     # Recency Weighting Configuration
@@ -87,26 +90,9 @@ class Settings(BaseSettings):
         5  # Minimum games to calculate player's typical gap
     )
 
-    # ==========================================================================
-    # Online Learning Configuration
-    # ==========================================================================
-    # Retraining thresholds (optimized for infrequent play sessions)
-    retrain_threshold: int = 8  # Matches before retraining (was 30)
-    min_matches_for_training: int = 30  # Minimum matches to start learning (was 100)
-    training_window: int = 200  # Recent matches for training (was 500)
-
-    # Session-aware learning
-    session_gap_hours: float = 4.0  # Hours between matches to define new session
-    session_weight_multiplier: float = (
-        2.0  # Weight multiplier for current session matches
-    )
-
-    # Bayesian online updating
-    bayesian_online_enabled: bool = True  # Enable incremental updates after each match
-    upset_learning_boost: float = 1.5  # Learning boost for upset matches
-    feature_importance_ema_alpha: float = (
-        0.15  # EMA alpha for feature importance updates
-    )
+    # Hours between a player's games before the next one counts as a new
+    # session (used to work out each player's typical gap between sessions).
+    session_gap_hours: float = 4.0
 
     # ==========================================================================
     # API Configuration
@@ -180,40 +166,6 @@ class Settings(BaseSettings):
     # Logging Configuration
     # ==========================================================================
     log_level: str = "INFO"
-
-    # ==========================================================================
-    # Hybrid MMR Configuration (SPEC-ML-001)
-    # ==========================================================================
-    # Enable/disable hybrid MMR system
-    # Soft-retired 2026-07-02 (rating consolidation campaign Phase 6):
-    # superseded by the display-MMR rating of record; column drop pending.
-    hybrid_mmr_enabled: bool = False
-
-    # PIM (Performance Impact Modifier) bounds
-    pim_min: float = -0.5  # Minimum PIM value (50% less MMR change)
-    pim_max: float = 0.5  # Maximum PIM value (50% more MMR change)
-
-    # PIM calculation version
-    pim_version: str = "rule_v1"  # "rule_v1" (weighted formula) or future "ml_v1"
-
-    # PIM Weight Configuration (must sum to 1.0)
-    # Combat metrics (40% total)
-    pim_weight_damage_ratio: float = 0.15
-    pim_weight_army_value_ratio: float = 0.15
-    pim_weight_combat_score: float = 0.10
-
-    # Economic metrics (25% total)
-    pim_weight_spending_efficiency: float = 0.10
-    pim_weight_economic_score: float = 0.10
-    pim_weight_resource_advantage: float = 0.05
-
-    # Team contribution metrics (25% total)
-    pim_weight_team_fight_participation: float = 0.10
-    pim_weight_team_fight_damage_ratio: float = 0.10
-    pim_weight_overall_impact: float = 0.05
-
-    # Efficiency metrics (10% total)
-    pim_weight_efficiency_score: float = 0.10
 
 
 @lru_cache

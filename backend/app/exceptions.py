@@ -5,7 +5,7 @@ This module defines specific exception types for different error scenarios,
 enabling more precise error handling and better error messages.
 
 Usage:
-    from app.exceptions import ReplayParseError, PlayerNotFoundError
+    from app.exceptions import ReplayParseError
 
     try:
         process_replay(file)
@@ -63,82 +63,9 @@ class WinnerDeterminationError(SC2MMRException):
     pass
 
 
-class RatingCalculationError(SC2MMRException):
-    """
-    Raised when rating calculation fails.
-
-    This could occur when:
-    - Invalid mu/sigma values
-    - TrueSkill library error
-    - Mathematical overflow/underflow
-    """
-
-    pass
-
-
-class PlayerNotFoundError(SC2MMRException):
-    """
-    Raised when a requested player is not found in the database.
-    """
-
-    def __init__(
-        self, player_id: Optional[int] = None, player_name: Optional[str] = None
-    ):
-        if player_id:
-            message = f"Player with ID {player_id} not found"
-        elif player_name:
-            message = f"Player '{player_name}' not found"
-        else:
-            message = "Player not found"
-        super().__init__(message)
-
-
-class MatchNotFoundError(SC2MMRException):
-    """
-    Raised when a requested match is not found in the database.
-    """
-
-    def __init__(self, match_id: Optional[int] = None):
-        if match_id is not None:
-            super().__init__(f"Match with ID {match_id} not found")
-        else:
-            super().__init__("Match not found")
-
-
-class TeamBalanceError(SC2MMRException):
-    """
-    Raised when team balancing fails.
-
-    This could occur when:
-    - Not enough players selected
-    - Invalid player IDs
-    - Balancing algorithm fails
-    """
-
-    pass
-
-
 class ValidationError(SC2MMRException):
     """
     Raised when input validation fails.
-    """
-
-    pass
-
-
-class DatabaseError(SC2MMRException):
-    """
-    Raised when a database operation fails.
-
-    Wraps SQLAlchemy errors with more context.
-    """
-
-    pass
-
-
-class ConfigurationError(SC2MMRException):
-    """
-    Raised when there's a configuration problem.
     """
 
     pass

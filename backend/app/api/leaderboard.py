@@ -23,13 +23,6 @@ class LeaderboardEntry(BaseModel):
     days_since_played: Optional[int] = None
 
 
-class CategoryInfo(BaseModel):
-    key: str
-    name: str
-    description: str
-    unit: str
-
-
 @router.get("/categories")
 async def get_leaderboard_categories():
     return [
