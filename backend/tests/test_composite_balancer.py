@@ -168,3 +168,27 @@ class TestBalancePredictionCapture:
         assert 0.0 <= stats["brier_score"] <= 1.0
         assert stats["log_loss"] > 0.0
         assert stats["bins"]
+
+
+def test_match_quality_uses_the_configured_rating_settings():
+    """Match quality must not depend on whether app.rating_system was imported first
+    (importing it is what configures trueskill's global environment)."""
+    import trueskill
+    from app.balancer import PlayerInfo as Info
+    from app.rating_policy import environment
+
+    def player(i, mu, sigma):
+        return Info(id=i, name=f"p{i}", mu=mu, sigma=sigma, mmr=0.0, overall_impact=50.0, total_games=20)
+
+    team_1, team_2 = [player(1, 30, 3), player(2, 24, 5)], [player(3, 27, 4), player(4, 25, 6)]
+    expected = environment().quality([
+        [trueskill.Rating(mu=p.mu, sigma=p.sigma) for p in team_1],
+        [trueskill.Rating(mu=p.mu, sigma=p.sigma) for p in team_2],
+    ])
+    configured = trueskill.global_env()
+    trueskill.setup()  # library defaults, as in a process that never imported app.rating_system
+    try:
+        assert TeamBalancer.calculate_match_quality(team_1, team_2) == pytest.approx(expected)
+    finally:
+        trueskill.setup(env=configured)
+    assert TeamBalancer.calculate_match_quality(team_1, team_2) == pytest.approx(expected)

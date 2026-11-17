@@ -69,9 +69,13 @@ class TeamBalancer:
     def calculate_match_quality(
         team_1: List[PlayerInfo], team_2: List[PlayerInfo]
     ) -> float:
+        from .rating_policy import environment
+
         team_1_ratings = [trueskill.Rating(mu=p.mu, sigma=p.sigma) for p in team_1]
         team_2_ratings = [trueskill.Rating(mu=p.mu, sigma=p.sigma) for p in team_2]
-        return trueskill.quality([team_1_ratings, team_2_ratings])
+        # The configured environment, not trueskill's global one: that is only
+        # set up as a side effect of importing app.rating_system.
+        return environment().quality([team_1_ratings, team_2_ratings])
 
     @staticmethod
     def calculate_win_probability(
